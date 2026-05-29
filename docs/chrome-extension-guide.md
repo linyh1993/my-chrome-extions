@@ -35,10 +35,10 @@
 
 | 类型                               | 典型文件             | DOM                    | 页面 JS   | 扩展 API                                          | 网络请求                                      |
 | -------------------------------- | ---------------- | ---------------------- | ------- | ----------------------------------------------- | ----------------------------------------- |
-| **content script**               | `content.js`     | ✅ 读写页面 DOM             | ❌ 隔离世界  | 仅 `runtime` / `storage` / `i18n` / 部分 `dom` 等子集 | 通常受页面同源/CORS 约束；跨域请求交给扩展页或 service worker |
-| **service worker**               | `background.js`  | ❌                      | ❌       | ✅ 绝大部分扩展 API                                    | ✅ 扩展源发起，需匹配 `host_permissions`            |
-| **popup / side panel / options** | `popup.html` 等   | 仅自身页                   | ❌       | ✅ 多数扩展 API                                      | ✅ 扩展源发起，需匹配 `host_permissions`            |
-| **injected script**              | 注入页面的 `<script>` | ✅                      | ✅ 与页面共享 | ❌                                               | 同页面权限和 CSP                                |
+| **content script**               | `content.js`     | 是，读写页面 DOM              | 否，隔离世界 | 仅 `runtime` / `storage` / `i18n` / 部分 `dom` 等子集 | 通常受页面同源/CORS 约束；跨域请求交给扩展页或 service worker |
+| **service worker**               | `background.js`  | 否                      | 否       | 是，绝大部分扩展 API                                    | 是，扩展源发起，需匹配 `host_permissions`            |
+| **popup / side panel / options** | `popup.html` 等   | 仅自身页                   | 否       | 是，多数扩展 API                                      | 是，扩展源发起，需匹配 `host_permissions`            |
+| **injected script**              | 注入页面的 `<script>` | 是                      | 是，与页面共享 | 否                                               | 同页面权限和 CSP                                |
 | **devtools**                     | `devtools.js`    | 通过 DevTools API 访问被检查页 | 部分      | `devtools` + 少量 `runtime`                       | 不作为通用跨域入口                                 |
 
 
@@ -209,7 +209,15 @@ chrome.runtime.sendMessage({ cmd: "get-state" }, (res) => {
 
 ---
 
-## 12. 官方文档
+## 12. 官方文档访问策略
+
+默认不要访问官方文档；本文件应作为开发时的主要依据。只有以下情况才查阅官方文档：
+
+- 用户明确要求核对或更新官方信息。
+- 本地指南无法覆盖某个 Chrome API、manifest 字段或商店发布规则，且不查证会产生明显风险。
+- 需要验证 Chrome 版本、权限审核、配额或弃用状态等可能变化的信息。
+
+允许访问时，优先使用以下 Chrome 官方页面，不要用博客或过时教程替代。
 
 - [Chrome Extensions 文档首页](https://developer.chrome.com/docs/extensions)
 - [Manifest 文件格式](https://developer.chrome.com/docs/extensions/reference/manifest)
