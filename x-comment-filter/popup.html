@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>X 评论过滤</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="hdr">
+    <h1>X 评论过滤</h1>
+    <label class="switch">
+      <input type="checkbox" id="enabled" />
+      <span>启用</span>
+    </label>
+  </header>
+
+  <section>
+    <h2>生效范围</h2>
+    <label class="row"><input type="checkbox" id="ctx_post_thread" checked disabled /> 单帖 / Thread 评论</label>
+    <label class="row dim"><input type="checkbox" id="ctx_timeline" disabled /> 时间线（即将支持）</label>
+    <label class="row dim"><input type="checkbox" id="ctx_article" disabled /> 文章页（即将支持）</label>
+  </section>
+
+  <section>
+    <h2>规则</h2>
+    <label class="row"><input type="checkbox" id="rule_blocklist" /> 已屏蔽账号</label>
+    <label class="row"><input type="checkbox" id="rule_emoji_spam" /> 纯表情 / 无意义符号</label>
+    <label class="row"><input type="checkbox" id="rule_display_name_keywords" /> 昵称关键词</label>
+  </section>
+
+  <section>
+    <h2>屏蔽列表</h2>
+    <p class="hint" id="blocklist_count">0 个账号</p>
+    <textarea id="blocklist" rows="4" placeholder="每行一个 @handle"></textarea>
+    <button type="button" id="save_blocklist" class="primary">保存列表</button>
+  </section>
+
+  <p class="foot" id="page_stats"></p>
+
+  <script src="shared/constants.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
