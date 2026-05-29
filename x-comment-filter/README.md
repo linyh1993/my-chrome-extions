@@ -22,9 +22,17 @@ shared/settings.js       # 设置与 contexts 开关
 
 新增页面类型：在 `shared/constants.js` 增加 `CONTEXT`，在 `sites/x/adapter.js` 的 `detectContext` / `isContextEnabled` 中实现，并在 `settings.contexts` 中打开开关。
 
-## v0.1 范围
+## 记录库（本机持久化）
+
+- 自动过滤 / 手动屏蔽都会写入 `chrome.storage.local`（最多约 1500 条）
+- 选项页双栏：**过滤记录** | **屏蔽回复**（点「屏蔽」后从左侧移到右侧，并加入账号屏蔽名单）
+- 支持 **导出 JSON**、**清空过滤记录**（保留右侧屏蔽回复与账号名单）
+
+## v0.2 范围
 
 - ✅ 单帖 / Thread 评论
 - ✅ 默认折叠 + 底部汇总条
-- ✅ 规则：黑名单、纯表情、昵称关键词
+- ✅ 规则：黑名单、Probable spam 区、多 @、纯表情、昵称关键词
+- ✅ 记录查看与导出
 - ⏳ 时间线、文章页（`contexts` 已预留，默认关闭）
+

@@ -11,9 +11,18 @@ const XCF = {
     GET_SETTINGS: 'getSettings',
     SAVE_SETTINGS: 'saveSettings',
     BLOCK_HANDLE: 'blockHandle',
+    UNBLOCK_HANDLE: 'unblockHandle',
     WHITELIST_HANDLE: 'whitelistHandle',
     SETTINGS_CHANGED: 'settingsChanged',
-    GET_PAGE_STATS: 'getPageStats'
+    GET_PAGE_STATS: 'getPageStats',
+    LOG_FILTERED: 'logFiltered',
+    LOG_THREAD_ROOT: 'logThreadRoot',
+    GET_LIBRARY: 'getLibrary',
+    CLEAR_ARCHIVE: 'clearArchive',
+    EXPORT_DATA: 'exportData',
+    BLOCK_ARCHIVE_ENTRY: 'blockArchiveEntry',
+    RESTORE_ARCHIVE_ENTRY: 'restoreArchiveEntry',
+    COMPACT_ARCHIVE: 'compactArchive'
   },
 
   DISPLAY_MODE: {

@@ -1,137 +1,167 @@
-/** @file Service worker：存储、右键菜单、设置广播 */
-const STORAGE_KEY = 'xcf_settings';
-
-const DEFAULT_SETTINGS = {
-  enabled: true,
-  displayMode: 'fold',
-  contexts: { post_thread: true, timeline: false, article: false, search: false },
-  rules: { blocklist: true, emoji_spam: true, display_name_keywords: true },
-  blocklist: [],
-  whitelist: [],
-  displayNameKeywords: [
-    '同城',
-    '上门',
-    '破处',
-    '免费线下',
-    '纯曰',
-    '约炮',
-    '兼职'
-  ]
-};
+/** @file Service worker：存储与设置变更通知 */
+importScripts(
+  'shared/constants.js',
+  'shared/settings.js',
+  'shared/archive.js'
+);
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.sync.get({ [STORAGE_KEY]: null }, (data) => {
-    if (!data[STORAGE_KEY]) {
-      chrome.storage.sync.set({ [STORAGE_KEY]: DEFAULT_SETTINGS });
+  chrome.storage.sync.get({ [XcfSettings.STORAGE_KEY]: null }, (data) => {
+    if (!data[XcfSettings.STORAGE_KEY]) {
+      chrome.storage.sync.set({ [XcfSettings.STORAGE_KEY]: XcfSettings.DEFAULTS });
     }
   });
+  XcfArchive.compact();
+});
 
-  chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({
-      id: 'xcf-block-from-page',
-      title: '将当前页作者加入屏蔽（实验）',
-      contexts: ['page'],
-      documentUrlPatterns: [
-        '*://x.com/*',
-        '*://twitter.com/*'
-      ]
-    });
-  });
+chrome.runtime.onStartup.addListener(() => {
+  XcfArchive.compact();
 });
 
 function normalizeHandle(handle) {
-  return String(handle || '')
-    .replace(/^@/, '')
-    .trim()
-    .toLowerCase();
+  return XcfSettings.normalizeHandle(handle);
 }
 
-async function getSettings() {
-  const data = await chrome.storage.sync.get({ [STORAGE_KEY]: {} });
-  const defaults = DEFAULT_SETTINGS;
-  const raw = data[STORAGE_KEY] || {};
-  return {
-    ...defaults,
-    ...raw,
-    contexts: { ...defaults.contexts, ...(raw.contexts || {}) },
-    rules: { ...defaults.rules, ...(raw.rules || {}) }
-  };
-}
-
-async function saveSettings(partial) {
-  const current = await getSettings();
-  const next = {
-    ...current,
-    ...partial,
-    contexts: { ...current.contexts, ...(partial.contexts || {}) },
-    rules: { ...current.rules, ...(partial.rules || {}) }
-  };
-  await chrome.storage.sync.set({ [STORAGE_KEY]: next });
-  return next;
-}
-
-async function blockHandle(handle) {
-  const h = normalizeHandle(handle);
-  if (!h) return getSettings();
-  const settings = await getSettings();
-  const blocklist = [...new Set([...(settings.blocklist || []).map(normalizeHandle), h])];
-  const whitelist = (settings.whitelist || [])
-    .map(normalizeHandle)
-    .filter((x) => x !== h);
-  return saveSettings({ blocklist, whitelist });
-}
-
-async function whitelistHandle(handle) {
-  const h = normalizeHandle(handle);
-  if (!h) return getSettings();
-  const settings = await getSettings();
-  const whitelist = [...new Set([...(settings.whitelist || []).map(normalizeHandle), h])];
-  const blocklist = (settings.blocklist || [])
-    .map(normalizeHandle)
-    .filter((x) => x !== h);
-  return saveSettings({ whitelist, blocklist });
-}
-
-function broadcastSettingsChanged() {
+function notifyTabsSettings() {
   chrome.tabs.query({ url: ['*://x.com/*', '*://twitter.com/*'] }, (tabs) => {
     for (const tab of tabs) {
       if (!tab.id) continue;
       chrome.tabs
-        .sendMessage(tab.id, { type: 'settingsChanged' })
+        .sendMessage(tab.id, { type: XCF.MSG.SETTINGS_CHANGED })
         .catch(() => {});
     }
   });
 }
 
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && changes[STORAGE_KEY]) broadcastSettingsChanged();
-});
-
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     switch (msg.type) {
-      case 'getSettings':
-        sendResponse(await getSettings());
+      case XCF.MSG.GET_SETTINGS:
+        sendResponse(await XcfSettings.load());
         break;
-      case 'saveSettings':
-        sendResponse(await saveSettings(msg.partial || {}));
-        broadcastSettingsChanged();
+      case XCF.MSG.SAVE_SETTINGS: {
+        const settings = await XcfSettings.save(msg.partial || {});
+        notifyTabsSettings();
+        sendResponse(settings);
         break;
-      case 'blockHandle':
-        sendResponse(await blockHandle(msg.handle));
-        broadcastSettingsChanged();
+      }
+      case XCF.MSG.BLOCK_HANDLE: {
+        const h = normalizeHandle(msg.handle);
+        if (!h) {
+          sendResponse(await XcfSettings.load());
+          break;
+        }
+        const cur = await XcfSettings.load();
+        const blocklist = [...new Set([...(cur.blocklist || []).map(normalizeHandle), h])];
+        const whitelist = (cur.whitelist || []).map(normalizeHandle).filter((x) => x !== h);
+        await XcfSettings.save({ blocklist, whitelist });
+        await XcfArchive.append({
+          at: Date.now(),
+          handle: h,
+          displayName: msg.displayName || '',
+          text: msg.text || '',
+          ruleId: 'blocklist',
+          reason: '手动屏蔽',
+          pageUrl: msg.pageUrl || '',
+          source: 'manual_block'
+        });
+        sendResponse(await XcfSettings.load());
         break;
-      case 'whitelistHandle':
-        sendResponse(await whitelistHandle(msg.handle));
-        broadcastSettingsChanged();
+      }
+      case XCF.MSG.UNBLOCK_HANDLE: {
+        const h = normalizeHandle(msg.handle);
+        const cur = await XcfSettings.load();
+        const blocklist = (cur.blocklist || [])
+          .map(normalizeHandle)
+          .filter((x) => x !== h);
+        sendResponse(await XcfSettings.save({ blocklist }));
+        break;
+      }
+      case XCF.MSG.WHITELIST_HANDLE: {
+        const h = normalizeHandle(msg.handle);
+        if (!h) {
+          sendResponse(await XcfSettings.load());
+          break;
+        }
+        const cur = await XcfSettings.load();
+        const whitelist = [...new Set([...(cur.whitelist || []).map(normalizeHandle), h])];
+        const blocklist = (cur.blocklist || []).map(normalizeHandle).filter((x) => x !== h);
+        sendResponse(await XcfSettings.save({ whitelist, blocklist }));
+        break;
+      }
+      case XCF.MSG.LOG_FILTERED:
+        sendResponse(await XcfArchive.append(msg.entry || {}));
+        break;
+      case XCF.MSG.LOG_THREAD_ROOT:
+        sendResponse(await XcfArchive.upsertThreadRoot(msg.entry || {}));
+        break;
+      case XCF.MSG.GET_LIBRARY: {
+        const settings = await XcfSettings.load();
+        const lanes = await XcfArchive.getLibrary();
+        sendResponse({
+          blocklist: settings.blocklist || [],
+          whitelist: settings.whitelist || [],
+          textKeywords: settings.textKeywords || [],
+          displayNameKeywords: settings.displayNameKeywords || [],
+          rules: settings.rules || {},
+          archive: lanes.filtered,
+          blockedReplies: lanes.blockedReplies,
+          threadRoots: lanes.threadRoots || {}
+        });
+        break;
+      }
+      case XCF.MSG.BLOCK_ARCHIVE_ENTRY: {
+        const id = msg.id;
+        if (id) {
+          const list = await XcfArchive.load();
+          const entry = list.find((r) => r.id === id);
+          if (entry?.handle) {
+            const h = normalizeHandle(entry.handle);
+            const cur = await XcfSettings.load();
+            const blocklist = [...new Set([...(cur.blocklist || []).map(normalizeHandle), h])];
+            const whitelist = (cur.whitelist || []).map(normalizeHandle).filter((x) => x !== h);
+            await XcfSettings.save({ blocklist, whitelist });
+          }
+          await XcfArchive.moveToBlockedLane(id);
+        }
+        const lanes = await XcfArchive.getLibrary();
+        sendResponse({
+          blocklist: (await XcfSettings.load()).blocklist || [],
+          archive: lanes.filtered,
+          blockedReplies: lanes.blockedReplies
+        });
+        break;
+      }
+      case XCF.MSG.RESTORE_ARCHIVE_ENTRY: {
+        if (msg.id) await XcfArchive.restoreFromBlockedLane(msg.id);
+        const lanes = await XcfArchive.getLibrary();
+        sendResponse({
+          blocklist: (await XcfSettings.load()).blocklist || [],
+          archive: lanes.filtered,
+          blockedReplies: lanes.blockedReplies
+        });
+        break;
+      }
+      case XCF.MSG.CLEAR_ARCHIVE:
+        sendResponse(await XcfArchive.clearFilteredOnly());
+        break;
+      case XCF.MSG.COMPACT_ARCHIVE: {
+        const stats = await XcfArchive.compact();
+        const lib = await XcfArchive.getLibrary();
+        sendResponse({
+          blocklist: (await XcfSettings.load()).blocklist || [],
+          archive: lib.filtered,
+          blockedReplies: lib.blockedReplies,
+          stats
+        });
+        break;
+      }
+      case XCF.MSG.EXPORT_DATA:
+        sendResponse(await XcfArchive.exportBundle());
         break;
       default:
         sendResponse(null);
     }
   })();
   return true;
-});
-
-chrome.contextMenus.onClicked.addListener((_info, _tab) => {
-  // 预留：可从 URL 解析作者；v1 以评论条内按钮为主
 });

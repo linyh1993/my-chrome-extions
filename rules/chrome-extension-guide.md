@@ -1,6 +1,6 @@
 # Chrome 扩展开发速查（LLM / Agent 用）
 
-> 本文是本仓库唯一 Chrome 扩展开发准则。LLM 生成或修改扩展时，必须使用 **Manifest V3**、extension service worker、`action`、`host_permissions`、`chrome.runtime.*` 等当前 API；不要引入已废弃的扩展架构或历史兼容写法。
+> 本文是本仓库唯一 Chrome 扩展开发准则。LLM 生成或修改扩展时，必须使用 **Manifest V3**、extension service worker、`action`、`host_permissions`、`chrome.runtime.`* 等当前 API；不要引入已废弃的扩展架构或历史兼容写法。
 
 ---
 
@@ -35,7 +35,7 @@
 
 | 类型                               | 典型文件             | DOM                    | 页面 JS   | 扩展 API                                          | 网络请求                                      |
 | -------------------------------- | ---------------- | ---------------------- | ------- | ----------------------------------------------- | ----------------------------------------- |
-| **content script**               | `content.js`     | 是，读写页面 DOM              | 否，隔离世界 | 仅 `runtime` / `storage` / `i18n` / 部分 `dom` 等子集 | 通常受页面同源/CORS 约束；跨域请求交给扩展页或 service worker |
+| **content script**               | `content.js`     | 是，读写页面 DOM             | 否，隔离世界  | 仅 `runtime` / `storage` / `i18n` / 部分 `dom` 等子集 | 通常受页面同源/CORS 约束；跨域请求交给扩展页或 service worker |
 | **service worker**               | `background.js`  | 否                      | 否       | 是，绝大部分扩展 API                                    | 是，扩展源发起，需匹配 `host_permissions`            |
 | **popup / side panel / options** | `popup.html` 等   | 仅自身页                   | 否       | 是，多数扩展 API                                      | 是，扩展源发起，需匹配 `host_permissions`            |
 | **injected script**              | 注入页面的 `<script>` | 是                      | 是，与页面共享 | 否                                               | 同页面权限和 CSP                                |
@@ -82,7 +82,6 @@
 }
 ```
 
-
 Manifest 编写规则：
 
 - 必须声明 `"manifest_version": 3`。
@@ -91,7 +90,6 @@ Manifest 编写规则：
 - 普通扩展权限放 `permissions`，站点访问放 `host_permissions`。
 - 暴露给页面的资源必须使用带 `resources` 和 `matches` 的 `web_accessible_resources` 对象数组。
 - 按站点启停功能时，用 `chrome.action`、`declarativeContent` 或业务逻辑控制，不要引入旧入口字段。
-
 
 ---
 
@@ -230,3 +228,4 @@ chrome.runtime.sendMessage({ cmd: "get-state" }, (res) => {
 - [Content Security Policy](https://developer.chrome.com/docs/extensions/reference/manifest/content-security-policy)
 - [Side Panel API](https://developer.chrome.com/docs/extensions/reference/api/sidePanel)
 - [Chrome Web Store 发布](https://developer.chrome.com/docs/webstore/publish)
+

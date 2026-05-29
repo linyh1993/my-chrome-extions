@@ -81,6 +81,18 @@ button.primary:hover {
   background: #1a8cd8;
 }
 
+button.secondary {
+  margin-top: 6px;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #cfd9de;
+  border-radius: 9999px;
+  background: #fff;
+  color: #0f1419;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .foot {
   margin: 0;
   font-size: 11px;

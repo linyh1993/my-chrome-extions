@@ -13,11 +13,15 @@ const XcfSettings = (() => {
     },
     rules: {
       blocklist: true,
+      text_keywords: true,
+      probable_spam: true,
+      mention_spam: true,
       emoji_spam: true,
       display_name_keywords: true
     },
     blocklist: [],
     whitelist: [],
+    textKeywords: [],
     displayNameKeywords: [
       '同城',
       '上门',
@@ -26,13 +30,22 @@ const XcfSettings = (() => {
       '纯曰',
       '约炮',
       '兼职'
-    ]
+    ],
+    panelUi: {
+      hidden: false,
+      collapsed: false
+    }
   };
 
   function merge(base, patch) {
     const out = { ...base, ...patch };
     if (patch.contexts) out.contexts = { ...base.contexts, ...patch.contexts };
     if (patch.rules) out.rules = { ...base.rules, ...patch.rules };
+    if (patch.panelUi) out.panelUi = { ...base.panelUi, ...patch.panelUi };
+    if (patch.textKeywords) out.textKeywords = [...(patch.textKeywords || [])];
+    if (patch.displayNameKeywords) {
+      out.displayNameKeywords = [...(patch.displayNameKeywords || [])];
+    }
     return out;
   }
 
