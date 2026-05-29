@@ -7,16 +7,16 @@
 - 任何任务都必须先读 [rules/andrej-karpathy-coding-guidelines.md](rules/andrej-karpathy-coding-guidelines.md)，再开始计划和实现。
 - 修改 Chrome 扩展代码、manifest、权限、消息通信、content script、service worker、storage、side panel 时，在上述文件之后继续读 [rules/chrome-extension-guide.md](rules/chrome-extension-guide.md)。
 - 修改具体子项目时，优先读该子项目自己的 `README.md` 和现有代码。
+- 如果本轮上下文中已经读取过某个规则文件，优先回顾上下文，不要重复读取；只有内容不确定、可能已变更或需要精确核对时才重新读取。
 - 默认不要访问 Chrome 官方文档；优先按本仓库指南和现有代码实现。只有用户明确要求，或本地指南无法覆盖且不查证会带来明显风险时，才访问 Chrome 官方文档。
 
 ## 工作循环
 
-按 `PLAN -> BUILD -> VERIFY` 循环工作，直到改动可验证或明确受阻。
+执行时使用 `PLAN -> BUILD -> VERIFY`，这是 [rules/andrej-karpathy-coding-guidelines.md](rules/andrej-karpathy-coding-guidelines.md) 的本仓库落地方式。
 
-- `PLAN`：基于模型推理和本地代码上下文形成简短实现计划；这里的 plan 是思考产物，不要求使用工具内置 plan。
-- `BUILD`：按计划修改最小必要文件，保持边界清晰，不做无关重构。
-- `VERIFY`：运行可用的检查、测试或手动验证步骤；若发现问题，回到 `PLAN` 修正后继续。
-- 无法验证时，在回复中说明原因、已做的静态检查和剩余风险。
+- `PLAN`：先基于模型推理和本地上下文形成简短计划，不要求使用工具内置 plan。
+- `BUILD`：只改当前任务需要的最小文件，不做无关重构。
+- `VERIFY`：运行可用检查；失败则回到 `PLAN` 修正后继续。无法验证时，说明原因、已做的静态检查和剩余风险。
 
 ## 硬性约定
 
