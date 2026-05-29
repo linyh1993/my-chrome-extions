@@ -8,7 +8,7 @@
 
 **[docs/chrome-extension-guide.md](docs/chrome-extension-guide.md)**
 
-该文档提炼自《Chrome插件开发全攻略》及 demo 仓库，并补充 MV3 与本仓库实践；仅在相关任务时按需加载，无需每次会话全文带入。
+该文档是本仓库 Chrome 扩展开发的唯一准则，面向 Manifest V3 与本仓库实践；仅在相关任务时按需加载，无需每次会话全文带入。
 
 ## 子项目
 
@@ -21,6 +21,7 @@
 
 ## 约定
 
-- 新扩展使用 **Manifest V3**（`service_worker`、`action`、`host_permissions`）。
+- 所有扩展必须使用 **Manifest V3**（`service_worker`、`action`、`host_permissions`）。
+- 不要引入历史 manifest 格式、旧后台页或旧消息 API；发现旧写法时应改为当前 MV3 API。
 - 每个扩展独立子目录，根目录各自包含 `manifest.json`。
 - 页面 DOM 操作用 content script；跨标签、存储、右键菜单等用 service worker。

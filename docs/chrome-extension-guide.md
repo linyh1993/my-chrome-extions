@@ -1,14 +1,14 @@
-# Chrome 扩展开发速查（Agent 用）
+# Chrome 扩展开发速查（LLM / Agent 用）
 
-> 本文按 **Manifest V3** 编写，并于 **2026-05-29** 对照 Chrome 官方文档更新。早期《Chrome 插件开发全攻略》和 `sxei/chrome-plugin-demo` 主要基于 Manifest V2，只保留历史概念参考；新代码不要照搬 MV2 写法。
+> 本文是本仓库唯一 Chrome 扩展开发准则。LLM 生成或修改扩展时，必须使用 **Manifest V3**、extension service worker、`action`、`host_permissions`、`chrome.runtime.*` 等当前 API；不要引入已废弃的扩展架构或历史兼容写法。
 
 ---
 
 ## 1. 当前结论
 
 - 口语里的「Chrome 插件」在官方语境是 **Chrome Extension**：HTML/CSS/JS + `manifest.json`，不是 NPAPI/PPAPI。
-- 新扩展一律使用 **Manifest V3**。Chrome 139 起 Manifest V2 已不可用，不要再以 MV2 兼容作为默认目标。
-- MV3 的后台逻辑是 **extension service worker**，不是常驻 `background.html` 页面；不要依赖全局内存长期存在。
+- 所有扩展一律使用 **Manifest V3**。不要添加历史 manifest 格式、旧后台页或旧消息 API。
+- 后台逻辑使用 **extension service worker**，不是常驻 HTML 页面；不要依赖全局内存长期存在。
 - 扩展页禁止远程托管代码和内联脚本；不要用 CDN 动态执行代码、`eval()`、`onclick="..."`、`href="javascript:"`。
 - 拦截/修改网络请求优先用 `declarativeNetRequest`。MV3 中阻塞式 `webRequest` 基本只保留给策略安装扩展，不应作为普通商店扩展方案。
 
@@ -16,27 +16,31 @@
 
 ## 2. 开发调试
 
-| 操作 | 做法 |
-| --- | --- |
-| 打开管理页 | `chrome://extensions`，开启 **开发者模式** |
-| 本地加载 | 「加载已解压的扩展程序」选包含 `manifest.json` 的扩展目录 |
-| 改代码后 | 管理页点重载或按 **Ctrl+R**；content script 改动还要刷新目标网页 |
-| 看后台报错 | 扩展卡片点「Service Worker」打开独立控制台；静默失败先查这里 |
-| 调试 content script | 页面 DevTools Console 顶部上下文选择扩展名，不是 `top` |
-| 调试 popup / side panel | 对对应页面右键「检查」；被检查时 popup 会保持打开 |
-| 看已安装扩展源码 | `%LocalAppData%\Google\Chrome\User Data\Default\Extensions\<id>\` |
+
+| 操作                    | 做法                                                                |
+| --------------------- | ----------------------------------------------------------------- |
+| 打开管理页                 | `chrome://extensions`，开启 **开发者模式**                                |
+| 本地加载                  | 「加载已解压的扩展程序」选包含 `manifest.json` 的扩展目录                             |
+| 改代码后                  | 管理页点重载或按 **Ctrl+R**；content script 改动还要刷新目标网页                     |
+| 看后台报错                 | 扩展卡片点「Service Worker」打开独立控制台；静默失败先查这里                             |
+| 调试 content script     | 页面 DevTools Console 顶部上下文选择扩展名，不是 `top`                           |
+| 调试 popup / side panel | 对对应页面右键「检查」；被检查时 popup 会保持打开                                      |
+| 看已安装扩展源码              | `%LocalAppData%\Google\Chrome\User Data\Default\Extensions\<id>\` |
+
 
 ---
 
 ## 3. 架构：常见执行环境
 
-| 类型 | 典型文件 | DOM | 页面 JS | 扩展 API | 网络请求 |
-| --- | --- | --- | --- | --- | --- |
-| **content script** | `content.js` | ✅ 读写页面 DOM | ❌ 隔离世界 | 仅 `runtime` / `storage` / `i18n` / 部分 `dom` 等子集 | 通常受页面同源/CORS 约束；跨域请求交给扩展页或 service worker |
-| **service worker** | `background.js` | ❌ | ❌ | ✅ 绝大部分扩展 API | ✅ 扩展源发起，需匹配 `host_permissions` |
-| **popup / side panel / options** | `popup.html` 等 | 仅自身页 | ❌ | ✅ 多数扩展 API | ✅ 扩展源发起，需匹配 `host_permissions` |
-| **injected script** | 注入页面的 `<script>` | ✅ | ✅ 与页面共享 | ❌ | 同页面权限和 CSP |
-| **devtools** | `devtools.js` | 通过 DevTools API 访问被检查页 | 部分 | `devtools` + 少量 `runtime` | 不作为通用跨域入口 |
+
+| 类型                               | 典型文件             | DOM                    | 页面 JS   | 扩展 API                                          | 网络请求                                      |
+| -------------------------------- | ---------------- | ---------------------- | ------- | ----------------------------------------------- | ----------------------------------------- |
+| **content script**               | `content.js`     | ✅ 读写页面 DOM             | ❌ 隔离世界  | 仅 `runtime` / `storage` / `i18n` / 部分 `dom` 等子集 | 通常受页面同源/CORS 约束；跨域请求交给扩展页或 service worker |
+| **service worker**               | `background.js`  | ❌                      | ❌       | ✅ 绝大部分扩展 API                                    | ✅ 扩展源发起，需匹配 `host_permissions`            |
+| **popup / side panel / options** | `popup.html` 等   | 仅自身页                   | ❌       | ✅ 多数扩展 API                                      | ✅ 扩展源发起，需匹配 `host_permissions`            |
+| **injected script**              | 注入页面的 `<script>` | ✅                      | ✅ 与页面共享 | ❌                                               | 同页面权限和 CSP                                |
+| **devtools**                     | `devtools.js`    | 通过 DevTools API 访问被检查页 | 部分      | `devtools` + 少量 `runtime`                       | 不作为通用跨域入口                                 |
+
 
 **选型口诀：**
 
@@ -48,7 +52,7 @@
 
 ---
 
-## 4. Manifest 要点（MV3）
+## 4. Manifest 要点
 
 ```json
 {
@@ -78,14 +82,16 @@
 }
 ```
 
-| 旧写法 / 旧认知 | 当前做法 |
-| --- | --- |
-| `manifest_version: 2` | 使用 `manifest_version: 3` |
-| `browser_action` / `page_action` | 统一为 `action`；按条件启停用 `chrome.action` 或 `declarativeContent` |
-| `background.scripts` / `persistent` / `background.html` | 使用 `background.service_worker`，事件驱动、会休眠 |
-| 把站点 URL 放进 `permissions` | 站点访问放进 `host_permissions` |
-| `web_accessible_resources: ["inject.js"]` | MV3 使用带 `resources` 和 `matches` 的对象数组 |
-| `chrome.extension.*` 消息 API | 改用 `chrome.runtime.*` |
+
+Manifest 编写规则：
+
+- 必须声明 `"manifest_version": 3`。
+- 工具栏入口使用 `action`。
+- 后台入口使用 `background.service_worker`，需要 ESM 时加 `"type": "module"`。
+- 普通扩展权限放 `permissions`，站点访问放 `host_permissions`。
+- 暴露给页面的资源必须使用带 `resources` 和 `matches` 的 `web_accessible_resources` 对象数组。
+- 按站点启停功能时，用 `chrome.action`、`declarativeContent` 或业务逻辑控制，不要引入旧入口字段。
+
 
 ---
 
@@ -106,21 +112,23 @@
 - 不能访问 DOM、不能使用 `window`、不能操作普通网页元素；要通过 content script 或 `chrome.scripting.executeScript`。
 - 事件监听要在顶层同步注册，不要等异步初始化后才 `addListener`，否则唤醒事件可能被错过。
 - 长耗时任务要拆分，必要时用 `chrome.alarms`、storage 状态机或 offscreen document 承接需要 DOM 的后台工作。
-- 调试时点扩展管理页的「Service Worker」链接，不要访问 `chrome-extension://<id>/background.html`。
+- 调试时点扩展管理页的「Service Worker」链接。
 
 ---
 
 ## 7. 消息通信
 
-统一用 `chrome.runtime.onMessage` / `chrome.runtime.sendMessage`，不要用旧的 `chrome.extension.onMessage`。
+统一用 `chrome.runtime.onMessage` / `chrome.runtime.sendMessage`。
 
-| 方向 | API |
-| --- | --- |
-| content → background | `chrome.runtime.sendMessage(message)` |
-| background → content | `chrome.tabs.sendMessage(tabId, message)` |
-| popup / side panel → content | 先 `chrome.tabs.query` 得到 `tabId`，再 `chrome.tabs.sendMessage` |
-| content ↔ injected | `window.postMessage` + `window.addEventListener("message", ...)` |
-| 长连接 | `chrome.runtime.connect` / `chrome.tabs.connect` |
+
+| 方向                           | API                                                              |
+| ---------------------------- | ---------------------------------------------------------------- |
+| content → background         | `chrome.runtime.sendMessage(message)`                            |
+| background → content         | `chrome.tabs.sendMessage(tabId, message)`                        |
+| popup / side panel → content | 先 `chrome.tabs.query` 得到 `tabId`，再 `chrome.tabs.sendMessage`     |
+| content ↔ injected           | `window.postMessage` + `window.addEventListener("message", ...)` |
+| 长连接                          | `chrome.runtime.connect` / `chrome.tabs.connect`                 |
+
 
 注意点：
 
@@ -171,19 +179,21 @@ chrome.runtime.sendMessage({ cmd: "get-state" }, (res) => {
 
 ## 10. 常用能力
 
-| 能力 | 配置 / 权限 | 落点 |
-| --- | --- | --- |
-| 工具栏按钮 | `action` | popup 或 service worker |
-| 右键菜单 | `contextMenus` | service worker 顶层创建或按事件创建 |
-| 覆盖新标签页等 | `chrome_url_overrides` | 每个扩展只能覆盖每类页面一次 |
-| 地址栏关键字 | `omnibox` | service worker |
-| 桌面通知 | `notifications` | service worker |
-| 网络请求规则 | `declarativeNetRequest` | 静态 / 动态 / 会话规则 |
-| 观察请求但不阻塞 | `webRequest` | service worker |
-| 动态脚本/CSS | `scripting` + host 权限或 `activeTab` | service worker / 扩展页 |
-| 侧边栏 | `side_panel` + `sidePanel` 权限，Chrome 114+ | side panel 页面 |
-| DevTools 面板 | `devtools_page` | 独立 devtools 页面，重载扩展后要重开 DevTools |
-| 国际化 | `_locales/<lang>/messages.json` + `default_locale` | `__MSG_*__` / `chrome.i18n.getMessage` |
+
+| 能力          | 配置 / 权限                                            | 落点                                     |
+| ----------- | -------------------------------------------------- | -------------------------------------- |
+| 工具栏按钮       | `action`                                           | popup 或 service worker                 |
+| 右键菜单        | `contextMenus`                                     | service worker 顶层创建或按事件创建              |
+| 覆盖新标签页等     | `chrome_url_overrides`                             | 每个扩展只能覆盖每类页面一次                         |
+| 地址栏关键字      | `omnibox`                                          | service worker                         |
+| 桌面通知        | `notifications`                                    | service worker                         |
+| 网络请求规则      | `declarativeNetRequest`                            | 静态 / 动态 / 会话规则                         |
+| 观察请求但不阻塞    | `webRequest`                                       | service worker                         |
+| 动态脚本/CSS    | `scripting` + host 权限或 `activeTab`                 | service worker / 扩展页                   |
+| 侧边栏         | `side_panel` + `sidePanel` 权限，Chrome 114+          | side panel 页面                          |
+| DevTools 面板 | `devtools_page`                                    | 独立 devtools 页面，重载扩展后要重开 DevTools       |
+| 国际化         | `_locales/<lang>/messages.json` + `default_locale` | `__MSG_*__` / `chrome.i18n.getMessage` |
+
 
 ---
 
