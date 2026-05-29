@@ -4,8 +4,8 @@
 
 ## 读文档路线
 
-- 修改 Chrome 扩展代码、manifest、权限、消息通信、content script、service worker、storage、side panel 时，先读 [rules/chrome-extension-guide.md](rules/chrome-extension-guide.md)。
-- 做任何代码实现、重构、修 bug、代码审查时，按需读 [rules/andrej-karpathy-coding-guidelines.md](rules/andrej-karpathy-coding-guidelines.md)。
+- 任何任务都必须先读 [rules/andrej-karpathy-coding-guidelines.md](rules/andrej-karpathy-coding-guidelines.md)，再开始计划和实现。
+- 修改 Chrome 扩展代码、manifest、权限、消息通信、content script、service worker、storage、side panel 时，在上述文件之后继续读 [rules/chrome-extension-guide.md](rules/chrome-extension-guide.md)。
 - 修改具体子项目时，优先读该子项目自己的 `README.md` 和现有代码。
 - 默认不要访问 Chrome 官方文档；优先按本仓库指南和现有代码实现。只有用户明确要求，或本地指南无法覆盖且不查证会带来明显风险时，才访问 Chrome 官方文档。
 
