@@ -1,11 +1,11 @@
 # my-chrome-extions
 
-本仓库用于存放个人 Chrome 扩展项目。`AGENTS.md` 只作为地图索引：帮助 Agent 判断先读什么、遵守什么、如何验证；详细规则放在 `docs/` 或子项目文档中。
+本仓库用于存放个人 Chrome 扩展项目。`AGENTS.md` 只作为地图索引：帮助 Agent 判断先读什么、遵守什么、如何验证；详细规则放在 `rules/` 或子项目文档中。
 
 ## 读文档路线
 
-- 修改 Chrome 扩展代码、manifest、权限、消息通信、content script、service worker、storage、side panel 时，先读 [docs/chrome-extension-guide.md](docs/chrome-extension-guide.md)。
-- 做任何代码实现、重构、修 bug、代码审查时，按需读 [docs/agent-coding-guidelines.md](docs/agent-coding-guidelines.md)。
+- 修改 Chrome 扩展代码、manifest、权限、消息通信、content script、service worker、storage、side panel 时，先读 [rules/chrome-extension-guide.md](rules/chrome-extension-guide.md)。
+- 做任何代码实现、重构、修 bug、代码审查时，按需读 [rules/andrej-karpathy-coding-guidelines.md](rules/andrej-karpathy-coding-guidelines.md)。
 - 修改具体子项目时，优先读该子项目自己的 `README.md` 和现有代码。
 - 默认不要访问 Chrome 官方文档；优先按本仓库指南和现有代码实现。只有用户明确要求，或本地指南无法覆盖且不查证会带来明显风险时，才访问 Chrome 官方文档。
 
@@ -30,5 +30,5 @@
 
 | 目录 | 说明 | 入口 |
 | --- | --- | --- |
-| `traffic-relay/` | 按站点镜像 API 流量；MV3，含 side panel + content script | `manifest.json`、`background.js`、`content.js`、`sidepanel.*` |
+| `traffic-relay/` | 按站点镜像 API 流量；MV3，含 side panel + content script | `README.md`、`manifest.json`、`background.js`、`content.js`、`sidepanel.*` |
 | `x-comment-filter/` | X 单帖/Thread 评论过滤；默认折叠；架构可扩展更多页面类型 | `README.md`、`manifest.json`、`content/bootstrap.js`、`core/`、`sites/x/adapter.js` |
