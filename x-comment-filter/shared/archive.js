@@ -1,8 +1,8 @@
-/** @file 过滤记录：chrome.storage.local，按主推文 id 分组 */
+/** @file 噪音记录：chrome.storage.local，按主推文 id 分组 */
 const XcfArchive = (() => {
   const KEY = 'xcf_archive';
   const THREAD_KEY = 'xcf_thread_roots';
-  const MAX_ENTRIES = 500;
+  const MAX_ENTRIES = 1000;
 
   function threadIdFromPageUrl(url) {
     const m = String(url || '').match(/\/status\/(\d+)/);
@@ -51,6 +51,26 @@ const XcfArchive = (() => {
     return `fb:${h}|${t}|${u}`;
   }
 
+  function contentKey(row) {
+    const h = String(row.handle || '')
+      .toLowerCase()
+      .replace(/^@/, '');
+    const t = normText(row.text);
+    const threadId =
+      row.threadId || threadIdFromPageUrl(row.pageUrl) || '';
+    return `${threadId}|${h}|${t}`;
+  }
+
+  function normalizeRow(row) {
+    const isSignal = row.kind === XCF.COMMENT_KIND.SIGNAL;
+    if (isSignal && row.blockedLane) {
+      const copy = { ...row, blockedLane: false };
+      delete copy.blockedAt;
+      return copy;
+    }
+    return row;
+  }
+
   function mergeRow(prev, row) {
     const pm = prev.metrics || {};
     const rm = row.metrics || {};
@@ -61,8 +81,13 @@ const XcfArchive = (() => {
       tweetId: prev.tweetId || row.tweetId,
       threadId: prev.threadId || row.threadId,
       at: Math.max(prev.at || 0, row.at || 0),
+      tweetAt: Math.max(prev.tweetAt || 0, row.tweetAt || 0) || prev.tweetAt || row.tweetAt,
       blockedLane: Boolean(prev.blockedLane || row.blockedLane),
       blockedAt: prev.blockedAt || row.blockedAt,
+      kind:
+        row.kind === XCF.COMMENT_KIND.NOISE || prev.kind === XCF.COMMENT_KIND.NOISE
+          ? XCF.COMMENT_KIND.NOISE
+          : row.kind || prev.kind || XCF.COMMENT_KIND.SIGNAL,
       metrics: {
         reply: Math.max(pm.reply || 0, rm.reply || 0),
         repost: Math.max(pm.repost || 0, rm.repost || 0),
@@ -79,6 +104,7 @@ const XcfArchive = (() => {
     return {
       id: entry.id || makeId(entry),
       at: entry.at || Date.now(),
+      tweetAt: entry.tweetAt || null,
       handle: entry.handle || '',
       displayName: entry.displayName || '',
       text: (entry.text || '').slice(0, 500),
@@ -89,6 +115,11 @@ const XcfArchive = (() => {
       matchedKeyword: entry.matchedKeyword || '',
       pageUrl: entry.pageUrl || '',
       source: entry.source || 'auto_filter',
+      kind:
+        entry.kind ||
+        (entry.source === 'auto_signal'
+          ? XCF.COMMENT_KIND.SIGNAL
+          : XCF.COMMENT_KIND.NOISE),
       metrics: entry.metrics || null,
       blockedLane: Boolean(entry.blockedLane),
       blockedAt: entry.blockedAt
@@ -157,13 +188,26 @@ const XcfArchive = (() => {
   }
 
   function dedupeThreadList(list) {
-    const m = new Map();
-    for (const row of list || []) {
+    const byId = new Map();
+    for (const raw of list || []) {
+      const row = normalizeRow(buildRow(raw));
       const id = row.id || makeId(row);
-      const prev = m.get(id);
-      m.set(id, prev ? mergeRow(prev, { ...row, id }) : { ...row, id });
+      const prev = byId.get(id);
+      byId.set(id, prev ? mergeRow(prev, { ...row, id }) : { ...row, id });
     }
-    return Array.from(m.values()).sort((a, b) => (b.at || 0) - (a.at || 0));
+    const byContent = new Map();
+    for (const row of byId.values()) {
+      const ck = contentKey(row);
+      const prev = byContent.get(ck);
+      if (!prev) {
+        byContent.set(ck, row);
+        continue;
+      }
+      byContent.set(ck, mergeRow(prev, row));
+    }
+    return Array.from(byContent.values()).sort(
+      (a, b) => (b.tweetAt || b.at || 0) - (a.tweetAt || a.at || 0)
+    );
   }
 
   function trimTotal(map) {
@@ -188,13 +232,26 @@ const XcfArchive = (() => {
   }
 
   function splitLanes(list) {
-    const filtered = [];
-    const blockedReplies = [];
+    const noise = [];
+    const signal = [];
+    const confirmedNoise = [];
     for (const row of list) {
-      if (row.blockedLane) blockedReplies.push(row);
-      else filtered.push(row);
+      const normalized = normalizeRow(row);
+      const isSignal = normalized.kind === XCF.COMMENT_KIND.SIGNAL;
+      if (normalized.blockedLane && !isSignal) {
+        confirmedNoise.push(normalized);
+        continue;
+      }
+      if (isSignal) signal.push(normalized);
+      else noise.push(normalized);
     }
-    return { filtered, blockedReplies };
+    return {
+      noise,
+      signal,
+      confirmedNoise,
+      filtered: noise,
+      blockedReplies: confirmedNoise
+    };
   }
 
   function findRowById(map, id) {
@@ -213,7 +270,12 @@ const XcfArchive = (() => {
 
     const map = await loadByThread();
     const list = map[threadId] || [];
-    const row = buildRow({ ...entry, threadId, blockedLane: false });
+    const row = buildRow({
+      ...entry,
+      threadId,
+      blockedLane: false,
+      kind: entry.kind || XCF.COMMENT_KIND.NOISE
+    });
     const idx = list.findIndex((r) => r.id === row.id);
     if (idx >= 0) list[idx] = mergeRow(list[idx], row);
     else list.push(row);
@@ -240,10 +302,14 @@ const XcfArchive = (() => {
     const hit = findRowById(map, id);
     if (hit) {
       const list = map[hit.threadId];
+      const prev = list[hit.idx];
       list[hit.idx] = {
-        ...list[hit.idx],
+        ...prev,
+        kind: XCF.COMMENT_KIND.NOISE,
         blockedLane: true,
-        blockedAt: Date.now()
+        blockedAt: Date.now(),
+        ruleId: prev.ruleId || 'manual_confirm',
+        reason: prev.reason || '手动确认'
       };
       map[hit.threadId] = list;
       await saveByThread(map);
@@ -273,7 +339,10 @@ const XcfArchive = (() => {
     const map = await loadByThread();
     const next = {};
     for (const [tid, list] of Object.entries(map)) {
-      const kept = (list || []).filter((r) => r.blockedLane);
+      const kept = (list || []).filter(
+        (r) =>
+          r.blockedLane || r.kind === XCF.COMMENT_KIND.SIGNAL
+      );
       if (kept.length) next[tid] = kept;
     }
     await saveByThread(next);
@@ -367,9 +436,25 @@ const XcfArchive = (() => {
       displayNameKeywords: settings.displayNameKeywords || [],
       threadRoots,
       archiveByThread: byThread,
-      archive: lanes.filtered,
-      blockedReplies: lanes.blockedReplies
+      noise: lanes.noise,
+      confirmedNoise: lanes.confirmedNoise,
+      signal: lanes.signal,
+      archive: lanes.noise,
+      blockedReplies: lanes.confirmedNoise
     };
+  }
+
+  async function listCaptureKeys(threadId) {
+    if (!threadId) return [];
+    const map = await loadByThread();
+    const list = map[threadId] || [];
+    const keys = new Set();
+    for (const row of list) {
+      if (row.id) keys.add(row.id);
+      const tid = String(row.tweetId || '').trim();
+      if (tid && tid !== threadId) keys.add(`tw:${tid}`);
+    }
+    return Array.from(keys);
   }
 
   return {
@@ -390,6 +475,7 @@ const XcfArchive = (() => {
     makeId,
     threadIdFromPageUrl,
     splitLanes,
+    listCaptureKeys,
     MAX_ENTRIES
   };
 })();

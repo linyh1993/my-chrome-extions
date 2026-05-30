@@ -1,8 +1,15 @@
 const $ = (id) => document.getElementById(id);
 
-const TAB_IDS = ['read', 'filtered', 'blocked', 'accounts', 'keywords'];
+const TAB_IDS = ['read', 'signal', 'filtered', 'blocked', 'accounts', 'keywords'];
 let activeTab = 'read';
 let libraryCache = null;
+let selectedThreadId = null;
+let threadSummariesCache = [];
+let threadSearchTimer = null;
+let threadViewAll = false;
+
+const THREAD_RECENT_LIMIT = 15;
+const THREAD_RESULTS_LIMIT = 40;
 
 function send(type, payload = {}) {
   return new Promise((resolve) => {
@@ -18,11 +25,41 @@ function parseLines(raw) {
 }
 
 function fmtTime(ts) {
+  if (!ts) return '';
   try {
     return new Date(ts).toLocaleString('zh-CN');
   } catch {
     return '';
   }
+}
+
+function displayTime(row) {
+  return fmtTime(row?.tweetAt || row?.at);
+}
+
+function normText(text) {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
+}
+
+function dedupeReadRows(rows) {
+  const seen = new Set();
+  const sorted = rows
+    .slice()
+    .sort((a, b) => (b.tweetAt || b.at || 0) - (a.tweetAt || a.at || 0));
+  const out = [];
+  for (const row of sorted) {
+    const h = String(row.handle || '')
+      .toLowerCase()
+      .replace(/^@/, '');
+    const k = `${h}|${normText(row.text)}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(row);
+  }
+  return out.sort((a, b) => (a.tweetAt || a.at || 0) - (b.tweetAt || b.at || 0));
 }
 
 function normPageKey(url) {
@@ -53,8 +90,8 @@ function setPageMode(tabId) {
   $('toolbar_manage').hidden = false;
   $('storage_hint').hidden = false;
   $('page_sub').textContent = isRead
-    ? '仅「过滤记录」中的评论正文，条目之间用下划线分隔。'
-    : '管理过滤记录、屏蔽名单与关键词；数据保存在本机浏览器。';
+    ? '当前帖子的非噪音回复正文 + 主推文，条目之间用下划线分隔。'
+    : '管理非噪音/噪音记录、屏蔽名单与关键词；数据保存在本机浏览器。';
 }
 
 function switchTab(tabId) {
@@ -77,15 +114,23 @@ function switchTab(tabId) {
   }
 
   try {
-    history.replaceState(null, '', `#${tabId}`);
+    const threadPart = selectedThreadId ? `/thread/${selectedThreadId}` : '';
+    history.replaceState(null, '', `#${tabId}${threadPart}`);
   } catch {
     /* ignore */
   }
 }
 
+function parseHashThreadId() {
+  const hash = (location.hash || '').replace(/^#/, '');
+  const m = hash.match(/(?:^|\/)thread\/(\d+)/);
+  return m ? m[1] : null;
+}
+
 function initTabs() {
   const hash = (location.hash || '').replace(/^#/, '');
-  if (TAB_IDS.includes(hash)) switchTab(hash);
+  const tab = hash.split('/')[0];
+  if (TAB_IDS.includes(tab)) switchTab(tab);
   else switchTab('read');
 
   document.querySelectorAll('.tabs .tab[data-tab]').forEach((btn) => {
@@ -93,29 +138,275 @@ function initTabs() {
   });
 }
 
+function isSignalRow(row) {
+  return row.kind === XCF.COMMENT_KIND.SIGNAL;
+}
+
+function isNoiseRow(row) {
+  return !isSignalRow(row);
+}
+
+function threadRows(lib, threadId, { blocked = false, lane = 'all' } = {}) {
+  const list = lib.archiveByThread?.[threadId] || [];
+  return list.filter((r) => {
+    if (Boolean(r.blockedLane) !== blocked) return false;
+    if (lane === 'signal') return isSignalRow(r);
+    if (lane === 'noise') return isNoiseRow(r);
+    return true;
+  });
+}
+
+function allNoiseRows(lib) {
+  return (lib.noise || lib.archive || []).filter(isNoiseRow);
+}
+
+function allSignalRows(lib) {
+  return lib.signal || [];
+}
+
+function rowsForView(lib, { blocked = false, lane = 'noise' } = {}) {
+  if (selectedThreadId) return threadRows(lib, selectedThreadId, { blocked, lane });
+  if (lane === 'signal') return allSignalRows(lib);
+  if (blocked) return allConfirmedRows(lib);
+  return allNoiseRows(lib);
+}
+
+function threadReplyRows(lib, threadId) {
+  return threadRows(lib, threadId, { blocked: false, lane: 'all' });
+}
+
+function allConfirmedRows(lib) {
+  return lib.confirmedNoise || lib.blockedReplies || [];
+}
+
+function buildThreadSummaries(lib) {
+  const byThread = lib.archiveByThread || {};
+  const roots = lib.threadRoots || {};
+  const ids = new Set([...Object.keys(byThread), ...Object.keys(roots)]);
+
+  return Array.from(ids)
+    .map((id) => {
+      const rows = byThread[id] || [];
+      const root = roots[id] || null;
+      const noiseCount = rows.filter((r) => !r.blockedLane && isNoiseRow(r)).length;
+      const signalCount = rows.filter((r) => !r.blockedLane && isSignalRow(r)).length;
+      const preview = (root?.text || rows.find((r) => r.text)?.text || '').trim();
+      const who = root?.handle ? `@${String(root.handle).replace(/^@/, '')}` : '';
+      const labelCore = preview ? preview.slice(0, 42) : `帖子 ${id}`;
+      const label = who ? `${who} · ${labelCore}` : labelCore;
+      const latestAt = Math.max(
+        root?.at || 0,
+        ...rows.map((r) => r.at || 0)
+      );
+      const pageUrl = root?.pageUrl || rows.find((r) => r.pageUrl)?.pageUrl || '';
+      return { id, label, noiseCount, signalCount, latestAt, pageUrl };
+    })
+    .sort((a, b) => b.latestAt - a.latestAt);
+}
+
+function pickDefaultThreadId(lib) {
+  const fromHash = parseHashThreadId();
+  if (fromHash) return fromHash;
+  if (lib.optionsThreadId) return lib.optionsThreadId;
+  if (lib.activeThreadId) return lib.activeThreadId;
+  const summaries = buildThreadSummaries(lib);
+  return summaries[0]?.id || null;
+}
+
+function formatThreadLabel(item) {
+  return `${item.label}（${item.signalCount} 非噪音 · ${item.noiseCount} 噪音）`;
+}
+
+function threadSearchHaystack(item) {
+  return `${item.id} ${item.label} ${item.pageUrl || ''}`.toLowerCase();
+}
+
+function filterThreadSummaries(query, summaries) {
+  const q = (query || '').trim().toLowerCase();
+  if (!q) {
+    return {
+      items: summaries.slice(0, THREAD_RECENT_LIMIT),
+      total: summaries.length
+    };
+  }
+  const matched = summaries.filter((item) => threadSearchHaystack(item).includes(q));
+  return {
+    items: matched.slice(0, THREAD_RESULTS_LIMIT),
+    total: matched.length
+  };
+}
+
+function hideThreadResults() {
+  const ul = $('thread_results');
+  const input = $('thread_search');
+  if (ul) ul.hidden = true;
+  if (input) input.setAttribute('aria-expanded', 'false');
+}
+
+function showThreadResults() {
+  const ul = $('thread_results');
+  const input = $('thread_search');
+  if (!ul || !input) return;
+  renderThreadResults(input.value || '');
+  ul.hidden = false;
+  input.setAttribute('aria-expanded', 'true');
+}
+
+function renderThreadCurrent(item) {
+  const el = $('thread_current');
+  if (!el) return;
+  if (!item) {
+    el.textContent = '全部帖子（合并展示各帖非噪音）';
+    el.title = '未限定单个帖子';
+    return;
+  }
+  el.textContent = formatThreadLabel(item);
+  el.title = item.pageUrl || item.id;
+}
+
+function renderThreadResults(query) {
+  const ul = $('thread_results');
+  if (!ul) return;
+  ul.textContent = '';
+
+  const { items, total } = filterThreadSummaries(query, threadSummariesCache);
+
+  if (!items.length) {
+    const empty = document.createElement('li');
+    empty.className = 'thread-result-more';
+    empty.textContent = query.trim() ? '没有匹配的帖子' : '暂无帖子记录';
+    ul.appendChild(empty);
+    return;
+  }
+
+  for (const item of items) {
+    const li = document.createElement('li');
+    li.className = 'thread-result-item';
+    li.role = 'option';
+    li.dataset.id = item.id;
+    li.textContent = formatThreadLabel(item);
+    if (item.id === selectedThreadId) li.classList.add('selected');
+    li.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      $('thread_search').value = '';
+      setSelectedThread(item.id);
+      hideThreadResults();
+    });
+    ul.appendChild(li);
+  }
+
+  if (total > items.length) {
+    const more = document.createElement('li');
+    more.className = 'thread-result-more';
+    more.textContent = `还有 ${total - items.length} 条匹配，请继续输入关键词`;
+    ul.appendChild(more);
+  } else if (!query.trim() && threadSummariesCache.length > items.length) {
+    const more = document.createElement('li');
+    more.className = 'thread-result-more';
+    more.textContent = `共 ${threadSummariesCache.length} 个帖子，输入关键词搜索更多`;
+    ul.appendChild(more);
+  }
+}
+
+function renderThreadPicker(lib) {
+  const bar = $('thread_bar');
+  const openLink = $('thread_open_x');
+  const totalEl = $('thread_total');
+  const viewAllBtn = $('thread_view_all');
+  if (!bar) return;
+
+  const summaries = buildThreadSummaries(lib);
+  threadSummariesCache = summaries;
+
+  if (summaries.length === 0) {
+    bar.hidden = true;
+    selectedThreadId = null;
+    return;
+  }
+
+  bar.hidden = false;
+  if (selectedThreadId && !summaries.some((s) => s.id === selectedThreadId)) {
+    selectedThreadId = pickDefaultThreadId(lib);
+  }
+
+  if (totalEl) {
+    totalEl.textContent = `共 ${summaries.length} 个`;
+  }
+
+  const current = selectedThreadId
+    ? summaries.find((s) => s.id === selectedThreadId) || null
+    : null;
+  renderThreadCurrent(current);
+
+  if (openLink) {
+    if (current?.pageUrl) {
+      openLink.href = current.pageUrl;
+      openLink.hidden = false;
+    } else {
+      openLink.href = '#';
+      openLink.hidden = !selectedThreadId;
+    }
+  }
+
+  if (viewAllBtn) {
+    viewAllBtn.hidden = threadViewAll || !selectedThreadId;
+  }
+
+  const search = $('thread_search');
+  if (search && document.activeElement !== search) {
+    renderThreadResults(search.value || '');
+  }
+}
+
+async function setSelectedThread(threadId) {
+  selectedThreadId = threadId || null;
+  threadViewAll = !threadId;
+  if (selectedThreadId) {
+    try {
+      await chrome.storage.session.set({
+        [XCF.SESSION.OPTIONS_THREAD]: selectedThreadId
+      });
+    } catch {
+      /* options 页扩展重载时可忽略 */
+    }
+  }
+  try {
+    const threadPart = selectedThreadId ? `/thread/${selectedThreadId}` : '';
+    history.replaceState(null, '', `#${activeTab}${threadPart}`);
+  } catch {
+    /* ignore */
+  }
+  if (libraryCache) renderAll(libraryCache);
+}
+
 function isReadableRow(row) {
   return true;
 }
 
-function getReadItems(archive) {
-  return (archive || [])
-    .filter(isReadableRow)
-    .sort((a, b) => (a.at || 0) - (b.at || 0));
+function getReadItems(lib) {
+  const rows = selectedThreadId
+    ? threadRows(lib, selectedThreadId, { blocked: false, lane: 'signal' })
+    : allSignalRows(lib);
+  return dedupeReadRows(rows.filter(isReadableRow));
 }
 
 function renderReadFeed(lib) {
-  const archive = lib.archive || [];
-  const items = getReadItems(archive);
+  const items = getReadItems(lib);
   const threadRoots = lib.threadRoots || {};
 
   $('tab_read_count').textContent = String(items.length);
+  $('tab_signal_count').textContent = String(
+    selectedThreadId
+      ? getReadItems(lib).length
+      : allSignalRows(lib).length
+  );
 
   const feed = $('read_feed');
   feed.textContent = '';
   feed.className = 'read-feed read-feed-plain';
   $('read_empty').hidden = items.length > 0;
 
-  const summary = items.length > 0 ? `${items.length} 条评论` : '';
+  const summary = items.length > 0 ? `${items.length} 条非噪音` : '';
   $('read_summary').textContent = summary;
 
   if (items.length === 0) return;
@@ -123,7 +414,34 @@ function renderReadFeed(lib) {
   const doc = document.createElement('div');
   doc.className = 'read-plain';
 
-  // 按主推文 id 分组：先主贴正文，再评论
+  if (selectedThreadId) {
+    const root = threadRoots[selectedThreadId] || null;
+    if (root && (root.text || '').trim()) {
+      const rootP = document.createElement('p');
+      rootP.className = 'read-root';
+      rootP.textContent = root.text.trim();
+      doc.appendChild(rootP);
+      const sep = document.createElement('div');
+      sep.className = 'read-sep';
+      sep.setAttribute('aria-hidden', 'true');
+      doc.appendChild(sep);
+    }
+
+    items.forEach((row, i) => {
+      if (i > 0) {
+        const sep = document.createElement('div');
+        sep.className = 'read-sep';
+        sep.setAttribute('aria-hidden', 'true');
+        doc.appendChild(sep);
+      }
+      appendReadComment(doc, row);
+    });
+
+    feed.appendChild(doc);
+    return;
+  }
+
+  // 未选帖子时：按 thread 分组（兼容旧行为）
   const groups = new Map();
   for (const row of items) {
     const k =
@@ -181,13 +499,29 @@ function renderReadFeed(lib) {
       const meta = document.createElement('div');
       meta.className = 'read-meta-inline';
       const who = row.handle ? '@' + String(row.handle).replace(/^@/, '') : '@未知';
-      const when = row.at ? fmtTime(row.at) : '';
+      const when = displayTime(row);
       meta.textContent = when ? `${who} · ${when}` : who;
       doc.appendChild(meta);
     });
   }
 
   feed.appendChild(doc);
+}
+
+function appendReadComment(doc, row) {
+  const block = document.createElement('p');
+  block.className = 'read-comment read-signal';
+  const t = (row.text || '').trim();
+  block.textContent =
+    t || '（未保存正文：可能是当时 X 尚未渲染完成，请回到原帖等待扫描完成）';
+  doc.appendChild(block);
+
+  const meta = document.createElement('div');
+  meta.className = 'read-meta-inline';
+  const who = row.handle ? '@' + String(row.handle).replace(/^@/, '') : '@未知';
+  const when = displayTime(row);
+  meta.textContent = when ? `${who} · ${when}` : who;
+  doc.appendChild(meta);
 }
 
 function renderBlocklist(handles) {
@@ -229,7 +563,7 @@ function buildEntryRow(row, actions) {
   handle.textContent = row.handle ? '@' + row.handle : '@未知';
   const meta = document.createElement('div');
   meta.className = 'meta';
-  meta.textContent = `${fmtTime(row.at)} · ${row.reason || row.ruleId || ''}`;
+  meta.textContent = `${displayTime(row)} · ${row.reason || row.ruleId || ''}`;
   body.appendChild(handle);
   body.appendChild(meta);
 
@@ -265,7 +599,27 @@ function buildEntryRow(row, actions) {
   return li;
 }
 
-function renderFiltered(rows) {
+function renderSignalList(rows) {
+  const ul = $('signal_list');
+  if (!ul) return;
+  ul.textContent = '';
+  $('signal_empty').hidden = rows.length > 0;
+
+  for (const row of rows) {
+    const blockBtn = document.createElement('button');
+    blockBtn.type = 'button';
+    blockBtn.className = 'btn-sm warn';
+    blockBtn.textContent = '确认屏蔽';
+    blockBtn.title = '标为噪音，移入已确认，并将账号加入屏蔽名单';
+    blockBtn.addEventListener('click', async () => {
+      await send(XCF.MSG.BLOCK_ARCHIVE_ENTRY, { id: row.id });
+      await refresh();
+    });
+    ul.appendChild(buildEntryRow(row, [blockBtn]));
+  }
+}
+
+function renderNoiseList(rows) {
   const ul = $('archive');
   ul.textContent = '';
   $('tab_archive_count').textContent = String(rows.length);
@@ -275,7 +629,7 @@ function renderFiltered(rows) {
     const blockBtn = document.createElement('button');
     blockBtn.type = 'button';
     blockBtn.className = 'btn-sm warn';
-    blockBtn.textContent = '屏蔽';
+    blockBtn.textContent = '确认屏蔽';
     blockBtn.addEventListener('click', async () => {
       await send(XCF.MSG.BLOCK_ARCHIVE_ENTRY, { id: row.id });
       await refresh();
@@ -316,11 +670,48 @@ function updateStorageHint(lib) {
   const accounts = lib.blocklist?.length || 0;
   const kws = lib.textKeywords?.length || 0;
   const st = lib.stats;
-  let msg = `过滤记录 ${lib.archive?.length || 0} 条 · 屏蔽回复 ${lib.blockedReplies?.length || 0} 条 · 账号 ${accounts} 个 · 关键词 ${kws} 个。`;
+  const noiseRows = rowsForView(lib, { blocked: false, lane: 'noise' });
+  const signalRows = selectedThreadId
+    ? getReadItems(lib)
+    : rowsForView(lib, { blocked: false, lane: 'signal' });
+  const confirmedRows = rowsForView(lib, { blocked: true, lane: 'noise' });
+  let msg = `非噪音 ${signalRows.length} 条 · 噪音 ${noiseRows.length} 条 · 已确认 ${confirmedRows.length} 条 · 账号 ${accounts} 个 · 关键词 ${kws} 个。`;
+  if (selectedThreadId) msg += ` 当前帖子 ${selectedThreadId}。`;
   if (st && st.removed > 0) {
     msg += ` 已从 ${st.before} 条合并去重，删除重复 ${st.removed} 条。`;
   }
   $('storage_hint').textContent = msg;
+}
+
+function renderAll(lib) {
+  renderThreadPicker(lib);
+  renderReadFeed(lib);
+  renderBlocklist(lib.blocklist || []);
+  renderWhitelist(lib.whitelist || []);
+  renderSignalList(
+    selectedThreadId
+      ? getReadItems(lib)
+      : rowsForView(lib, { blocked: false, lane: 'signal' })
+  );
+  renderNoiseList(rowsForView(lib, { blocked: false, lane: 'noise' }));
+  renderBlockedReplies(rowsForView(lib, { blocked: true, lane: 'noise' }));
+  renderKeywords(lib.textKeywords || [], lib.rules);
+  renderDisplayNameKeywords(lib.displayNameKeywords || [], lib.rules);
+  updateStorageHint(lib);
+}
+
+async function refresh() {
+  const lib = await send(XCF.MSG.GET_LIBRARY);
+  if (!lib) return;
+  const hashThread = parseHashThreadId();
+  if (hashThread) {
+    selectedThreadId = hashThread;
+    threadViewAll = false;
+  } else if (!threadViewAll && selectedThreadId == null) {
+    selectedThreadId = pickDefaultThreadId(lib) || null;
+  }
+  libraryCache = lib;
+  renderAll(lib);
 }
 
 function renderWhitelist(handles) {
@@ -362,20 +753,6 @@ function renderDisplayNameKeywords(list, rules) {
   if (cb) cb.checked = rules?.display_name_keywords !== false;
 }
 
-async function refresh() {
-  const lib = await send(XCF.MSG.GET_LIBRARY);
-  if (!lib) return;
-  libraryCache = lib;
-  renderReadFeed(lib);
-  renderBlocklist(lib.blocklist || []);
-  renderWhitelist(lib.whitelist || []);
-  renderFiltered(lib.archive || []);
-  renderBlockedReplies(lib.blockedReplies || []);
-  renderKeywords(lib.textKeywords || [], lib.rules);
-  renderDisplayNameKeywords(lib.displayNameKeywords || [], lib.rules);
-  updateStorageHint(lib);
-}
-
 $('btn_compact').addEventListener('click', async () => {
   const res = await send(XCF.MSG.COMPACT_ARCHIVE);
   const removed = res?.stats?.removed || 0;
@@ -393,7 +770,7 @@ $('btn_export').addEventListener('click', async () => {
 });
 
 $('btn_clear_archive').addEventListener('click', async () => {
-  if (!confirm('清空「过滤记录」？「屏蔽回复」与已屏蔽账号会保留。')) return;
+  if (!confirm('清空「噪音」记录？「已确认噪音」与已屏蔽账号会保留。')) return;
   await send(XCF.MSG.CLEAR_ARCHIVE);
   await refresh();
 });
@@ -440,6 +817,44 @@ $('btn_save_display_name_keywords')?.addEventListener('click', async () => {
     }, 2000);
   }
   await refresh();
+});
+
+$('thread_view_all')?.addEventListener('click', () => {
+  $('thread_search').value = '';
+  setSelectedThread(null);
+  hideThreadResults();
+});
+
+$('thread_current')?.addEventListener('click', () => {
+  const input = $('thread_search');
+  if (!input) return;
+  input.focus();
+  showThreadResults();
+});
+
+$('thread_search')?.addEventListener('focus', () => {
+  showThreadResults();
+});
+
+$('thread_search')?.addEventListener('input', (e) => {
+  clearTimeout(threadSearchTimer);
+  threadSearchTimer = setTimeout(() => {
+    renderThreadResults(e.target.value || '');
+    showThreadResults();
+  }, 120);
+});
+
+$('thread_search')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    hideThreadResults();
+    e.target.blur();
+  }
+});
+
+document.addEventListener('click', (e) => {
+  const box = $('thread_combobox');
+  if (!box || box.contains(e.target)) return;
+  hideThreadResults();
 });
 
 initTabs();

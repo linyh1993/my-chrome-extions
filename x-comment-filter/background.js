@@ -98,16 +98,43 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       case XCF.MSG.GET_LIBRARY: {
         const settings = await XcfSettings.load();
         const lanes = await XcfArchive.getLibrary();
+        const session = await chrome.storage.session.get([
+          XCF.SESSION.ACTIVE_THREAD,
+          XCF.SESSION.OPTIONS_THREAD
+        ]);
         sendResponse({
           blocklist: settings.blocklist || [],
           whitelist: settings.whitelist || [],
           textKeywords: settings.textKeywords || [],
           displayNameKeywords: settings.displayNameKeywords || [],
           rules: settings.rules || {},
-          archive: lanes.filtered,
-          blockedReplies: lanes.blockedReplies,
-          threadRoots: lanes.threadRoots || {}
+          archiveByThread: lanes.archiveByThread || {},
+          threadRoots: lanes.threadRoots || {},
+          noise: lanes.noise,
+          confirmedNoise: lanes.confirmedNoise,
+          signal: lanes.signal,
+          archive: lanes.noise,
+          blockedReplies: lanes.confirmedNoise,
+          stats: lanes.stats,
+          activeThreadId: session[XCF.SESSION.ACTIVE_THREAD] || null,
+          optionsThreadId: session[XCF.SESSION.OPTIONS_THREAD] || null
         });
+        break;
+      }
+      case XCF.MSG.GET_ACTIVE_THREAD: {
+        const session = await chrome.storage.session.get([
+          XCF.SESSION.ACTIVE_THREAD,
+          XCF.SESSION.OPTIONS_THREAD
+        ]);
+        sendResponse({
+          activeThreadId: session[XCF.SESSION.ACTIVE_THREAD] || null,
+          optionsThreadId: session[XCF.SESSION.OPTIONS_THREAD] || null
+        });
+        break;
+      }
+      case XCF.MSG.GET_THREAD_CAPTURE_KEYS: {
+        const threadId = String(msg.threadId || '').trim();
+        sendResponse({ keys: await XcfArchive.listCaptureKeys(threadId) });
         break;
       }
       case XCF.MSG.BLOCK_ARCHIVE_ENTRY: {
@@ -121,14 +148,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             const blocklist = [...new Set([...(cur.blocklist || []).map(normalizeHandle), h])];
             const whitelist = (cur.whitelist || []).map(normalizeHandle).filter((x) => x !== h);
             await XcfSettings.save({ blocklist, whitelist });
+            notifyTabsSettings();
           }
           await XcfArchive.moveToBlockedLane(id);
         }
         const lanes = await XcfArchive.getLibrary();
         sendResponse({
           blocklist: (await XcfSettings.load()).blocklist || [],
-          archive: lanes.filtered,
-          blockedReplies: lanes.blockedReplies
+          noise: lanes.noise,
+          confirmedNoise: lanes.confirmedNoise,
+          archive: lanes.noise,
+          blockedReplies: lanes.confirmedNoise
         });
         break;
       }
@@ -137,8 +167,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const lanes = await XcfArchive.getLibrary();
         sendResponse({
           blocklist: (await XcfSettings.load()).blocklist || [],
-          archive: lanes.filtered,
-          blockedReplies: lanes.blockedReplies
+          noise: lanes.noise,
+          confirmedNoise: lanes.confirmedNoise,
+          archive: lanes.noise,
+          blockedReplies: lanes.confirmedNoise
         });
         break;
       }
@@ -150,8 +182,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const lib = await XcfArchive.getLibrary();
         sendResponse({
           blocklist: (await XcfSettings.load()).blocklist || [],
-          archive: lib.filtered,
-          blockedReplies: lib.blockedReplies,
+          noise: lib.noise,
+          confirmedNoise: lib.confirmedNoise,
+          archive: lib.noise,
+          blockedReplies: lib.confirmedNoise,
           stats
         });
         break;

@@ -3,19 +3,44 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>X 评论过滤 · 记录库</title>
+  <title>X 评论过滤 · 噪音库</title>
   <link rel="stylesheet" href="options.css" />
 </head>
 <body>
   <header class="page-header">
-    <h1>过滤记录库</h1>
-    <p class="sub" id="page_sub">仅「过滤记录」中的评论正文，以 --- 分隔。</p>
+    <h1>评论库</h1>
+    <p class="sub" id="page_sub">阅读页仅展示非噪音回复；噪音在「噪音」标签管理。</p>
   </header>
+
+  <div class="thread-bar" id="thread_bar">
+    <div class="thread-bar-head">
+      <span class="thread-bar-label">当前帖子</span>
+      <span id="thread_total" class="thread-total"></span>
+    </div>
+    <div class="thread-combobox" id="thread_combobox">
+      <div class="thread-current" id="thread_current" tabindex="0" role="button" aria-haspopup="listbox"></div>
+      <input
+        type="search"
+        id="thread_search"
+        class="thread-search"
+        placeholder="搜索正文预览、账号或帖子 ID…"
+        autocomplete="off"
+        aria-controls="thread_results"
+        aria-expanded="false"
+      />
+      <ul id="thread_results" class="thread-results" role="listbox" hidden></ul>
+    </div>
+    <div class="thread-bar-actions">
+      <button type="button" id="thread_view_all" class="btn-sm ghost">全部帖子</button>
+      <a id="thread_open_x" class="thread-open" href="#" target="_blank" rel="noopener">在 X 打开</a>
+    </div>
+    <p class="thread-bar-hint">仅筛选下方阅读/记录列表；屏蔽账号与关键词对所有帖子生效。</p>
+  </div>
 
   <section class="toolbar" id="toolbar_manage">
     <button type="button" id="btn_export" class="primary">导出 JSON</button>
     <button type="button" id="btn_compact" data-toolbar-archive>合并重复记录</button>
-    <button type="button" id="btn_clear_archive" data-toolbar-archive>清空过滤记录</button>
+    <button type="button" id="btn_clear_archive" data-toolbar-archive>清空噪音记录</button>
   </section>
   <p class="storage-hint" id="storage_hint"></p>
 
@@ -24,11 +49,14 @@
       阅读 <span id="tab_read_count" class="badge">0</span>
     </button>
     <span class="tab-sep" aria-hidden="true"></span>
+    <button type="button" role="tab" id="tab_btn_signal" class="tab" data-tab="signal" aria-selected="false" aria-controls="panel_signal">
+      非噪音 <span id="tab_signal_count" class="badge">0</span>
+    </button>
     <button type="button" role="tab" id="tab_btn_filtered" class="tab" data-tab="filtered" aria-selected="false" aria-controls="panel_filtered">
-      过滤记录 <span id="tab_archive_count" class="badge">0</span>
+      噪音 <span id="tab_archive_count" class="badge">0</span>
     </button>
     <button type="button" role="tab" id="tab_btn_blocked" class="tab" data-tab="blocked" aria-selected="false" aria-controls="panel_blocked">
-      屏蔽回复 <span id="tab_blocked_count" class="badge">0</span>
+      已确认噪音 <span id="tab_blocked_count" class="badge">0</span>
     </button>
     <button type="button" role="tab" id="tab_btn_accounts" class="tab" data-tab="accounts" aria-selected="false" aria-controls="panel_accounts">
       已屏蔽账号 <span id="tab_block_count" class="badge">0</span>
@@ -44,32 +72,39 @@
         <span class="read-summary" id="read_summary"></span>
       </div>
       <div id="read_feed" class="read-feed" aria-live="polite"></div>
-      <p id="read_empty" class="read-empty">暂无过滤记录正文。在帖子页折叠评论后会写入「过滤记录」。</p>
+      <p id="read_empty" class="read-empty">当前帖子暂无非噪音记录。打开帖子后扩展会自动展开回复并滚动采集（不刷新页面）。</p>
+    </section>
+
+    <section id="panel_signal" class="tab-panel panel panel-manage" role="tabpanel" aria-labelledby="tab_btn_signal" hidden>
+      <h2>非噪音</h2>
+      <p class="hint">判定为有效回复的评论，不会被折叠。若漏判广告/垃圾，可点「确认屏蔽」移入已确认噪音并加入屏蔽账号。</p>
+      <ul id="signal_list" class="list"></ul>
+      <p id="signal_empty" class="empty">暂无；回到帖子页滚动加载评论后会自动出现。</p>
     </section>
 
     <section id="panel_filtered" class="tab-panel panel panel-manage" role="tabpanel" aria-labelledby="tab_btn_filtered" hidden>
-      <h2>过滤记录</h2>
-      <p class="hint">自动折叠的评论；点「屏蔽」会移到「屏蔽回复」，并加入已屏蔽账号。</p>
+      <h2>噪音</h2>
+      <p class="hint">自动识别为无效/噪音的回复；点「确认屏蔽」会移到「已确认噪音」，并加入已屏蔽账号。</p>
       <ul id="archive" class="list"></ul>
-      <p id="archive_empty" class="empty">暂无记录；在帖子页折叠评论后会自动出现。</p>
+      <p id="archive_empty" class="empty">暂无记录；在帖子页识别噪音后会自动出现。</p>
     </section>
 
     <section id="panel_blocked" class="tab-panel panel panel-manage" role="tabpanel" aria-labelledby="tab_btn_blocked" hidden>
-      <h2>屏蔽回复</h2>
-      <p class="hint">从「过滤记录」移入的回复；可「移回列表」恢复到过滤记录。</p>
+      <h2>已确认噪音</h2>
+      <p class="hint">从「噪音」移入的回复；可「移回列表」恢复到噪音列表。</p>
       <ul id="blocked_replies" class="list"></ul>
       <p id="blocked_empty" class="empty">暂无</p>
     </section>
 
     <section id="panel_accounts" class="tab-panel panel panel-manage" role="tabpanel" aria-labelledby="tab_btn_accounts" hidden>
       <h2>已屏蔽账号</h2>
-      <p class="hint">这些账号的评论会在帖子页自动折叠；与 Popup 中的账号名单同步。</p>
+      <p class="hint">全局生效：任意帖子中，这些账号的评论都会自动折叠；与 Popup 名单同步。</p>
       <ul id="blocklist" class="list"></ul>
       <p id="block_empty" class="empty">暂无屏蔽账号</p>
 
       <div class="subpanel">
         <h3>白名单（误杀恢复）</h3>
-        <p class="hint">点击帖子页折叠条的「误杀」会把账号加入白名单：该账号不会被自动过滤。</p>
+        <p class="hint">全局生效：该账号在所有帖子中都不会再被标为噪音。</p>
         <ul id="whitelist" class="list"></ul>
         <p id="whitelist_empty" class="empty">暂无</p>
       </div>
@@ -77,7 +112,7 @@
 
     <section id="panel_keywords" class="tab-panel panel panel-manage" role="tabpanel" aria-labelledby="tab_btn_keywords" hidden>
       <h2>屏蔽关键词</h2>
-      <p class="hint">评论正文包含任一关键词即过滤；每行一个词，与 Popup 中的关键词同步。</p>
+      <p class="hint">全局生效：任意帖子的评论正文包含任一关键词即标为噪音；每行一个词，与 Popup 同步。</p>
       <label class="row rule-row">
         <input type="checkbox" id="rule_text_keywords" checked />
         启用关键词屏蔽
@@ -90,7 +125,7 @@
 
       <div class="subpanel">
         <h3>昵称关键词</h3>
-        <p class="hint">昵称/账号包含任一关键词即过滤（默认词库可在这里删减）。每行一个词。</p>
+        <p class="hint">全局生效：任意帖子中，昵称/账号包含任一关键词即标为噪音。每行一个词。</p>
         <label class="row rule-row">
           <input type="checkbox" id="rule_display_name_keywords" checked />
           启用昵称关键词

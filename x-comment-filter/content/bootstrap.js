@@ -5,18 +5,69 @@
   let context = null;
   let scanTimer = null;
   let scrollTimer = null;
+  let scrollCaptureTimer = null;
+  let afterScrollScanTimer = null;
   let lastHref = location.href;
   let pauseObserver = false;
   let storageEcho = 0;
   let isScrolling = false;
+  let captureIo = null;
+  let hydratePromise = null;
+  let collectScrollDone = false;
+  let collectScrollRunning = false;
+  let extensionDead = false;
+  let contextTornDown = false;
+  let domObserver = null;
+
+  function isExtensionAlive() {
+    if (extensionDead) return false;
+    try {
+      if (!chrome.runtime?.id) {
+        extensionDead = true;
+        return false;
+      }
+      return true;
+    } catch {
+      extensionDead = true;
+      teardownExtensionContext();
+      return false;
+    }
+  }
+
+  function teardownExtensionContext() {
+    if (contextTornDown) return;
+    contextTornDown = true;
+    extensionDead = true;
+    pauseObserver = true;
+    teardownCaptureObserver();
+    domObserver?.disconnect();
+    domObserver = null;
+    clearTimeout(scanTimer);
+    clearTimeout(scrollTimer);
+    clearTimeout(scrollCaptureTimer);
+    clearTimeout(afterScrollScanTimer);
+    scanTimer = null;
+    scrollTimer = null;
+    scrollCaptureTimer = null;
+    afterScrollScanTimer = null;
+  }
+
+  function safeSessionSet(items) {
+    if (!isExtensionAlive()) return;
+    try {
+      chrome.storage.session.set(items, () => {
+        void chrome.runtime?.lastError;
+      });
+    } catch {
+      teardownExtensionContext();
+    }
+  }
 
   /** 滚动后 DOM 复用会丢 dataset，用推文 id 记住状态 */
   const overrideTweetIds = new Set();
   const loggedArchiveKeys = new Set();
-  /** 强制刷新缓存：tweetId -> 最近一次写回时间/快照 */
-  const refreshByTweetId = new Map();
-  // 仅用于“防抖写回”，不是刷新页面/网络请求。只从当前页面 DOM 读取。
-  const UPSERT_MIN_INTERVAL_MS = 1200;
+  const loggedThreadRoots = new Set();
+  const TEXT_RETRY_MS = [120, 280, 520, 900];
 
   const foldHandlers = () => ({
     onShow: (article) => {
@@ -28,11 +79,23 @@
   });
 
   function sendMessage(msg) {
+    if (!isExtensionAlive()) return Promise.resolve(null);
     return new Promise((resolve) => {
-      chrome.runtime.sendMessage(msg, (res) => {
-        if (chrome.runtime.lastError) resolve(null);
-        else resolve(res);
-      });
+      try {
+        chrome.runtime.sendMessage(msg, (res) => {
+          if (chrome.runtime.lastError) {
+            if (/invalidated|context/i.test(String(chrome.runtime.lastError.message || ''))) {
+              teardownExtensionContext();
+            }
+            resolve(null);
+          } else {
+            resolve(res);
+          }
+        });
+      } catch {
+        teardownExtensionContext();
+        resolve(null);
+      }
     });
   }
 
@@ -64,6 +127,14 @@
     });
   }
 
+  function captureKey(article, meta) {
+    const tid = getTweetId(article);
+    if (tid) return `tw:${tid}`;
+    const m = meta || (adapter?.extractMeta ? adapter.extractMeta(article) : null);
+    if (!m) return '';
+    return archiveLogKey(article, m);
+  }
+
   function archiveLogKey(article, meta) {
     if (adapter?.getArchiveKey) return adapter.getArchiveKey(article, meta);
     const tid = getTweetId(article);
@@ -77,34 +148,109 @@
     return adapter?.statusIdFromUrl ? adapter.statusIdFromUrl() : null;
   }
 
-  function logFiltered(article, meta, match) {
-    if (!match) return;
-    const key = archiveLogKey(article, meta);
-    if (loggedArchiveKeys.has(key)) return;
-    loggedArchiveKeys.add(key);
-    const metrics = adapter?.extractMetrics ? adapter.extractMetrics(article) : null;
+  function buildArchiveEntry(article, meta, extra = {}) {
     const threadId = pageThreadId() || '';
+    const pageId = pageThreadId() || '';
+    const tid = getTweetId(article) || '';
+    const metrics = adapter?.extractMetrics ? adapter.extractMetrics(article) : null;
+    const tweetAt = adapter?.extractTweetTime
+      ? adapter.extractTweetTime(article)
+      : null;
+    return {
+      at: Date.now(),
+      tweetAt: tweetAt || undefined,
+      handle: meta.handle,
+      displayName: meta.displayName,
+      text: meta.text,
+      tweetId: tid && pageId && tid !== pageId ? tid : '',
+      threadId,
+      pageUrl: location.href,
+      metrics: metrics || undefined,
+      ...extra
+    };
+  }
+
+  function logNoise(article, meta, match) {
+    if (!match) return;
+    const key = captureKey(article, meta);
+    if (!key) return;
+    loggedArchiveKeys.add(key);
     sendMessage({
       type: XCF.MSG.LOG_FILTERED,
-      entry: {
-        at: Date.now(),
-        handle: meta.handle,
-        displayName: meta.displayName,
-        text: meta.text,
-        tweetId: (() => {
-          const pageId = pageThreadId() || '';
-          const tid = getTweetId(article) || '';
-          return tid && pageId && tid !== pageId ? tid : '';
-        })(),
-        threadId,
+      entry: buildArchiveEntry(article, meta, {
+        kind: XCF.COMMENT_KIND.NOISE,
         ruleId: match.ruleId,
         reason: match.label || match.reason,
         matchedKeyword: match.matchedKeyword || '',
-        pageUrl: location.href,
-        source: 'auto_filter',
-        metrics: metrics || undefined
-      }
+        source: 'auto_noise'
+      })
     });
+  }
+
+  function logSignal(article, meta) {
+    const key = captureKey(article, meta);
+    if (!key || loggedArchiveKeys.has(key)) return;
+    loggedArchiveKeys.add(key);
+    sendMessage({
+      type: XCF.MSG.LOG_FILTERED,
+      entry: buildArchiveEntry(article, meta, {
+        kind: XCF.COMMENT_KIND.SIGNAL,
+        ruleId: '',
+        reason: '',
+        matchedKeyword: '',
+        source: 'auto_signal'
+      })
+    });
+  }
+
+  function commitArchiveRow(article, meta, fn, attempt = 0) {
+    if (!article?.isConnected) return;
+    const key = captureKey(article, meta);
+    if (!key || loggedArchiveKeys.has(key)) return;
+
+    const hasText = Boolean((meta.text || '').trim());
+    const run = (m) => {
+      const k = captureKey(article, m);
+      if (!k || loggedArchiveKeys.has(k)) return;
+      fn(article, m);
+    };
+
+    if (hasText) {
+      run(meta);
+      return;
+    }
+
+    if (attempt >= TEXT_RETRY_MS.length) {
+      if (meta.handle) run(meta);
+      return;
+    }
+
+    setTimeout(() => {
+      if (!article.isConnected) return;
+      if (!resolveAdapterAndContext()) return;
+      const again = adapter.extractMeta(article);
+      if ((again.text || '').trim()) {
+        run(again);
+        return;
+      }
+      commitArchiveRow(article, again, fn, attempt + 1);
+    }, TEXT_RETRY_MS[attempt]);
+  }
+
+  async function hydrateLoggedKeys() {
+    if (!resolveAdapterAndContext()) return;
+    const threadId = pageThreadId();
+    if (!threadId) return;
+    if (hydratePromise) return hydratePromise;
+    hydratePromise = sendMessage({
+      type: XCF.MSG.GET_THREAD_CAPTURE_KEYS,
+      threadId
+    }).then((res) => {
+      for (const key of res?.keys || []) loggedArchiveKeys.add(key);
+    }).finally(() => {
+      hydratePromise = null;
+    });
+    return hydratePromise;
   }
 
   function normPageKey(url) {
@@ -120,13 +266,14 @@
     if (context !== XCF.CONTEXT.POST_THREAD) return;
     if (!adapter?.getThreadRootArticle || !adapter?.extractMeta) return;
     const threadId = pageThreadId();
-    if (!threadId) return;
+    if (!threadId || loggedThreadRoots.has(threadId)) return;
     const root = adapter.getThreadRootArticle();
     if (!root) return;
     const meta = adapter.extractMeta(root);
     const metrics = adapter?.extractMetrics ? adapter.extractMetrics(root) : null;
     const text = (meta.text || '').trim();
     if (!text) return;
+    loggedThreadRoots.add(threadId);
     sendMessage({
       type: XCF.MSG.LOG_THREAD_ROOT,
       entry: {
@@ -141,62 +288,10 @@
     });
   }
 
-  function metricsSig(m) {
-    if (!m) return '';
-    return [
-      m.reply || 0,
-      m.repost || 0,
-      m.like || 0,
-      m.view || 0,
-      m.bookmark || 0
-    ].join(',');
-  }
-
-  /** 已入库条目的 DOM 变更写回（不重复新建记录） */
-  function maybeUpsertArchiveFromCurrentDom(article, match) {
-    if (!article.dataset.xcfLogKey) return;
-    if (adapter?.isMainPost?.(article, context)) return;
-
-    const meta = adapter?.extractMeta ? adapter.extractMeta(article) : null;
-    if (!meta) return;
-
-    const cacheKey = archiveLogKey(article, meta);
-    const now = Date.now();
-    const prev = refreshByTweetId.get(cacheKey);
-    if (prev && now - prev.at < UPSERT_MIN_INTERVAL_MS) return;
-
-    const metrics = adapter?.extractMetrics ? adapter.extractMetrics(article) : null;
-    const threadId = pageThreadId() || '';
-    const pageId = adapter?.statusIdFromUrl?.() || '';
-    const tid = getTweetId(article) || '';
-    const tweetIdForStore =
-      tid && pageId && tid !== pageId ? tid : '';
-
-    const text = (meta.text || '').trim();
-    const sig = `${text.slice(0, 200)}|${metricsSig(metrics)}`;
-    if (prev && prev.sig === sig) {
-      refreshByTweetId.set(cacheKey, { at: now, sig });
-      return;
-    }
-
-    refreshByTweetId.set(cacheKey, { at: now, sig });
-    sendMessage({
-      type: XCF.MSG.LOG_FILTERED,
-      entry: {
-        at: now,
-        handle: meta.handle,
-        displayName: meta.displayName,
-        text: meta.text,
-        tweetId: tweetIdForStore,
-        threadId,
-        ruleId: match.ruleId,
-        reason: match.label || match.reason,
-        matchedKeyword: match.matchedKeyword || '',
-        pageUrl: location.href,
-        source: 'auto_upsert',
-        metrics: metrics || undefined
-      }
-    });
+  function publishActiveThread() {
+    const threadId = pageThreadId();
+    if (!threadId) return;
+    safeSessionSet({ [XCF.SESSION.ACTIVE_THREAD]: threadId });
   }
 
   function applySettings(next) {
@@ -230,10 +325,11 @@
 
   function disableFiltering() {
     pauseObserver = true;
+    teardownCaptureObserver();
     XcfFold.resetPageState();
     overrideTweetIds.clear();
     loggedArchiveKeys.clear();
-    refreshByTweetId.clear();
+    loggedThreadRoots.clear();
     setTimeout(() => {
       pauseObserver = false;
       refreshPanel();
@@ -260,30 +356,16 @@
       article.classList.remove('xcf-hidden-article');
       row?.classList?.remove('xcf-hidden-article');
     }
-    const logKey = archiveLogKey(article, meta);
+    const logKey = captureKey(article, meta);
     if (!loggedArchiveKeys.has(logKey) && article.dataset.xcfLogKey !== logKey) {
-      const hasText = Boolean((meta.text || '').trim());
-      const commitLog = (m) => {
-        const key = archiveLogKey(article, m);
-        article.dataset.xcfLogKey = key;
-        logFiltered(article, m, match);
-      };
-      if (hasText) {
-        commitLog(meta);
-      } else {
-        setTimeout(() => {
-          if (!resolveAdapterAndContext()) return;
-          const again = adapter.extractMeta(article);
-          if ((again.text || '').trim()) commitLog(again);
-        }, 600);
-      }
+      commitArchiveRow(article, meta, (a, m) => {
+        article.dataset.xcfLogKey = captureKey(a, m);
+        logNoise(a, m, match);
+      });
     } else if (!article.dataset.xcfLogKey) {
       article.dataset.xcfLogKey = logKey;
     }
 
-    // 即使已经入库过，只要当前页面 DOM 抓到的正文/指标发生变化，也写回覆盖合并。
-    // 不刷新页面，只读取当前 DOM。
-    maybeUpsertArchiveFromCurrentDom(article, match);
     XcfFold.fold(article, meta, match, foldHandlers());
   }
 
@@ -358,39 +440,186 @@
     );
   }
 
+  function processArticle(article) {
+    if (!adapter || !settings?.enabled) return;
+    if (adapter.isMainPost(article, context)) {
+      article.dataset.xcfMainPost = '1';
+      article.dataset.xcfProcessed = '1';
+      delete article.dataset.xcfPendingText;
+      if (article.dataset.xcfFolded) XcfFold.unfoldArticle(article);
+      return;
+    }
+    delete article.dataset.xcfMainPost;
+
+    if (isOverridden(article)) {
+      article.dataset.xcfProcessed = '1';
+      delete article.dataset.xcfPendingText;
+      if (article.dataset.xcfFolded) XcfFold.unfoldArticle(article);
+      return;
+    }
+
+    const meta = adapter.extractMeta(article);
+    if (
+      !meta.handle &&
+      !meta.text &&
+      !meta.inProbableSpam &&
+      !meta.profileBlob
+    ) {
+      return;
+    }
+
+    const { kind, match } = XcfFilterEngine.classify(meta, settings);
+
+    if (kind === XCF.COMMENT_KIND.NOISE && match) {
+      if (
+        typeof XcfRules?.needsTextForRule === 'function' &&
+        XcfRules.needsTextForRule(match.ruleId) &&
+        !(meta.text || '').trim()
+      ) {
+        article.dataset.xcfPendingText = '1';
+        return;
+      }
+      delete article.dataset.xcfPendingText;
+      article.dataset.xcfProcessed = '1';
+      if (article.dataset.xcfSignalLogged && !article.dataset.xcfFolded) {
+        delete article.dataset.xcfSignalLogged;
+      }
+      foldArticleIfMatch(article, meta, match);
+      return;
+    }
+
+    delete article.dataset.xcfPendingText;
+    article.dataset.xcfProcessed = '1';
+    commitArchiveRow(article, meta, (a, m) => {
+      article.dataset.xcfLogKey = captureKey(a, m);
+      article.dataset.xcfSignalLogged = '1';
+      logSignal(a, m);
+    });
+  }
+
+  function ensureCaptureObserver() {
+    if (captureIo) return;
+    captureIo = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.intersectionRatio <= 0) continue;
+          processArticle(entry.target);
+        }
+      },
+      { root: null, rootMargin: '240px 0px 320px 0px', threshold: 0.01 }
+    );
+  }
+
+  function observeArticlesForCapture() {
+    if (!resolveAdapterAndContext() || !settings?.enabled) return;
+    ensureCaptureObserver();
+    for (const article of adapter.findArticles()) {
+      if (article.dataset.xcfCaptureObserved) continue;
+      article.dataset.xcfCaptureObserved = '1';
+      captureIo.observe(article);
+      processArticle(article);
+    }
+  }
+
+  function teardownCaptureObserver() {
+    if (captureIo) {
+      captureIo.disconnect();
+      captureIo = null;
+    }
+  }
+
+  function refoldAllNoise() {
+    if (!resolveAdapterAndContext() || !settings?.enabled) return;
+    overrideTweetIds.clear();
+    for (const article of adapter.findArticles()) {
+      delete article.dataset.xcfOverride;
+      delete article.dataset.xcfFolded;
+      delete article.dataset.xcfProcessed;
+      delete article.dataset.xcfSignalLogged;
+      delete article.dataset.xcfCaptureObserved;
+      article.classList.remove('xcf-hidden-article');
+      const row = XcfFold.getTweetRow?.(article);
+      row?.classList?.remove('xcf-hidden-article');
+      processArticle(article);
+    }
+    XcfFold.cleanupOrphanBars();
+    XcfFold.recountFolded();
+    XcfFold.refreshSummary();
+    refreshPanel();
+  }
+
+  function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /** 不刷新页面：自动展开折叠区 + 分段滚动，让虚拟列表把回复挂进 DOM 再抓取 */
+  async function scrollCollectThread() {
+    if (collectScrollRunning || collectScrollDone) return;
+    if (!resolveAdapterAndContext() || !settings?.enabled) return;
+    if (context !== XCF.CONTEXT.POST_THREAD) return;
+
+    collectScrollRunning = true;
+    try {
+      adapter.expandCollapsedSections?.();
+      await delay(400);
+
+      const scrollEl = document.scrollingElement || document.documentElement;
+      const step = Math.max(360, Math.floor(window.innerHeight * 0.5));
+      let y = 0;
+      let stable = 0;
+      const maxPasses = 48;
+
+      for (let pass = 0; pass < maxPasses; pass++) {
+        adapter.expandCollapsedSections?.();
+        scrollEl.scrollTop = y;
+        capturePass();
+        await delay(280);
+        scan();
+
+        const maxY = Math.max(0, scrollEl.scrollHeight - window.innerHeight);
+        if (y >= maxY - 8) {
+          stable += 1;
+          if (stable >= 2) break;
+        } else {
+          stable = 0;
+        }
+        y = Math.min(y + step, maxY + 1);
+      }
+
+      scrollEl.scrollTop = 0;
+      adapter.expandCollapsedSections?.();
+      await delay(300);
+      scan();
+      capturePass();
+      collectScrollDone = true;
+    } finally {
+      collectScrollRunning = false;
+    }
+  }
+
   function scan() {
+    if (!isExtensionAlive()) return;
     if (!resolveAdapterAndContext()) return;
     if (!settings?.enabled) return;
 
+    settings = XcfSettings.normalizeSettings(settings || XcfSettings.DEFAULTS);
+    window.__xcfSettings = settings;
+
     pauseObserver = true;
+    adapter?.invalidatePageCache?.();
+    adapter.expandCollapsedSections?.();
     XcfFold.cleanupOrphanBars();
     maybeLogThreadRoot();
+    publishActiveThread();
 
     for (const article of adapter.findArticles()) {
-      if (adapter.isMainPost(article, context)) {
-        article.dataset.xcfMainPost = '1';
-        article.dataset.xcfProcessed = '1';
-        if (article.dataset.xcfFolded) XcfFold.unfoldArticle(article);
-        continue;
+      if (!adapter.isMainPost(article, context) && !isOverridden(article)) {
+        delete article.dataset.xcfProcessed;
+        delete article.dataset.xcfSignalLogged;
       }
-      delete article.dataset.xcfMainPost;
-
-      if (isOverridden(article)) {
-        article.dataset.xcfProcessed = '1';
-        if (article.dataset.xcfFolded) XcfFold.unfoldArticle(article);
-        continue;
-      }
-
-      const meta = adapter.extractMeta(article);
-      if (!meta.handle && !meta.text && !meta.inProbableSpam) continue;
-
-      const match = XcfFilterEngine.evaluate(meta, settings);
-      article.dataset.xcfProcessed = '1';
-
-      if (match) {
-        foldArticleIfMatch(article, meta, match);
-      }
+      processArticle(article);
     }
+    observeArticlesForCapture();
 
     XcfFold.recountFolded();
     XcfFold.refreshSummary();
@@ -398,6 +627,11 @@
     setTimeout(() => {
       pauseObserver = false;
     }, 80);
+  }
+
+  function capturePass() {
+    if (!resolveAdapterAndContext() || !settings?.enabled) return;
+    observeArticlesForCapture();
   }
 
   function isOwnNode(node) {
@@ -425,18 +659,33 @@
   function scheduleScan(force = false) {
     if (pauseObserver && !force) return;
     clearTimeout(scanTimer);
-    const delay = force ? 80 : isScrolling ? 700 : 450;
+    const delay = force ? 60 : isScrolling ? 180 : 320;
     scanTimer = setTimeout(() => scan(), delay);
+  }
+
+  function scheduleAfterScrollScans() {
+    clearTimeout(afterScrollScanTimer);
+    afterScrollScanTimer = setTimeout(() => {
+      scan();
+      setTimeout(() => capturePass(), 500);
+    }, 120);
   }
 
   function onRouteMaybeChanged() {
     if (location.href === lastHref) return;
     lastHref = location.href;
+    adapter?.invalidatePageCache?.();
+    teardownCaptureObserver();
     overrideTweetIds.clear();
     loggedArchiveKeys.clear();
-    refreshByTweetId.clear();
+    loggedThreadRoots.clear();
+    collectScrollDone = false;
+    collectScrollRunning = false;
     XcfFold.resetPageState();
-    scheduleScan(true);
+    hydrateLoggedKeys().finally(() => {
+      scheduleScan(true);
+      setTimeout(() => scrollCollectThread(), 1200);
+    });
   }
 
   function hookHistory() {
@@ -456,10 +705,15 @@
     const markScrolling = () => {
       isScrolling = true;
       clearTimeout(scrollTimer);
+      clearTimeout(scrollCaptureTimer);
+      scrollCaptureTimer = setTimeout(() => {
+        scrollCaptureTimer = null;
+        capturePass();
+      }, 140);
       scrollTimer = setTimeout(() => {
         isScrolling = false;
-        scheduleScan(false);
-      }, 400);
+        scheduleAfterScrollScans();
+      }, 280);
     };
     window.addEventListener('scroll', markScrolling, { passive: true, capture: true });
   }
@@ -467,15 +721,20 @@
   function observeDom() {
     const target =
       document.querySelector('[data-testid="primaryColumn"]') || document.body;
-    const obs = new MutationObserver((mutations) => {
+    domObserver = new MutationObserver((mutations) => {
+      if (!isExtensionAlive()) {
+        teardownExtensionContext();
+        return;
+      }
       if (pauseObserver || mutationFromUs(mutations)) return;
       scheduleScan(false);
+      capturePass();
     });
-    obs.observe(target, { childList: true, subtree: true });
+    domObserver.observe(target, { childList: true, subtree: true });
   }
 
   function mergeSettingsFromStorage(raw) {
-    settings = XcfSettings.merge(XcfSettings.DEFAULTS, raw || {});
+    settings = XcfSettings.normalizeSettings(raw || {});
     window.__xcfSettings = settings;
   }
 
@@ -501,34 +760,46 @@
     hookHistory();
     hookScroll();
     observeDom();
-    if (settings.enabled !== false) scheduleScan(true);
-    else disableFiltering();
+    window.__xcfRefoldAllNoise = refoldAllNoise;
+    await hydrateLoggedKeys();
+    if (settings.enabled !== false) {
+      scheduleScan(true);
+      setTimeout(() => scrollCollectThread(), 1200);
+    } else disableFiltering();
 
-    chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== 'sync' || !changes[XcfSettings.STORAGE_KEY]) return;
-      if (storageEcho > 0) return;
-      mergeSettingsFromStorage(changes[XcfSettings.STORAGE_KEY].newValue);
-      if (settings.enabled === false) disableFiltering();
-      else scheduleScan(false);
-      refreshPanel();
-    });
+    if (!isExtensionAlive()) return;
 
-    chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-      if (msg.type === XCF.MSG.SETTINGS_CHANGED) {
-        XcfSettings.load().then((s) => {
-          applySettings(s);
-          if (s.enabled === false) disableFiltering();
-          else scheduleScan(false);
-          sendResponse({ ok: true });
-        });
-        return true;
-      }
-      if (msg.type === XCF.MSG.GET_PAGE_STATS) {
-        sendResponse(XcfFold.getStats());
+    try {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (!isExtensionAlive()) return;
+        if (area !== 'sync' || !changes[XcfSettings.STORAGE_KEY]) return;
+        if (storageEcho > 0) return;
+        mergeSettingsFromStorage(changes[XcfSettings.STORAGE_KEY].newValue);
+        if (settings.enabled === false) disableFiltering();
+        else scheduleScan(false);
+        refreshPanel();
+      });
+
+      chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+        if (!isExtensionAlive()) return false;
+        if (msg.type === XCF.MSG.SETTINGS_CHANGED) {
+          XcfSettings.load().then((s) => {
+            applySettings(s);
+            if (s.enabled === false) disableFiltering();
+            else scheduleScan(false);
+            sendResponse({ ok: true });
+          });
+          return true;
+        }
+        if (msg.type === XCF.MSG.GET_PAGE_STATS) {
+          sendResponse(XcfFold.getStats());
+          return false;
+        }
         return false;
-      }
-      return false;
-    });
+      });
+    } catch {
+      teardownExtensionContext();
+    }
   }
 
   if (document.readyState === 'loading') {

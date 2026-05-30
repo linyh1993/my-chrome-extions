@@ -13,11 +13,13 @@ const XcfSettings = (() => {
     },
     rules: {
       blocklist: true,
+      promoted_ad: true,
       text_keywords: true,
       probable_spam: true,
       mention_spam: true,
       emoji_spam: true,
-      display_name_keywords: true
+      display_name_keywords: true,
+      nickname_spam: true
     },
     blocklist: [],
     whitelist: [],
@@ -29,13 +31,34 @@ const XcfSettings = (() => {
       '免费线下',
       '纯曰',
       '约炮',
-      '兼职'
+      '兼职',
+      '寻固炮',
+      '点击主页',
+      '固炮',
+      '有关必回'
     ],
     panelUi: {
       hidden: false,
       collapsed: false
     }
   };
+
+  const BUILTIN_DISPLAY_NAME_KEYWORDS = DEFAULTS.displayNameKeywords;
+
+  function mergeDisplayNameKeywords(list) {
+    const set = new Set([...(list || [])]);
+    for (const kw of BUILTIN_DISPLAY_NAME_KEYWORDS) set.add(kw);
+    return [...set];
+  }
+
+  function normalizeSettings(raw) {
+    const merged = merge(DEFAULTS, raw || {});
+    merged.rules = { ...DEFAULTS.rules, ...(merged.rules || {}) };
+    merged.displayNameKeywords = mergeDisplayNameKeywords(
+      merged.displayNameKeywords
+    );
+    return merged;
+  }
 
   function merge(base, patch) {
     const out = { ...base, ...patch };
@@ -52,14 +75,14 @@ const XcfSettings = (() => {
   function load() {
     return new Promise((resolve) => {
       chrome.storage.sync.get({ [STORAGE_KEY]: DEFAULTS }, (data) => {
-        resolve(merge(DEFAULTS, data[STORAGE_KEY] || {}));
+        resolve(normalizeSettings(data[STORAGE_KEY]));
       });
     });
   }
 
   function save(partial) {
     return load().then((current) => {
-      const next = merge(current, partial);
+      const next = normalizeSettings(merge(current, partial));
       return new Promise((resolve) => {
         chrome.storage.sync.set({ [STORAGE_KEY]: next }, () => resolve(next));
       });
@@ -71,5 +94,13 @@ const XcfSettings = (() => {
     return String(handle).replace(/^@/, '').trim().toLowerCase();
   }
 
-  return { DEFAULTS, STORAGE_KEY, load, save, merge, normalizeHandle };
+  return {
+    DEFAULTS,
+    STORAGE_KEY,
+    load,
+    save,
+    merge,
+    normalizeSettings,
+    normalizeHandle
+  };
 })();

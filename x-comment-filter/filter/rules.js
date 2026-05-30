@@ -2,8 +2,10 @@
 const XcfRules = (() => {
   const RULE_ORDER = [
     'blocklist',
-    'text_keywords',
+    'promoted_ad',
     'display_name_keywords',
+    'nickname_spam',
+    'text_keywords',
     'probable_spam',
     'mention_spam',
     'emoji_spam'
@@ -11,19 +13,23 @@ const XcfRules = (() => {
 
   const RULE_META = {
     blocklist: { id: 'blocklist', label: '屏蔽账号' },
+    promoted_ad: { id: 'promoted_ad', label: '推广/广告' },
     text_keywords: { id: 'text_keywords', label: '评论含关键词' },
     probable_spam: { id: 'probable_spam', label: 'X 疑似垃圾区' },
     mention_spam: { id: 'mention_spam', label: '短句多 @ 提及' },
     emoji_spam: { id: 'emoji_spam', label: '纯表情/无意义符号' },
-    display_name_keywords: { id: 'display_name_keywords', label: '昵称含关键词' }
+    display_name_keywords: { id: 'display_name_keywords', label: '昵称含关键词' },
+    nickname_spam: { id: 'nickname_spam', label: '引流昵称模式' }
   };
+
+  const TEXT_RULES = new Set(['text_keywords', 'mention_spam', 'emoji_spam']);
 
   function isEmojiSpam(text) {
     const raw = (text || '').trim();
-    if (!raw) return true;
+    if (!raw) return false;
 
     const compact = raw.replace(/\s/g, '');
-    if (!compact) return true;
+    if (!compact) return false;
 
     const emojiRe = /\p{Extended_Pictographic}/gu;
     const emojis = (raw.match(emojiRe) || []).length;
@@ -35,12 +41,24 @@ const XcfRules = (() => {
   }
 
   function findKeyword(blob, keywords) {
-    const lower = (blob || '').toLowerCase();
+    const norm = String(blob || '')
+      .normalize('NFKC')
+      .toLowerCase();
     for (const kw of keywords || []) {
-      const k = String(kw || '').trim();
-      if (k && lower.includes(k.toLowerCase())) return k;
+      const k = String(kw || '')
+        .trim()
+        .normalize('NFKC');
+      if (k && norm.includes(k.toLowerCase())) return kw;
     }
     return null;
+  }
+
+  function nameBlob(meta) {
+    return String(
+      meta.profileBlob || `${meta.displayName || ''} ${meta.handle || ''}`
+    )
+      .normalize('NFKC')
+      .trim();
   }
 
   const implementations = {
@@ -57,6 +75,13 @@ const XcfRules = (() => {
       return null;
     },
 
+    promoted_ad(meta) {
+      if (meta.isAd) {
+        return { ruleId: 'promoted_ad', reason: '推广广告', label: '推广/广告' };
+      }
+      return null;
+    },
+
     text_keywords(meta, settings) {
       const hit = findKeyword(meta.text, settings.textKeywords);
       if (!hit) return null;
@@ -69,16 +94,34 @@ const XcfRules = (() => {
     },
 
     display_name_keywords(meta, settings) {
-      const hit = findKeyword(
-        `${meta.displayName || ''} ${meta.handle || ''}`,
-        settings.displayNameKeywords
-      );
+      const blob = nameBlob(meta);
+      const hit = findKeyword(blob, settings.displayNameKeywords);
       if (!hit) return null;
       return {
         ruleId: 'display_name_keywords',
         reason: '昵称关键词',
         label: `昵称「${hit}」`
       };
+    },
+
+    nickname_spam(meta) {
+      const blob = nameBlob(meta);
+      if (!blob) return null;
+      if (/寻固炮|点击主页|有关必回/.test(blob)) {
+        return {
+          ruleId: 'display_name_keywords',
+          reason: '昵称关键词',
+          label: '色情引流昵称'
+        };
+      }
+      if (/🌸[^🌸]{0,16}🌸/.test(blob) && /点击|主页|固炮|约炮|寻/.test(blob)) {
+        return {
+          ruleId: 'display_name_keywords',
+          reason: '昵称关键词',
+          label: '引流昵称格式'
+        };
+      }
+      return null;
     },
 
     probable_spam(meta) {
@@ -114,7 +157,12 @@ const XcfRules = (() => {
     const wl = (settings.whitelist || []).map(XcfSettings.normalizeHandle);
     if (h && wl.includes(h)) return null;
 
+    const hasText = Boolean((meta.text || '').trim());
+    const hasProfile = Boolean(nameBlob(meta));
     for (const id of listEnabled(settings)) {
+      if (!hasText && TEXT_RULES.has(id)) continue;
+      if (id === 'nickname_spam' && !hasProfile) continue;
+      if (id === 'display_name_keywords' && !hasProfile) continue;
       const fn = implementations[id];
       if (!fn) continue;
       const hit = fn(meta, settings);
@@ -124,10 +172,14 @@ const XcfRules = (() => {
   }
 
   function foldBarText(meta, match) {
-    const tag = match?.label || match?.reason || '已过滤';
+    const tag = match?.label || match?.reason || '噪音';
     const who = meta.handle ? `@${meta.handle}` : '';
-    return who ? `已过滤 ${who} · ${tag}` : `已过滤 · ${tag}`;
+    return who ? `噪音 ${who} · ${tag}` : `噪音 · ${tag}`;
   }
 
-  return { RULE_META, RULE_ORDER, evaluate, foldBarText, isEmojiSpam };
+  function needsTextForRule(ruleId) {
+    return TEXT_RULES.has(ruleId);
+  }
+
+  return { RULE_META, RULE_ORDER, evaluate, foldBarText, isEmojiSpam, needsTextForRule };
 })();

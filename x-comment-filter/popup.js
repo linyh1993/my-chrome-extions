@@ -83,7 +83,16 @@ for (const [id, key] of [
   });
 }
 
-$('open_library').addEventListener('click', () => {
+$('open_library').addEventListener('click', async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tid = tab?.url?.match(/\/status\/(\d+)/)?.[1];
+    if (tid) {
+      await chrome.storage.session.set({ [XCF.SESSION.OPTIONS_THREAD]: tid });
+    }
+  } catch {
+    /* ignore */
+  }
   chrome.runtime.openOptionsPage();
 });
 

@@ -22,7 +22,20 @@ const XCF = {
     EXPORT_DATA: 'exportData',
     BLOCK_ARCHIVE_ENTRY: 'blockArchiveEntry',
     RESTORE_ARCHIVE_ENTRY: 'restoreArchiveEntry',
-    COMPACT_ARCHIVE: 'compactArchive'
+    COMPACT_ARCHIVE: 'compactArchive',
+    GET_ACTIVE_THREAD: 'getActiveThread',
+    GET_THREAD_CAPTURE_KEYS: 'getThreadCaptureKeys'
+  },
+
+  /** 评论分类：noise=无效/噪音，signal=有效/非噪音（默认不写入库） */
+  COMMENT_KIND: {
+    NOISE: 'noise',
+    SIGNAL: 'signal'
+  },
+
+  SESSION: {
+    ACTIVE_THREAD: 'xcf_active_thread',
+    OPTIONS_THREAD: 'xcf_options_thread'
   },
 
   DISPLAY_MODE: {

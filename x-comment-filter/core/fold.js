@@ -24,15 +24,28 @@ const XcfFold = (() => {
     article.classList.remove('xcf-hidden-article');
   }
 
-  function ensureSummary() {
+  function ensureSummaryHost() {
     const col = getPrimaryColumn();
     if (!col) return null;
+    let host = col.querySelector('.xcf-summary-host');
+    if (!host) {
+      host = document.createElement('div');
+      host.className = 'xcf-summary-host';
+      const conv = col.querySelector('[data-testid="conversation"]') || col;
+      conv.appendChild(host);
+    }
+    return host;
+  }
+
+  function ensureSummary() {
+    const host = ensureSummaryHost();
+    if (!host) return null;
     if (summaryEl && summaryEl.isConnected) return summaryEl;
 
     summaryEl = document.createElement('div');
     summaryEl.className = 'xcf-summary';
     summaryEl.hidden = true;
-    document.body.appendChild(summaryEl);
+    host.appendChild(summaryEl);
     return summaryEl;
   }
 
@@ -46,10 +59,14 @@ const XcfFold = (() => {
     el.hidden = false;
     el.textContent = '';
     const text = document.createElement('span');
-    text.textContent = `已过滤 ${foldedCount} 条评论`;
+    text.className = 'xcf-summary-count';
+    text.textContent = `已折叠 ${foldedCount} 条噪音`;
+    const actions = document.createElement('div');
+    actions.className = 'xcf-summary-actions';
+
     const showAll = document.createElement('button');
     showAll.type = 'button';
-    showAll.className = 'xcf-btn xcf-btn-link';
+    showAll.className = 'xcf-btn xcf-btn-solid';
     showAll.textContent = '全部显示';
     showAll.addEventListener('click', (e) => {
       e.preventDefault();
@@ -58,8 +75,23 @@ const XcfFold = (() => {
         unfoldArticle(node, { keepOverride: true });
       });
     });
+
+    const hideAll = document.createElement('button');
+    hideAll.type = 'button';
+    hideAll.className = 'xcf-btn xcf-btn-solid xcf-btn-warn';
+    hideAll.textContent = '全部隐藏';
+    hideAll.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof window.__xcfRefoldAllNoise === 'function') {
+        window.__xcfRefoldAllNoise();
+      }
+    });
+
+    actions.appendChild(showAll);
+    actions.appendChild(hideAll);
     el.appendChild(text);
-    el.appendChild(showAll);
+    el.appendChild(actions);
   }
 
   function unfoldArticle(article, { keepOverride = true } = {}) {
@@ -253,7 +285,9 @@ const XcfFold = (() => {
   }
 
   function resetPageState() {
-    document.querySelectorAll('.xcf-fold-bar, .xcf-summary').forEach((n) => n.remove());
+    document.querySelectorAll('.xcf-fold-bar, .xcf-summary, .xcf-summary-host').forEach((n) =>
+      n.remove()
+    );
     document.querySelectorAll('article[data-xcf-folded]').forEach((a) => {
       applyShow(a);
       delete a.dataset.xcfFolded;
