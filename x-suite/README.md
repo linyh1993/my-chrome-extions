@@ -9,7 +9,7 @@
 | 模块 | 说明 | 默认 |
 |------|------|------|
 | 评论过滤 | 单帖 / Thread 垃圾评论折叠、屏蔽、记录 | 开启 |
-| 流量镜像 | 将 `/api/graphql` POST 到本机可配置地址 | **关闭**，需手动开启 |
+| 流量镜像 | 将 `/api/graphql` POST 到本机可配置地址 | **开启**（可在页内/侧边栏关闭） |
 
 ## 安装
 
@@ -53,7 +53,7 @@ x-suite/
 | Key | 用途 |
 |-----|------|
 | `xcf_settings` | 评论过滤 |
-| `xsuite_mirror_settings` | 镜像 URL |
+| `xsuite_mirror_settings` | 镜像开关（`enabled`，默认开）与 URL |
 | `xcf_settings.panelUi` | 页内面板：`expanded` 展开 / 默认小图标 |
 
 默认镜像地址：`http://127.0.0.1:9090/mirror-traffic`

@@ -32,6 +32,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onStartup.addListener(() => {
   XcfArchive.compact();
+  MirrorBg.restoreEnabledMirrors();
 });
 
 function normalizeHandle(handle) {

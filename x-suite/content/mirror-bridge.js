@@ -8,11 +8,13 @@
     if (typeof XcfPanel === 'undefined') return;
     XcfPanel.updateMirror({
       status: request.status,
+      enabled: request.mirrorEnabled,
       siteLabel: request.siteLabel
     });
   });
 
   function syncMirrorStatus() {
+    chrome.runtime.sendMessage({ domain: 'mirror', action: 'ENSURE_TAB_MIRROR' });
     chrome.runtime.sendMessage({ domain: 'mirror', action: 'SYNC_STATUS' });
   }
 

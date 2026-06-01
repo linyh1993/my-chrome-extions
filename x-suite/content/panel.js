@@ -8,6 +8,7 @@ const XcfPanel = (() => {
   let drag = null;
   let suppressIconClick = false;
   let mirrorAttached = false;
+  let mirrorEnabledPref = true;
   let mirrorBusy = false;
 
   function loadPos() {
@@ -100,7 +101,10 @@ const XcfPanel = (() => {
   function renderMirrorStatus() {
     const el = panel?.querySelector('[data-xcf-mirror-status]');
     if (!el) return;
-    el.textContent = mirrorAttached ? '镜像：监听中' : '镜像：已关闭';
+    el.textContent =
+      mirrorAttached ? '镜像：监听中'
+      : mirrorEnabledPref ? '镜像：连接中…'
+      : '镜像：已关闭';
     el.classList.toggle('xcf-panel-mirror-on', mirrorAttached);
   }
 
@@ -119,7 +123,10 @@ const XcfPanel = (() => {
           updateMirror({ status: false, permissionDenied: true });
           return;
         }
-        updateMirror({ status: Boolean(res?.isAttached) });
+        updateMirror({
+          status: Boolean(res?.isAttached),
+          enabled: res?.mirrorEnabled !== false
+        });
       }
     );
   }
@@ -233,6 +240,7 @@ const XcfPanel = (() => {
     window.addEventListener('pointercancel', endDrag);
 
     renderMirrorStatus();
+    syncMirrorStateFromBg();
     return panel;
   }
 
@@ -250,10 +258,25 @@ const XcfPanel = (() => {
     setExpanded(normalizePanelUi(ui).expanded, { persist: false });
   }
 
-  function updateMirror({ status, siteLabel, permissionDenied } = {}) {
+  function syncMirrorStateFromBg() {
+    chrome.runtime.sendMessage(
+      { domain: 'mirror', action: 'ENSURE_TAB_MIRROR' },
+      (res) => {
+        if (chrome.runtime.lastError || !res) return;
+        updateMirror({
+          status: res.isAttached,
+          enabled: res.mirrorEnabled,
+          siteLabel: res.siteLabel
+        });
+      }
+    );
+  }
+
+  function updateMirror({ status, enabled, siteLabel, permissionDenied } = {}) {
+    if (enabled !== undefined) mirrorEnabledPref = enabled !== false;
     mirrorAttached = Boolean(status);
     const cb = panel?.querySelector('[data-xcf-mirror]');
-    if (cb && !mirrorBusy) cb.checked = mirrorAttached;
+    if (cb && !mirrorBusy) cb.checked = mirrorEnabledPref;
     if (permissionDenied) {
       const el = panel?.querySelector('[data-xcf-mirror-status]');
       if (el) {

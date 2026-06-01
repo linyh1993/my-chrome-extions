@@ -32,6 +32,62 @@ const MirrorBg = (() => {
     return requestDebuggerPermission();
   }
 
+  function isMirrorEnabled(cfg) {
+    return cfg?.enabled !== false;
+  }
+
+  function persistMirrorEnabled(enabled) {
+    return MirrorSettings.save({ enabled: Boolean(enabled) });
+  }
+
+  function ensureTabMirror(tabId) {
+    if (!tabId || attachedTabs.has(tabId)) return;
+    MirrorSettings.load().then((cfg) => {
+      if (!isMirrorEnabled(cfg)) return;
+      resolveSiteForTab(tabId, (site) => {
+        if (site) enableMirrorOnTab(tabId);
+      });
+    });
+  }
+
+  function restoreEnabledMirrors() {
+    MirrorSettings.load().then((cfg) => {
+      if (!isMirrorEnabled(cfg)) return;
+      chrome.tabs.query(
+        {
+          url: [
+            '*://x.com/*',
+            '*://*.x.com/*',
+            '*://twitter.com/*',
+            '*://*.twitter.com/*'
+          ]
+        },
+        (tabs) => {
+          for (const tab of tabs) {
+            if (tab.id) ensureTabMirror(tab.id);
+          }
+        }
+      );
+    });
+  }
+
+  function tabMirrorState(tabId, sendResponse) {
+    MirrorSettings.load().then((cfg) => {
+      const mirrorEnabled = isMirrorEnabled(cfg);
+      if (!tabId) {
+        sendResponse?.({ mirrorEnabled, isAttached: false, siteLabel: null });
+        return;
+      }
+      resolveSiteForTab(tabId, (site) => {
+        sendResponse?.({
+          mirrorEnabled,
+          isAttached: attachedTabs.has(tabId),
+          siteLabel: site?.label ?? null
+        });
+      });
+    });
+  }
+
   function enableMirrorOnTab(tabId, sendResponse) {
     ensureDebuggerPermission().then((granted) => {
       if (!granted) {
@@ -71,22 +127,25 @@ const MirrorBg = (() => {
   }
 
   function updatePageStatus(tabId, isAttached, site = null) {
-    const payload = {
-      domain: 'mirror',
-      action: 'UPDATE_STATUS',
-      status: isAttached,
-      siteLabel: site?.label ?? null,
-      siteId: site?.id ?? null
-    };
+    MirrorSettings.load().then((cfg) => {
+      const payload = {
+        domain: 'mirror',
+        action: 'UPDATE_STATUS',
+        status: isAttached,
+        mirrorEnabled: isMirrorEnabled(cfg),
+        siteLabel: site?.label ?? null,
+        siteId: site?.id ?? null
+      };
 
-    chrome.tabs.sendMessage(tabId, payload, () => {
-      if (chrome.runtime.lastError) {
-        /* content 未就绪 */
-      }
-    });
+      chrome.tabs.sendMessage(tabId, payload, () => {
+        if (chrome.runtime.lastError) {
+          /* content 未就绪 */
+        }
+      });
 
-    chrome.runtime.sendMessage(payload).catch(() => {
-      /* side panel 未打开 */
+      chrome.runtime.sendMessage(payload).catch(() => {
+        /* side panel 未打开 */
+      });
     });
   }
 
@@ -270,6 +329,16 @@ const MirrorBg = (() => {
     if (attachedTabs.has(tabId)) detachDebugger(tabId);
   });
 
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.status !== 'complete' || !tab?.url) return;
+    if (!getSiteByUrl(tab.url)) return;
+    ensureTabMirror(tabId);
+  });
+
+  chrome.tabs.onActivated.addListener((activeInfo) => {
+    ensureTabMirror(activeInfo.tabId);
+  });
+
   function handleMessage(msg, sender, sendResponse) {
     const tabId = sender.tab?.id;
 
@@ -294,16 +363,28 @@ const MirrorBg = (() => {
           } catch {
             /* ignore */
           }
-          hasDebuggerPermission().then((hasDebugger) => {
-            sendResponse({
-              tabId: activeTab.id,
-              hostname,
-              isAttached: attachedTabs.has(activeTab.id),
-              site: tabSiteConfig.get(activeTab.id) || site,
-              hasDebuggerPermission: hasDebugger
-            });
-          });
+          Promise.all([hasDebuggerPermission(), MirrorSettings.load()]).then(
+            ([hasDebugger, cfg]) => {
+              sendResponse({
+                tabId: activeTab.id,
+                hostname,
+                isAttached: attachedTabs.has(activeTab.id),
+                mirrorEnabled: isMirrorEnabled(cfg),
+                site: tabSiteConfig.get(activeTab.id) || site,
+                hasDebuggerPermission: hasDebugger
+              });
+            }
+          );
         });
+        return true;
+
+      case 'GET_TAB_MIRROR_STATE':
+        tabMirrorState(tabId, sendResponse);
+        return true;
+
+      case 'ENSURE_TAB_MIRROR':
+        if (tabId) ensureTabMirror(tabId);
+        tabMirrorState(tabId, sendResponse);
         return true;
 
       case 'SET_MIRROR_ENABLED':
@@ -311,12 +392,16 @@ const MirrorBg = (() => {
           sendResponse({ ok: false, isAttached: false });
           return true;
         }
-        if (!msg.enabled) {
-          detachDebugger(tabId);
-          sendResponse({ ok: true, isAttached: false });
-          return true;
-        }
-        enableMirrorOnTab(tabId, sendResponse);
+        persistMirrorEnabled(msg.enabled).then(() => {
+          if (!msg.enabled) {
+            detachDebugger(tabId);
+            sendResponse({ ok: true, isAttached: false, mirrorEnabled: false });
+            return;
+          }
+          enableMirrorOnTab(tabId, (res) => {
+            sendResponse?.({ ...res, mirrorEnabled: true });
+          });
+        });
         return true;
 
       case 'SET_MIRROR_ENABLED_ACTIVE_TAB':
@@ -326,12 +411,16 @@ const MirrorBg = (() => {
             sendResponse({ ok: false, isAttached: false });
             return;
           }
-          if (!msg.enabled) {
-            detachDebugger(activeTabId);
-            sendResponse({ ok: true, isAttached: false });
-            return;
-          }
-          enableMirrorOnTab(activeTabId, sendResponse);
+          persistMirrorEnabled(msg.enabled).then(() => {
+            if (!msg.enabled) {
+              detachDebugger(activeTabId);
+              sendResponse({ ok: true, isAttached: false, mirrorEnabled: false });
+              return;
+            }
+            enableMirrorOnTab(activeTabId, (res) => {
+              sendResponse?.({ ...res, mirrorEnabled: true });
+            });
+          });
         });
         return true;
 
@@ -352,10 +441,15 @@ const MirrorBg = (() => {
         return true;
 
       case 'SYNC_STATUS':
-        if (tabId && attachedTabs.has(tabId)) {
-          updatePageStatus(tabId, true, tabSiteConfig.get(tabId));
-        } else if (tabId) {
-          updatePageStatus(tabId, false);
+        if (tabId) {
+          MirrorSettings.load().then((cfg) => {
+            if (isMirrorEnabled(cfg)) ensureTabMirror(tabId);
+            updatePageStatus(
+              tabId,
+              attachedTabs.has(tabId),
+              tabSiteConfig.get(tabId)
+            );
+          });
         }
         return true;
 
@@ -372,7 +466,8 @@ const MirrorBg = (() => {
 
   function initOnInstalled() {
     console.log('[mirror] 已加载站点:', SITES.map((s) => s.id).join(', '));
+    restoreEnabledMirrors();
   }
 
-  return { handleMessage, initOnInstalled };
+  return { handleMessage, initOnInstalled, restoreEnabledMirrors };
 })();

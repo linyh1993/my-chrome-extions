@@ -3,6 +3,7 @@ const MirrorSettings = (() => {
   const STORAGE_KEY = 'xsuite_mirror_settings';
 
   const DEFAULTS = {
+    enabled: true,
     mirrorUrl: 'http://127.0.0.1:9090/mirror-traffic',
     pathIncludes: ['/api/graphql']
   };
@@ -19,6 +20,7 @@ const MirrorSettings = (() => {
     if (!merged.mirrorUrl) merged.mirrorUrl = DEFAULTS.mirrorUrl;
     merged.pathIncludes = (merged.pathIncludes || DEFAULTS.pathIncludes).filter(Boolean);
     if (!merged.pathIncludes.length) merged.pathIncludes = [...DEFAULTS.pathIncludes];
+    merged.enabled = merged.enabled !== false;
     return merged;
   }
 

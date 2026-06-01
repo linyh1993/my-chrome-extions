@@ -31,9 +31,13 @@ function refreshTabStatus() {
     }
 
     spSite.textContent = res.site.label;
-    spStatus.textContent = res.isAttached ? '监听中' : '已关闭';
+    const prefOn = res.mirrorEnabled !== false;
+    spStatus.textContent =
+      res.isAttached ? '监听中'
+      : prefOn ? '开启中…'
+      : '已关闭';
     spStatus.classList.toggle('sp-status-on', res.isAttached);
-    spToggle.checked = res.isAttached;
+    spToggle.checked = prefOn;
   });
 }
 
@@ -67,7 +71,7 @@ chrome.runtime.onMessage.addListener((request) => {
 MirrorSettings.load().then((cfg) => {
   const el = document.getElementById('sp_mirror_url_hint');
   if (el) {
-    el.textContent = `默认不自动开启。接收地址：${cfg.mirrorUrl}（可在选项页修改）`;
+    el.textContent = `默认开启镜像。接收地址：${cfg.mirrorUrl}（可在选项页修改）`;
   }
 });
 
