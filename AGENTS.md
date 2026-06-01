@@ -29,8 +29,8 @@
 ## 子项目地图
 
 
-| 目录                  | 说明                                             | 入口                                                                              |
-| ------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------- |
-| `traffic-relay/`    | 按站点镜像 API 流量；MV3，含 side panel + content script | `README.md`、`manifest.json`、`background.js`、`content.js`、`sidepanel.*`          |
-| `x-comment-filter/` | X 单帖/Thread 评论过滤；默认折叠；架构可扩展更多页面类型              | `README.md`、`manifest.json`、`content/bootstrap.js`、`core/`、`sites/x/adapter.js` |
-| `chrome-capture-toolkit/` | Chrome CDP 抓包与精简导出；PowerShell 启动 + Node CLI | `README.md`、`scripts/powershell/`、`src/capture/`、`docs/` |
+| 目录                        | 说明                                             | 入口                                                                              |
+| ------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------- |
+| `x-suite/`                | **推荐**：X 专用合并扩展（评论过滤 + 可选 GraphQL 镜像）     | `README.md`、`manifest.json`、`ui/`、`content/`、`background/service-worker.js`       |
+| `archive/legacy-extensions/` | 已归档：`x-comment-filter`、`traffic-relay`（勿加载）   | `archive/README.md`                                                               |
+| `chrome-capture-toolkit/` | Chrome CDP 抓包与精简导出；PowerShell 启动 + Node CLI    | `README.md`、`scripts/powershell/`、`src/capture/`、`docs/`                        |

@@ -4,17 +4,14 @@
 
 ## 项目
 
-
-| 目录                  | 说明                                       |
-| ------------------- | ---------------------------------------- |
-| `traffic-relay/`    | 按站点镜像 API 流量到本地，提供悬浮面板与 side panel 控制。   |
-| `x-comment-filter/` | 过滤 X（Twitter）单帖 / Thread 下的垃圾评论，命中后默认折叠。 |
-
+| 目录 | 说明 |
+|------|------|
+| [`x-suite/`](x-suite/) | **推荐安装**：X 评论过滤 + 可选 GraphQL 流量镜像 |
+| [`archive/legacy-extensions/`](archive/legacy-extensions/) | 已归档的旧版 `x-comment-filter`、`traffic-relay`（保留对照，勿加载） |
+| [`chrome-capture-toolkit/`](chrome-capture-toolkit/) | Chrome CDP 抓包与精简导出 |
 
 ## 开发入口
 
 - Agent 入口地图：[AGENTS.md](AGENTS.md)
 - Chrome 扩展规则：[rules/chrome-extension-guide.md](rules/chrome-extension-guide.md)
 - 通用编码准则：[rules/andrej-karpathy-coding-guidelines.md](rules/andrej-karpathy-coding-guidelines.md)
-
-默认优先按仓库内规则和现有代码开发，不主动访问官方文档；只有用户明确要求或本地规则不足且有明显风险时才查官方文档。

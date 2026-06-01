@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "X 评论过滤",
+  "version": "0.3.25",
+  "description": "过滤 X 单帖/Thread 中的垃圾评论，默认折叠可展开。",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "*://x.com/*",
+    "*://*.x.com/*",
+    "*://twitter.com/*",
+    "*://*.twitter.com/*"
+  ],
+  "action": {
+    "default_title": "X 评论过滤",
+    "default_popup": "popup.html"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://x.com/*",
+        "*://*.x.com/*",
+        "*://twitter.com/*",
+        "*://*.twitter.com/*"
+      ],
+      "js": [
+        "shared/constants.js",
+        "shared/settings.js",
+        "filter/rules.js",
+        "core/filter-engine.js",
+        "core/fold.js",
+        "core/registry.js",
+        "sites/x/adapter.js",
+        "content/panel.js",
+        "content/state.js",
+        "content/runtime.js",
+        "content/route.js",
+        "content/archive-log.js",
+        "content/processor.js",
+        "content/scan.js",
+        "content/bootstrap.js"
+      ],
+      "css": ["styles/content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

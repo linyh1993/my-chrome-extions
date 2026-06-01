@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <header class="sp-header">
+    <h1>流量镜像</h1>
+    <p class="sp-subtitle">X Suite · 控制当前标签页</p>
+  </header>
+
+  <section class="sp-card">
+    <div class="sp-row">
+      <span class="sp-label">当前站点</span>
+      <span id="sp-site" class="sp-site">—</span>
+    </div>
+    <div class="sp-row">
+      <span class="sp-label">监听状态</span>
+      <span id="sp-status" class="sp-status">—</span>
+    </div>
+    <label class="sp-switch-row">
+      <span>流量镜像</span>
+      <span class="copier-switch">
+        <input id="sp-toggle" type="checkbox" />
+        <span class="copier-slider"></span>
+      </span>
+    </label>
+  </section>
+
+  <section class="sp-card">
+    <h2 class="sp-card-title">页内 X Suite 面板</h2>
+    <p class="sp-desc">控制右下角统一面板（评论过滤 + 流量镜像），对所有 X 标签页生效。</p>
+    <div class="sp-btn-group">
+      <button type="button" id="sp-ui-expanded" class="sp-btn">显示面板</button>
+      <button type="button" id="sp-ui-minimized" class="sp-btn sp-btn--ghost">紧凑条</button>
+      <button type="button" id="sp-ui-hidden" class="sp-btn sp-btn--ghost">完全隐藏</button>
+    </div>
+  </section>
+
+  <p class="sp-foot" id="sp_mirror_url_hint">默认不自动开启镜像。评论过滤在帖子页自动生效。</p>
+  <p class="sp-foot"><a href="#" id="sp_open_options_mirror">镜像设置</a></p>
+
+  <script src="../../shared/constants.js"></script>
+  <script src="../../shared/mirror-settings.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

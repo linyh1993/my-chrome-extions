@@ -1,0 +1,26 @@
+/** @file Content 脚本共享状态 */
+const XcfContent = {
+  settings: null,
+  adapter: null,
+  context: null,
+  lastHref: location.href,
+  pauseObserver: false,
+  storageEcho: 0,
+  extensionDead: false,
+  contextTornDown: false,
+  domObserver: null,
+  captureIo: null,
+  hydratePromise: null,
+  collectScrollDone: false,
+  collectScrollRunning: false,
+  collectScrollTimerId: null,
+  suppressScrollEvents: 0,
+  isScrolling: false,
+  scanTimer: null,
+  scrollTimer: null,
+  scrollCaptureTimer: null,
+  afterScrollScanTimer: null,
+  overrideTweetIds: new Set(),
+  loggedArchiveKeys: new Set(),
+  loggedThreadRoots: new Set()
+};

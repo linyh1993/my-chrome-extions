@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>X Suite</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="hdr">
+    <h1>X Suite</h1>
+    <label class="switch">
+      <input type="checkbox" id="enabled" />
+      <span>评论过滤</span>
+    </label>
+  </header>
+
+  <p class="hint popup-lead">单帖 / Thread 垃圾评论默认折叠；流量镜像默认关闭，需在本机接收端就绪后手动开启。</p>
+  <p class="foot" id="page_stats"></p>
+
+  <nav class="popup-actions" aria-label="快捷入口">
+    <button type="button" id="open_filter_settings" class="primary">评论设置</button>
+    <button type="button" id="open_library" class="secondary">评论库</button>
+    <button type="button" id="open_mirror_panel" class="secondary">流量镜像</button>
+  </nav>
+
+  <script src="../../shared/constants.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
