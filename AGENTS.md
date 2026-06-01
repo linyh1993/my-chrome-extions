@@ -25,12 +25,15 @@
 - 每个扩展独立子目录，根目录各自包含 `manifest.json`。
 - 页面 DOM 操作用 content script；跨标签、存储、右键菜单等用 service worker。
 - 只提交与当前任务相关的文件；不要清理或提交无关工作区差异。
+- 完成代码改动后，除非用户明确表示**不需要**提交或推送到远程分支，否则默认应 `git commit` 并 `git push` 到当前工作的远程分支。
 
 ## 子项目地图
 
 
-| 目录                        | 说明                                             | 入口                                                                              |
-| ------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------- |
-| `x-suite/`                | **推荐**：X 专用合并扩展（评论过滤 + 可选 GraphQL 镜像）     | `README.md`、`manifest.json`、`ui/`、`content/`、`background/service-worker.js`       |
-| `archive/legacy-extensions/` | 已归档：`x-comment-filter`、`traffic-relay`（勿加载）   | `archive/README.md`                                                               |
-| `chrome-capture-toolkit/` | Chrome CDP 抓包与精简导出；PowerShell 启动 + Node CLI    | `README.md`、`scripts/powershell/`、`src/capture/`、`docs/`                        |
+| 目录                           | 说明                                          | 入口                                                                          |
+| ---------------------------- | ------------------------------------------- | --------------------------------------------------------------------------- |
+| `x-suite/`                   | **推荐**：X 专用合并扩展（评论过滤 + 可选 GraphQL 镜像）       | `README.md`、`manifest.json`、`ui/`、`content/`、`background/service-worker.js` |
+| `archive/legacy-extensions/` | 已归档：`x-comment-filter`、`traffic-relay`（勿加载） | `archive/README.md`                                                         |
+| `chrome-capture-toolkit/`    | Chrome CDP 抓包与精简导出；PowerShell 启动 + Node CLI | `README.md`、`scripts/powershell/`、`src/capture/`、`docs/`                    |
+
+

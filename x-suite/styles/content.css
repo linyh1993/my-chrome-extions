@@ -68,7 +68,7 @@ article[data-testid="tweet"].xcf-hidden-article,
   padding-right: 8px;
 }
 
-/* 页内 X Suite：默认小图标，点击展开 */
+/* 页内 X Suite：默认小图标，可拖动，单击展开 */
 .xcf-dock {
   position: fixed;
   right: 16px;
@@ -80,6 +80,10 @@ article[data-testid="tweet"].xcf-hidden-article,
 
 .xcf-dock-dragging {
   opacity: 0.92;
+  cursor: grabbing;
+}
+
+.xcf-dock-dragging .xcf-dock-icon {
   cursor: grabbing;
 }
 
@@ -97,7 +101,7 @@ article[data-testid="tweet"].xcf-hidden-article,
   font-size: 18px;
   font-weight: 800;
   line-height: 1;
-  cursor: pointer;
+  cursor: grab;
   box-shadow:
     0 4px 16px rgba(0, 0, 0, 0.45),
     0 0 20px rgba(29, 155, 240, 0.35);

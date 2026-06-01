@@ -6,6 +6,7 @@ const XcfPanel = (() => {
   let panel = null;
   let handlers = null;
   let drag = null;
+  let suppressIconClick = false;
   let mirrorAttached = false;
   let mirrorBusy = false;
 
@@ -54,11 +55,13 @@ const XcfPanel = (() => {
     };
   }
 
-  function startDrag(e, el) {
+  function startDrag(e, el, { fromIcon = false } = {}) {
     if (e.button !== 0) return;
     const rect = el.getBoundingClientRect();
     drag = {
       el,
+      fromIcon,
+      moved: false,
       startX: e.clientX,
       startY: e.clientY,
       origLeft: rect.left,
@@ -78,6 +81,7 @@ const XcfPanel = (() => {
     const h = drag.el.offsetHeight;
     const dx = e.clientX - drag.startX;
     const dy = e.clientY - drag.startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) drag.moved = true;
     const p = clampPos(drag.origLeft + dx, drag.origTop + dy, w, h);
     drag.el.style.left = `${p.x}px`;
     drag.el.style.top = `${p.y}px`;
@@ -85,9 +89,11 @@ const XcfPanel = (() => {
 
   function endDrag() {
     if (!drag) return;
+    const { fromIcon, moved } = drag;
     drag.el.classList.remove('xcf-dock-dragging');
     const rect = drag.el.getBoundingClientRect();
     savePos(rect.left, rect.top);
+    if (fromIcon && moved) suppressIconClick = true;
     drag = null;
   }
 
@@ -144,8 +150,8 @@ const XcfPanel = (() => {
     iconBtn = document.createElement('button');
     iconBtn.type = 'button';
     iconBtn.className = 'xcf-dock-icon';
-    iconBtn.title = '打开 X Suite';
-    iconBtn.setAttribute('aria-label', '打开 X Suite');
+    iconBtn.title = '拖动移动，单击打开';
+    iconBtn.setAttribute('aria-label', '拖动移动，单击打开 X Suite');
     iconBtn.textContent = 'X';
 
     panel = document.createElement('div');
@@ -184,7 +190,14 @@ const XcfPanel = (() => {
 
     applyPosition(dock, loadPos());
 
-    iconBtn.addEventListener('click', () => setExpanded(true));
+    iconBtn.addEventListener('pointerdown', (e) => startDrag(e, dock, { fromIcon: true }));
+    iconBtn.addEventListener('click', () => {
+      if (suppressIconClick) {
+        suppressIconClick = false;
+        return;
+      }
+      setExpanded(true);
+    });
 
     const head = panel.querySelector('[data-xcf-drag]');
     head.addEventListener('pointerdown', (e) => {
