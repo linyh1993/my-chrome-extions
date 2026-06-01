@@ -48,16 +48,13 @@ const XCF = {
     HIDE: 'hide'
   },
 
-  /** 页内统一面板：panelUi ↔ 展示模式 */
+  /** 页内面板：仅 icon（小图标）| expanded（展开） */
   panelUiFromDisplayMode(mode) {
-    if (mode === 'expanded') return { hidden: false, collapsed: false };
-    if (mode === 'minimized') return { hidden: false, collapsed: true };
-    return { hidden: true, collapsed: false };
+    return { expanded: mode === 'expanded' };
   },
 
   displayModeFromPanelUi(ui) {
-    if (ui?.hidden) return 'hidden';
-    if (ui?.collapsed) return 'minimized';
-    return 'expanded';
+    if (ui?.expanded) return 'expanded';
+    return 'icon';
   }
 };

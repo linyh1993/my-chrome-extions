@@ -67,7 +67,7 @@
   <div id="main_mirror" class="main-section" hidden>
     <section class="settings-card">
       <h2>流量镜像</h2>
-      <p class="hint">默认关闭。首次开启时会请求 <code>debugger</code> 可选权限（仅用于读取 Network）；GraphQL 将 POST 到本机，需自行启动接收服务。</p>
+      <p class="hint">默认关闭。开启后使用 <code>debugger</code> 读取 Network，将 GraphQL POST 到本机；需自行启动接收服务。</p>
       <p class="hint" id="mirror_live_status">—</p>
       <label class="field">
         <span class="field-label">本机接收地址</span>
@@ -78,11 +78,10 @@
         <code id="mirror_path_display" class="field-code">/api/graphql</code>
       </label>
       <label class="field">
-        <span class="field-label">页内 X Suite 面板默认状态</span>
+        <span class="field-label">页内面板默认状态</span>
         <select id="mirror_default_mode" class="field-input">
-          <option value="hidden">完全隐藏（保留「Suite」标签）</option>
-          <option value="minimized">收起（仅标题栏）</option>
-          <option value="expanded">展开</option>
+          <option value="icon">小图标（默认）</option>
+          <option value="expanded">展开面板</option>
         </select>
       </label>
       <div class="keywords-actions">
@@ -103,7 +102,7 @@
       <h2>权限说明</h2>
       <ul class="about-list">
         <li><strong>storage</strong>：保存过滤规则、记录库与镜像设置。</li>
-        <li><strong>debugger（可选）</strong>：仅在手动开启流量镜像时按需申请并附加到当前标签页。</li>
+        <li><strong>debugger</strong>：安装时授予，仅在手动开启流量镜像时附加到当前标签页。</li>
         <li><strong>sidePanel / tabs</strong>：侧边栏控制镜像与选项页导航。</li>
       </ul>
     </section>

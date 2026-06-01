@@ -61,9 +61,7 @@ const XcfSettings = (() => {
     emojiSpamKeywords: [],
     mentionSpamKeywords: [],
     panelUi: {
-      hidden: false,
-      collapsed: false,
-      wide: false
+      expanded: false
     }
   };
 
@@ -132,6 +130,14 @@ const XcfSettings = (() => {
         merged[key] = mergeKeywordList(merged[key], builtins);
       }
     }
+    const ui = merged.panelUi || {};
+    if (typeof ui.expanded !== 'boolean') {
+      merged.panelUi = {
+        expanded: ui.hidden === false && ui.collapsed !== true
+      };
+    } else {
+      merged.panelUi = { expanded: ui.expanded };
+    }
     return merged;
   }
 
@@ -139,7 +145,17 @@ const XcfSettings = (() => {
     const out = { ...base, ...patch };
     if (patch.contexts) out.contexts = { ...base.contexts, ...patch.contexts };
     if (patch.rules) out.rules = { ...base.rules, ...patch.rules };
-    if (patch.panelUi) out.panelUi = { ...base.panelUi, ...patch.panelUi };
+    if (patch.panelUi) {
+      out.panelUi = { ...base.panelUi, ...patch.panelUi };
+      if (typeof out.panelUi.expanded !== 'boolean') {
+        out.panelUi.expanded =
+          out.panelUi.hidden === false &&
+          !out.panelUi.collapsed;
+      }
+      delete out.panelUi.hidden;
+      delete out.panelUi.collapsed;
+      delete out.panelUi.wide;
+    }
     for (const key of KEYWORD_LIST_KEYS) {
       if (patch[key]) out[key] = [...(patch[key] || [])];
     }

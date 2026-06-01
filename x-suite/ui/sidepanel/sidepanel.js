@@ -31,12 +31,6 @@ function refreshTabStatus() {
     }
 
     spSite.textContent = res.site.label;
-    if (!res.hasDebuggerPermission) {
-      spStatus.textContent = '需授权 debugger';
-      spStatus.classList.remove('sp-status-on');
-      spToggle.checked = false;
-      return;
-    }
     spStatus.textContent = res.isAttached ? '监听中' : '已关闭';
     spStatus.classList.toggle('sp-status-on', res.isAttached);
     spToggle.checked = res.isAttached;
@@ -62,8 +56,7 @@ async function setPageUiMode(mode) {
 }
 
 document.getElementById('sp-ui-expanded').addEventListener('click', () => setPageUiMode('expanded'));
-document.getElementById('sp-ui-minimized').addEventListener('click', () => setPageUiMode('minimized'));
-document.getElementById('sp-ui-hidden').addEventListener('click', () => setPageUiMode('hidden'));
+document.getElementById('sp-ui-icon').addEventListener('click', () => setPageUiMode('icon'));
 
 chrome.runtime.onMessage.addListener((request) => {
   if (request.domain === 'mirror' && request.action === 'UPDATE_STATUS') {

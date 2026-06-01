@@ -64,7 +64,7 @@
     )) {
       if (clicks >= MAX) break;
       if (el.closest('article[data-testid="tweet"]')) continue;
-      if (el.closest('.xcf-fold-bar, .xcf-summary, .xcf-panel')) continue;
+      if (el.closest('.xcf-fold-bar, .xcf-summary, .xcf-dock')) continue;
       const t = (el.textContent || '').trim();
       if (!t || t.length > 72 || t.length < 6) continue;
       if (!EXPAND_REPLY_RE.test(t)) continue;

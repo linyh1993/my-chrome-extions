@@ -179,7 +179,7 @@
     $('mirror_url').value = cfg.mirrorUrl;
     $('mirror_path_display').textContent = (cfg.pathIncludes || []).join(', ') || '/api/graphql';
     $('mirror_default_mode').value = XCF.displayModeFromPanelUi(
-      filterSettings?.panelUi
+      filterSettings?.panelUi || {}
     );
 
     chrome.runtime.sendMessage(

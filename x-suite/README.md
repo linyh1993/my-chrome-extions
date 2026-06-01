@@ -16,7 +16,7 @@
 1. `chrome://extensions` → 开发者模式 → 加载 **`x-suite`** 目录（含本文件与 `manifest.json` 的文件夹）
 2. 勿再加载 `archive/legacy-extensions/` 下的旧扩展
 3. 打开 `https://x.com/.../status/...` 验证评论过滤
-4. 流量镜像：首次开启时浏览器会询问是否授予 **debugger**（可选权限），同意后方可镜像
+4. 流量镜像：安装时已包含 **debugger** 权限，手动开启即可镜像（仍需本机接收服务）
 
 ## 目录结构
 
@@ -54,7 +54,7 @@ x-suite/
 |-----|------|
 | `xcf_settings` | 评论过滤 |
 | `xsuite_mirror_settings` | 镜像 URL |
-| `xcf_settings.panelUi` | 页内面板展开/隐藏/放大 |
+| `xcf_settings.panelUi` | 页内面板：`expanded` 展开 / 默认小图标 |
 
 默认镜像地址：`http://127.0.0.1:9090/mirror-traffic`
 

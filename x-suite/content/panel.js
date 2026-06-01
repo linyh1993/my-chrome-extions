@@ -1,8 +1,9 @@
-/** @file 页面内统一浮动控制条：评论过滤 + 流量镜像 */
+/** @file 页内控制：默认小图标，点击展开完整面板 */
 const XcfPanel = (() => {
   const POS_KEY = 'xcf_panel_pos';
+  let dock = null;
+  let iconBtn = null;
   let panel = null;
-  let fab = null;
   let handlers = null;
   let drag = null;
   let mirrorAttached = false;
@@ -67,7 +68,7 @@ const XcfPanel = (() => {
     el.style.bottom = 'auto';
     el.style.left = `${rect.left}px`;
     el.style.top = `${rect.top}px`;
-    el.classList.add('xcf-panel-dragging');
+    el.classList.add('xcf-dock-dragging');
     e.preventDefault();
   }
 
@@ -84,9 +85,8 @@ const XcfPanel = (() => {
 
   function endDrag() {
     if (!drag) return;
-    const el = drag.el;
-    el.classList.remove('xcf-panel-dragging');
-    const rect = el.getBoundingClientRect();
+    drag.el.classList.remove('xcf-dock-dragging');
+    const rect = drag.el.getBoundingClientRect();
     savePos(rect.left, rect.top);
     drag = null;
   }
@@ -113,8 +113,7 @@ const XcfPanel = (() => {
           updateMirror({ status: false, permissionDenied: true });
           return;
         }
-        const on = Boolean(res?.isAttached);
-        updateMirror({ status: on });
+        updateMirror({ status: Boolean(res?.isAttached) });
       }
     );
   }
@@ -125,24 +124,37 @@ const XcfPanel = (() => {
     });
   }
 
+  function setExpanded(expanded, { persist = true } = {}) {
+    if (!dock || !iconBtn || !panel) return;
+    dock.classList.toggle('xcf-dock--expanded', expanded);
+    iconBtn.hidden = expanded;
+    panel.hidden = !expanded;
+    if (persist) handlers?.onPanelUiChange?.({ expanded });
+  }
+
   function mount(h) {
     handlers = h;
-    if (panel) return panel;
+    if (dock) return panel;
+
+    dock = document.createElement('div');
+    dock.className = 'xcf-dock';
+    dock.setAttribute('role', 'group');
+    dock.setAttribute('aria-label', 'X Suite');
+
+    iconBtn = document.createElement('button');
+    iconBtn.type = 'button';
+    iconBtn.className = 'xcf-dock-icon';
+    iconBtn.title = '打开 X Suite';
+    iconBtn.setAttribute('aria-label', '打开 X Suite');
+    iconBtn.textContent = 'X';
 
     panel = document.createElement('div');
     panel.className = 'xcf-panel';
-    panel.setAttribute('role', 'region');
-    panel.setAttribute('aria-label', 'X Suite');
-
+    panel.hidden = true;
     panel.innerHTML = `
       <div class="xcf-panel-head" data-xcf-drag title="拖动移动">
-        <span class="xcf-panel-grip" aria-hidden="true">⋮⋮</span>
         <span class="xcf-panel-title">X Suite</span>
-        <div class="xcf-panel-head-actions">
-          <button type="button" class="xcf-panel-icon" data-xcf-wide title="放大/配置">□</button>
-          <button type="button" class="xcf-panel-icon" data-xcf-collapse title="收起">−</button>
-          <button type="button" class="xcf-panel-icon" data-xcf-hide title="隐藏">×</button>
-        </div>
+        <button type="button" class="xcf-panel-shrink" data-xcf-shrink title="收为小图标">−</button>
       </div>
       <div class="xcf-panel-body">
         <p class="xcf-panel-section-label">评论过滤</p>
@@ -158,41 +170,32 @@ const XcfPanel = (() => {
           <span>启用</span>
         </label>
         <p class="xcf-panel-mirror-status" data-xcf-mirror-status>镜像：已关闭</p>
-        <div class="xcf-panel-actions" data-xcf-actions hidden>
+        <div class="xcf-panel-actions">
           <button type="button" class="xcf-panel-link" data-xcf-open-filter>评论设置</button>
           <button type="button" class="xcf-panel-link" data-xcf-open-library>评论库</button>
           <button type="button" class="xcf-panel-link" data-xcf-open-mirror>镜像设置</button>
         </div>
-        <p class="xcf-panel-hint" data-xcf-hint>拖标题移动</p>
       </div>
     `;
 
-    fab = document.createElement('button');
-    fab.type = 'button';
-    fab.className = 'xcf-panel-fab';
-    fab.title = '显示 X Suite 面板';
-    fab.textContent = 'Suite';
-    fab.hidden = true;
+    dock.appendChild(iconBtn);
+    dock.appendChild(panel);
+    document.body.appendChild(dock);
 
-    document.body.appendChild(panel);
-    document.body.appendChild(fab);
+    applyPosition(dock, loadPos());
 
-    applyPosition(panel, loadPos());
+    iconBtn.addEventListener('click', () => setExpanded(true));
 
     const head = panel.querySelector('[data-xcf-drag]');
     head.addEventListener('pointerdown', (e) => {
-      if (
-        e.target.closest(
-          '[data-xcf-collapse],[data-xcf-hide],[data-xcf-wide]'
-        )
-      ) {
-        return;
-      }
-      startDrag(e, panel);
+      if (e.target.closest('[data-xcf-shrink]')) return;
+      startDrag(e, dock);
     });
-    window.addEventListener('pointermove', onDragMove);
-    window.addEventListener('pointerup', endDrag);
-    window.addEventListener('pointercancel', endDrag);
+
+    panel.querySelector('[data-xcf-shrink]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      setExpanded(false);
+    });
 
     panel.querySelector('[data-xcf-enabled]').addEventListener('change', (e) => {
       handlers?.onEnabledChange?.(e.target.checked);
@@ -202,52 +205,36 @@ const XcfPanel = (() => {
       setMirrorEnabled(e.target.checked);
     });
 
-    panel.querySelector('[data-xcf-wide]').addEventListener('click', (e) => {
-      e.stopPropagation();
-      const wide = !panel.classList.contains('xcf-panel-wide');
-      panel.classList.toggle('xcf-panel-wide', wide);
-      panel.querySelector('[data-xcf-wide]').textContent = wide ? '◧' : '□';
-      panel.querySelector('[data-xcf-actions]').hidden = !wide;
-      handlers?.onPanelUiChange?.({ wide });
-    });
+    panel.querySelector('[data-xcf-open-filter]').addEventListener('click', () =>
+      openOptionsSection('filter-settings')
+    );
+    panel.querySelector('[data-xcf-open-library]').addEventListener('click', () =>
+      openOptionsSection('library')
+    );
+    panel.querySelector('[data-xcf-open-mirror]').addEventListener('click', () =>
+      openOptionsSection('mirror')
+    );
 
-    panel.querySelector('[data-xcf-collapse]').addEventListener('click', (e) => {
-      e.stopPropagation();
-      const collapsed = !panel.classList.contains('xcf-panel-collapsed');
-      panel.classList.toggle('xcf-panel-collapsed', collapsed);
-      panel.querySelector('[data-xcf-collapse]').textContent = collapsed ? '+' : '−';
-      handlers?.onPanelUiChange?.({ collapsed });
-    });
-
-    panel.querySelector('[data-xcf-hide]').addEventListener('click', (e) => {
-      e.stopPropagation();
-      setHidden(true);
-      handlers?.onPanelUiChange?.({ hidden: true });
-    });
-
-    fab.addEventListener('click', () => {
-      setHidden(false);
-      handlers?.onPanelUiChange?.({ hidden: false });
-    });
-
-    panel
-      .querySelector('[data-xcf-open-filter]')
-      ?.addEventListener('click', () => openOptionsSection('filter-settings'));
-    panel
-      .querySelector('[data-xcf-open-library]')
-      ?.addEventListener('click', () => openOptionsSection('library'));
-    panel
-      .querySelector('[data-xcf-open-mirror]')
-      ?.addEventListener('click', () => openOptionsSection('mirror'));
+    window.addEventListener('pointermove', onDragMove);
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
 
     renderMirrorStatus();
     return panel;
   }
 
-  function setHidden(hidden) {
-    if (!panel || !fab) return;
-    panel.hidden = hidden;
-    fab.hidden = !hidden;
+  function normalizePanelUi(ui) {
+    if (ui && typeof ui.expanded === 'boolean') {
+      return { expanded: ui.expanded };
+    }
+    if (ui?.hidden === false && (ui?.collapsed === false || ui?.wide)) {
+      return { expanded: true };
+    }
+    return { expanded: false };
+  }
+
+  function applyPanelUi(ui = {}) {
+    setExpanded(normalizePanelUi(ui).expanded, { persist: false });
   }
 
   function updateMirror({ status, siteLabel, permissionDenied } = {}) {
@@ -263,25 +250,7 @@ const XcfPanel = (() => {
       return;
     }
     renderMirrorStatus();
-    if (siteLabel && panel) {
-      panel.dataset.mirrorSite = siteLabel;
-    }
-  }
-
-  function applyPanelUi(ui = {}) {
-    if (!panel) return;
-    panel.classList.toggle('xcf-panel-collapsed', Boolean(ui.collapsed));
-    const collapseBtn = panel.querySelector('[data-xcf-collapse]');
-    if (collapseBtn) collapseBtn.textContent = ui.collapsed ? '+' : '−';
-
-    const wide = Boolean(ui.wide);
-    panel.classList.toggle('xcf-panel-wide', wide);
-    const wideBtn = panel.querySelector('[data-xcf-wide]');
-    if (wideBtn) wideBtn.textContent = wide ? '◧' : '□';
-    const actions = panel.querySelector('[data-xcf-actions]');
-    if (actions) actions.hidden = !wide;
-
-    setHidden(Boolean(ui.hidden));
+    if (siteLabel && panel) panel.dataset.mirrorSite = siteLabel;
   }
 
   function update(settings, stats = {}) {
@@ -298,24 +267,13 @@ const XcfPanel = (() => {
         : enabled ? '等待扫描' : '已关闭';
     }
 
-    const hint = panel.querySelector('[data-xcf-hint]');
-    if (hint) {
-      hint.textContent = enabled ? '拖标题移动' : '已暂停';
-    }
-
     applyPanelUi(settings?.panelUi || {});
   }
 
   function isOwnNode(node) {
     if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
-    return Boolean(
-      node.classList?.contains('xcf-panel') ||
-        node.classList?.contains('xcf-panel-fab') ||
-        node.closest?.('.xcf-panel, .xcf-panel-fab') ||
-        node.id === 'traffic-copier-root' ||
-        node.closest?.('#traffic-copier-root')
-    );
+    return Boolean(node.closest?.('.xcf-dock'));
   }
 
-  return { mount, update, updateMirror, setHidden, isOwnNode, loadPos, applyPanelUi };
+  return { mount, update, updateMirror, isOwnNode, loadPos, applyPanelUi, normalizePanelUi };
 })();
