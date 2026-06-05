@@ -36,6 +36,14 @@ const MirrorBg = (() => {
     return cfg?.enabled !== false;
   }
 
+  function getSiteUrlPatterns() {
+    const patterns = new Set();
+    for (const site of SITES) {
+      for (const pattern of site.urlPatterns || []) patterns.add(pattern);
+    }
+    return [...patterns];
+  }
+
   function persistMirrorEnabled(enabled) {
     return MirrorSettings.save({ enabled: Boolean(enabled) });
   }
@@ -109,20 +117,20 @@ const MirrorBg = (() => {
   }
 
   function resolveSiteForTab(tabId, callback) {
+    if (!tabId) {
+      callback(null);
+      return;
+    }
     chrome.tabs.get(tabId, (tab) => {
-      if (chrome.runtime.lastError || !tab?.url) {
-        console.error(
-          `[mirror Tab ${tabId}] 无法获取 URL:`,
-          chrome.runtime.lastError?.message
-        );
+      if (chrome.runtime.lastError) {
         callback(null);
         return;
       }
-      const site = getSiteByUrl(tab.url);
-      if (!site) {
-        console.warn(`[mirror Tab ${tabId}] 非 X 页面:`, tab.url);
+      if (!tab?.url) {
+        callback(null);
+        return;
       }
-      callback(site);
+      callback(getSiteByUrl(tab.url));
     });
   }
 
@@ -335,8 +343,14 @@ const MirrorBg = (() => {
     ensureTabMirror(tabId);
   });
 
-  chrome.tabs.onActivated.addListener((activeInfo) => {
-    ensureTabMirror(activeInfo.tabId);
+  chrome.tabs.onActivated.addListener(() => {
+    chrome.tabs.query(
+      { active: true, currentWindow: true, url: getSiteUrlPatterns() },
+      (tabs) => {
+        const tabId = tabs[0]?.id;
+        if (tabId) ensureTabMirror(tabId);
+      }
+    );
   });
 
   function handleMessage(msg, sender, sendResponse) {
