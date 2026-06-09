@@ -89,11 +89,49 @@ body.read-preview-page {
 
 .export-card {
   margin-top: 12px;
-  padding: 18px;
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(15, 20, 25, 0.06);
   border-radius: 18px;
   box-shadow: 0 12px 36px rgba(15, 20, 25, 0.04);
+}
+
+.export-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 16px 18px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.export-summary::-webkit-details-marker {
+  display: none;
+}
+
+.export-summary::after {
+  content: "+";
+  font-size: 1.1rem;
+  color: var(--xcf-muted);
+}
+
+.export-card[open] .export-summary::after {
+  content: "−";
+}
+
+.export-summary-title {
+  font-weight: 700;
+  color: var(--xcf-ink);
+}
+
+.export-summary-sub {
+  font-size: 0.75rem;
+  color: var(--xcf-muted);
+}
+
+.export-body {
+  padding: 0 18px 18px;
 }
 
 .export-head {
@@ -233,7 +271,11 @@ body.read-preview-page {
 
 @media (max-width: 720px) {
   .preview-hero,
-  .export-card {
+  .export-body {
+    padding: 18px;
+  }
+
+  .export-summary {
     padding: 18px;
   }
 

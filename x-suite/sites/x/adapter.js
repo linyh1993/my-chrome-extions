@@ -410,6 +410,88 @@
     return Number.isFinite(ms) ? ms : null;
   }
 
+  function findMediaContainer(node) {
+    return (
+      node.closest('[data-testid="tweetPhoto"]') ||
+      node.closest('[data-testid="videoComponent"]') ||
+      node.closest('[data-testid="card.wrapper"]') ||
+      node.closest('[aria-label*="Image"]') ||
+      node.closest('[aria-label*="图片"]')
+    );
+  }
+
+  function isExcludedMediaNode(node, article) {
+    if (!node || !article?.contains(node)) return true;
+    if (isNestedTweetSubtree(node)) return true;
+    const container = findMediaContainer(node);
+    if (!container) return true;
+    if (isNestedTweetSubtree(container)) return true;
+    return false;
+  }
+
+  function dedupeMediaItems(list) {
+    const seen = new Set();
+    const out = [];
+    for (const item of list || []) {
+      const type = String(item?.type || '').trim();
+      const src = String(item?.src || '').trim();
+      const poster = String(item?.poster || '').trim();
+      const pageUrl = String(item?.pageUrl || '').trim();
+      const key = `${type}|${src}|${poster}|${pageUrl}`;
+      if (!type || seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        type,
+        src,
+        poster,
+        alt: String(item?.alt || '').trim(),
+        pageUrl
+      });
+    }
+    return out;
+  }
+
+  function extractMedia(article) {
+    const items = [];
+
+    for (const img of article.querySelectorAll('img')) {
+      if (isExcludedMediaNode(img, article)) continue;
+      const src = (img.currentSrc || img.src || '').trim();
+      if (!src) continue;
+      if (/profile_images|emoji|abs-0\.twimg\.com/i.test(src)) continue;
+      const pageUrl =
+        img.closest('a[href]')?.href ||
+        article.querySelector('a[href*="/photo/"]')?.href ||
+        '';
+      items.push({
+        type: 'image',
+        src,
+        alt: (img.alt || '').trim(),
+        pageUrl
+      });
+    }
+
+    for (const video of article.querySelectorAll('video')) {
+      if (isExcludedMediaNode(video, article)) continue;
+      const src = (video.currentSrc || video.src || '').trim();
+      const poster = (video.poster || '').trim();
+      const pageUrl =
+        video.closest('a[href]')?.href ||
+        article.querySelector('a[href*="/video/"]')?.href ||
+        article.querySelector('a[href*="/status/"]')?.href ||
+        '';
+      items.push({
+        type: 'video',
+        src,
+        poster,
+        alt: '',
+        pageUrl
+      });
+    }
+
+    return dedupeMediaItems(items);
+  }
+
   function isPromotedOrAd(article) {
     const ctx = article.querySelector('[data-testid="socialContext"]');
     const ctxText = (ctx?.textContent || '').trim();
@@ -431,6 +513,7 @@
       displayName: profile.displayName,
       profileBlob: profile.profileBlob,
       text,
+      media: extractMedia(article),
       isAd: isPromotedOrAd(article),
       inProbableSpam: isInProbableSpamSection(article)
     };

@@ -27,6 +27,7 @@ const XcfArchiveLog = (() => {
       handle: meta.handle,
       displayName: meta.displayName,
       text: meta.text,
+      media: meta.media || undefined,
       tweetId: tid && pageId && tid !== pageId ? tid : '',
       threadId,
       pageUrl: location.href,
@@ -140,6 +141,7 @@ const XcfArchiveLog = (() => {
         handle: meta.handle,
         displayName: meta.displayName,
         text: meta.text,
+        media: meta.media || undefined,
         pageUrl,
         metrics: adapter.extractMetrics?.(root) || undefined
       }

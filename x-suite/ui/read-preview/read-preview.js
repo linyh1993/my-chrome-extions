@@ -605,18 +605,43 @@ function renderTemplate(template, vars) {
   );
 }
 
-function formatMultilineQuote(text) {
-  return cleanText(text)
-    .split('\n')
-    .map((line) => `> ${line}`)
-    .join('\n');
+function mediaLabel(item) {
+  const type = String(item?.type || '').trim().toLowerCase();
+  if (type === 'image') return '图片';
+  if (type === 'video') return '视频';
+  if (type === 'audio') return '音频';
+  return '媒体';
+}
+
+function mediaTarget(item) {
+  return String(item?.src || item?.pageUrl || item?.poster || '').trim();
+}
+
+function appendMediaMarkdown(chunks, mediaList) {
+  const media = Array.isArray(mediaList) ? mediaList : [];
+  if (!media.length) return;
+
+  chunks.push('#### 媒体');
+  for (const item of media) {
+    const target = mediaTarget(item);
+    if (!target) continue;
+    if (item.type === 'image') {
+      chunks.push(`![](${target})`);
+      continue;
+    }
+    if (item.poster) {
+      chunks.push(`![](${item.poster})`);
+    }
+    chunks.push(`- ${mediaLabel(item)}：${target}`);
+  }
 }
 
 function buildSingleThreadMarkdown(root, items) {
   const chunks = [];
   if (cleanText(root?.text)) {
     chunks.push('## 原帖');
-    chunks.push(formatMultilineQuote(root.text));
+    chunks.push(cleanText(root.text));
+    appendMediaMarkdown(chunks, root?.media);
   }
 
   if (items.length) {
@@ -628,6 +653,7 @@ function buildSingleThreadMarkdown(root, items) {
     const when = fmtTime(row?.tweetAt || row?.at);
     chunks.push(`### ${who}${when ? ` · ${when}` : ''}`);
     chunks.push(cleanText(row.text) || '（未保存正文）');
+    appendMediaMarkdown(chunks, row.media);
   });
 
   return chunks.filter(Boolean).join('\n\n');
@@ -641,13 +667,15 @@ function buildMergedMarkdown(groups) {
       chunks.push(`来源：${group.pageUrl}`);
     }
     if (cleanText(group.rootText)) {
-      chunks.push(formatMultilineQuote(group.rootText));
+      chunks.push(cleanText(group.rootText));
+      appendMediaMarkdown(chunks, group.rootMedia);
     }
     group.items.forEach((row) => {
       const who = row.handle ? `@${String(row.handle).replace(/^@/, '')}` : '@未知';
       const when = fmtTime(row?.tweetAt || row?.at);
       chunks.push(`### ${who}${when ? ` · ${when}` : ''}`);
       chunks.push(cleanText(row.text) || '（未保存正文）');
+      appendMediaMarkdown(chunks, row.media);
     });
   }
   return chunks.filter(Boolean).join('\n\n');
@@ -707,6 +735,7 @@ function buildExportModel(lib) {
       heading: headingSeed.slice(0, 80),
       pageUrl: root?.pageUrl || rows[0]?.pageUrl || '',
       rootText: root?.text || '',
+      rootMedia: root?.media || [],
       items: rows.slice().sort((a, b) => (a.at || 0) - (b.at || 0))
     };
   });

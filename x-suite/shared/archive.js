@@ -74,6 +74,26 @@ const XcfArchive = (() => {
   function mergeRow(prev, row) {
     const pm = prev.metrics || {};
     const rm = row.metrics || {};
+    const prevMedia = Array.isArray(prev.media) ? prev.media : [];
+    const rowMedia = Array.isArray(row.media) ? row.media : [];
+    const media = [];
+    const seenMedia = new Set();
+    for (const item of [...prevMedia, ...rowMedia]) {
+      const type = String(item?.type || '').trim();
+      const src = String(item?.src || '').trim();
+      const poster = String(item?.poster || '').trim();
+      const pageUrl = String(item?.pageUrl || '').trim();
+      const key = `${type}|${src}|${poster}|${pageUrl}`;
+      if (!type || seenMedia.has(key)) continue;
+      seenMedia.add(key);
+      media.push({
+        type,
+        src,
+        poster,
+        alt: String(item?.alt || '').trim(),
+        pageUrl
+      });
+    }
     return {
       ...prev,
       ...row,
@@ -88,6 +108,7 @@ const XcfArchive = (() => {
         row.kind === XCF.COMMENT_KIND.NOISE || prev.kind === XCF.COMMENT_KIND.NOISE
           ? XCF.COMMENT_KIND.NOISE
           : row.kind || prev.kind || XCF.COMMENT_KIND.SIGNAL,
+      media,
       metrics: {
         reply: Math.max(pm.reply || 0, rm.reply || 0),
         repost: Math.max(pm.repost || 0, rm.repost || 0),
@@ -108,6 +129,7 @@ const XcfArchive = (() => {
       handle: entry.handle || '',
       displayName: entry.displayName || '',
       text: (entry.text || '').slice(0, 500),
+      media: Array.isArray(entry.media) ? entry.media.slice(0, 12) : [],
       tweetId: entry.tweetId || '',
       threadId,
       ruleId: entry.ruleId || '',
@@ -410,6 +432,11 @@ const XcfArchive = (() => {
       handle: entry.handle || prev.handle || '',
       displayName: entry.displayName || prev.displayName || '',
       text: (entry.text || prev.text || '').slice(0, 2000),
+      media: Array.isArray(entry.media)
+        ? entry.media.slice(0, 12)
+        : Array.isArray(prev.media)
+          ? prev.media
+          : [],
       metrics: entry.metrics || prev.metrics || null
     };
     map[threadId] = next;
