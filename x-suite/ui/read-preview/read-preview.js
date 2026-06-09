@@ -9,6 +9,10 @@ let selectedThreadId = null;
 let threadSummariesCache = [];
 let threadSearchTimer = null;
 let threadViewAll = false;
+let exportSettingsCache = null;
+let exportDirectoryHandle = null;
+let exportSaveTimer = null;
+let exportStatusTimer = null;
 
 function send(type, payload = {}) {
   return new Promise((resolve) => {
@@ -25,8 +29,13 @@ function fmtTime(ts) {
   }
 }
 
-function displayTime(row) {
-  return fmtTime(row?.tweetAt || row?.at);
+function isoTime(ts) {
+  if (!ts) return '';
+  try {
+    return new Date(ts).toISOString();
+  } catch {
+    return '';
+  }
 }
 
 function normText(text) {
@@ -34,6 +43,13 @@ function normText(text) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 120);
+}
+
+function cleanText(text) {
+  return String(text || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\u0000/g, '')
+    .trim();
 }
 
 function dedupeReadRows(rows) {
@@ -90,15 +106,13 @@ function buildThreadSummaries(lib) {
     .map((id) => {
       const rows = byThread[id] || [];
       const root = roots[id] || null;
-      const noiseCount = rows.filter((row) => !row.blockedLane && !isSignalRow(row)).length;
-      const signalCount = rows.filter((row) => !row.blockedLane && isSignalRow(row)).length;
       const preview = (root?.text || rows.find((row) => row.text)?.text || '').trim();
       const handle = root?.handle ? `@${String(root.handle).replace(/^@/, '')}` : '';
       const labelCore = preview ? preview.slice(0, 42) : `帖子 ${id}`;
       const label = handle ? `${handle} · ${labelCore}` : labelCore;
       const latestAt = Math.max(root?.at || 0, ...rows.map((row) => row.at || 0));
       const pageUrl = root?.pageUrl || rows.find((row) => row.pageUrl)?.pageUrl || '';
-      return { id, label, noiseCount, signalCount, latestAt, pageUrl };
+      return { id, label, latestAt, pageUrl };
     })
     .sort((a, b) => b.latestAt - a.latestAt);
 }
@@ -149,7 +163,7 @@ function pickDefaultThreadId(lib) {
 }
 
 function formatThreadLabel(item) {
-  return `${item.label}（${item.signalCount} 非噪音 / ${item.noiseCount} 噪音）`;
+  return item.label;
 }
 
 function threadSearchHaystack(item) {
@@ -191,7 +205,7 @@ function renderThreadCurrent(item) {
   const current = $('thread_current');
   if (!current) return;
   if (!item) {
-    current.textContent = '全部帖子（按时间合并展示非噪音回复）';
+    current.textContent = '全部帖子（按时间合并展示）';
     current.title = '未限定单一帖子';
     return;
   }
@@ -234,11 +248,6 @@ function renderThreadResults(query) {
     more.className = 'thread-result-more';
     more.textContent = `还有 ${total - items.length} 条匹配，请继续输入关键词`;
     list.appendChild(more);
-  } else if (!query.trim() && threadSummariesCache.length > items.length) {
-    const more = document.createElement('li');
-    more.className = 'thread-result-more';
-    more.textContent = `共 ${threadSummariesCache.length} 个帖子，输入关键词可搜索更多`;
-    list.appendChild(more);
   }
 }
 
@@ -266,7 +275,10 @@ function renderThreadPicker(lib) {
     threadViewAll = !selectedThreadId;
   }
 
-  if (total) total.textContent = `共 ${summaries.length} 个`;
+  if (total) {
+    total.textContent = '';
+    total.hidden = true;
+  }
 
   const current = selectedThreadId
     ? summaries.find((item) => item.id === selectedThreadId) || null
@@ -311,14 +323,14 @@ function getReadItems(lib) {
 function appendReadComment(container, row) {
   const block = document.createElement('p');
   block.className = 'read-comment read-signal';
-  const text = String(row.text || '').trim();
+  const text = cleanText(row.text);
   block.textContent = text || '（未保存正文；请回到原帖等待采集完成后再刷新）';
   container.appendChild(block);
 
   const meta = document.createElement('div');
   meta.className = 'read-meta-inline';
   const who = row.handle ? `@${String(row.handle).replace(/^@/, '')}` : '@未知';
-  const when = displayTime(row);
+  const when = fmtTime(row?.tweetAt || row?.at);
   meta.textContent = when ? `${who} · ${when}` : who;
   container.appendChild(meta);
 }
@@ -330,10 +342,18 @@ function renderReadFeed(lib) {
   feed.textContent = '';
   feed.className = 'read-feed read-feed-plain';
   $('read_empty').hidden = items.length > 0;
-  $('read_summary').textContent = items.length ? `${items.length} 条非噪音回复` : '';
-  $('thread_caption').textContent = selectedThreadId
-    ? `单帖阅读 · ${selectedThreadId}`
-    : '全部帖子合并阅读';
+  $('read_summary').textContent = selectedThreadId ? '当前帖子阅读' : '全部帖子阅读';
+
+  const currentRoot = selectedThreadId ? threadRoots[selectedThreadId] || null : null;
+  const currentAuthor = currentRoot?.handle
+    ? `@${String(currentRoot.handle).replace(/^@/, '')}`
+    : '';
+  const currentTime = fmtTime(currentRoot?.tweetAt || currentRoot?.at);
+  $('thread_caption').textContent = currentAuthor || currentTime
+    ? [currentAuthor, currentTime].filter(Boolean).join(' · ')
+    : selectedThreadId
+      ? `帖子 ${selectedThreadId}`
+      : '按帖子分组的合并阅读';
 
   if (!items.length) return;
 
@@ -342,10 +362,10 @@ function renderReadFeed(lib) {
 
   if (selectedThreadId) {
     const root = threadRoots[selectedThreadId] || null;
-    if (root && String(root.text || '').trim()) {
+    if (root && cleanText(root.text)) {
       const rootText = document.createElement('p');
       rootText.className = 'read-root';
-      rootText.textContent = String(root.text).trim();
+      rootText.textContent = cleanText(root.text);
       doc.appendChild(rootText);
 
       const sep = document.createElement('div');
@@ -397,10 +417,10 @@ function renderReadFeed(lib) {
     firstGroup = false;
 
     const root = threadRoots[key] || threadRoots[normPageKey(key)] || null;
-    if (root && String(root.text || '').trim()) {
+    if (root && cleanText(root.text)) {
       const rootText = document.createElement('p');
       rootText.className = 'read-root';
-      rootText.textContent = String(root.text).trim();
+      rootText.textContent = cleanText(root.text);
       doc.appendChild(rootText);
 
       const sep = document.createElement('div');
@@ -423,21 +443,400 @@ function renderReadFeed(lib) {
   feed.appendChild(doc);
 }
 
-function renderStats(lib) {
-  const summaries = threadSummariesCache;
-  const items = getReadItems(lib);
-  $('view_mode_label').textContent = selectedThreadId ? '单帖阅读' : '全部帖子';
-  $('stat_thread_count').textContent = String(summaries.length);
-  $('stat_signal_count').textContent = String(items.length);
+function renderPageHint() {
   $('page_hint').textContent = selectedThreadId
-    ? '现在是单帖沉浸阅读：显示主贴与当前帖的非噪音回复。'
-    : '现在是合并阅读：按帖子分组展示所有已采集的非噪音回复。';
+    ? '单帖模式：展示主贴和当前帖子的非噪音回复，并可直接导出 Markdown。'
+    : '合并模式：按帖子分组展示所有已采集的非噪音回复，并可直接导出 Markdown。';
 }
 
 function renderAll(lib) {
   renderThreadPicker(lib);
   renderReadFeed(lib);
-  renderStats(lib);
+  renderPageHint();
+}
+
+function renderMetaRows(properties) {
+  const list = $('export_meta_list');
+  if (!list) return;
+  list.textContent = '';
+
+  for (const item of properties || []) {
+    const row = document.createElement('div');
+    row.className = 'export-meta-row';
+
+    const keyInput = document.createElement('input');
+    keyInput.type = 'text';
+    keyInput.className = 'export-input export-meta-key';
+    keyInput.placeholder = 'key';
+    keyInput.value = item.key || '';
+
+    const valueInput = document.createElement('input');
+    valueInput.type = 'text';
+    valueInput.className = 'export-input export-meta-value';
+    valueInput.placeholder = '{{title}}';
+    valueInput.value = item.value || '';
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'export-meta-remove';
+    removeBtn.textContent = '删';
+    removeBtn.setAttribute('aria-label', `删除属性 ${item.key || ''}`.trim());
+
+    row.appendChild(keyInput);
+    row.appendChild(valueInput);
+    row.appendChild(removeBtn);
+    list.appendChild(row);
+  }
+
+  if (!list.children.length) {
+    const empty = document.createElement('div');
+    empty.className = 'hint';
+    empty.textContent = '暂无属性；点击 Add property 添加 frontmatter 字段。';
+    list.appendChild(empty);
+  }
+}
+
+function renderExportSettings() {
+  if (!exportSettingsCache) return;
+  $('export_note_location').value = exportSettingsCache.noteLocation || '';
+  $('export_filename_template').value = exportSettingsCache.fileNameTemplate || '';
+  renderMetaRows(exportSettingsCache.properties || []);
+}
+
+function updateDirectoryStatus() {
+  const el = $('export_dir_status');
+  if (!el) return;
+  if (!('showDirectoryPicker' in window)) {
+    el.textContent = '当前浏览器环境不支持目录写入。';
+    el.className = 'export-dir-status is-muted';
+    return;
+  }
+  if (!exportDirectoryHandle) {
+    el.textContent = '未选择导出目录';
+    el.className = 'export-dir-status is-muted';
+    return;
+  }
+  el.textContent = `当前目录：${exportDirectoryHandle.name}`;
+  el.className = 'export-dir-status';
+}
+
+function setExportStatus(message, tone = 'success', autoHide = false) {
+  const el = $('export_status');
+  if (!el) return;
+  clearTimeout(exportStatusTimer);
+  el.hidden = false;
+  el.textContent = message;
+  el.className = `export-status is-${tone}`;
+  if (autoHide) {
+    exportStatusTimer = setTimeout(() => {
+      el.hidden = true;
+    }, 2200);
+  }
+}
+
+function readMetaRowsFromDom() {
+  return Array.from(document.querySelectorAll('.export-meta-row'))
+    .map((row) => ({
+      key: row.querySelector('.export-meta-key')?.value || '',
+      value: row.querySelector('.export-meta-value')?.value || ''
+    }))
+    .filter((item) => item.key.trim() || item.value.trim());
+}
+
+function readExportSettingsFromDom() {
+  return {
+    noteLocation: $('export_note_location')?.value || '',
+    fileNameTemplate: $('export_filename_template')?.value || '',
+    properties: readMetaRowsFromDom()
+  };
+}
+
+async function persistExportSettings() {
+  exportSettingsCache = await MarkdownExportSettings.save(readExportSettingsFromDom());
+  return exportSettingsCache;
+}
+
+function scheduleExportSettingsSave() {
+  clearTimeout(exportSaveTimer);
+  exportSaveTimer = setTimeout(async () => {
+    await persistExportSettings();
+    setExportStatus('导出配置已保存。', 'success', true);
+  }, 180);
+}
+
+function addMetaPropertyRow() {
+  const next = readMetaRowsFromDom();
+  next.push({ key: '', value: '' });
+  exportSettingsCache = MarkdownExportSettings.normalize({
+    ...exportSettingsCache,
+    properties: next
+  });
+  renderMetaRows(exportSettingsCache.properties);
+  persistExportSettings().catch(() => {});
+}
+
+function removeMetaPropertyRow(button) {
+  const row = button.closest('.export-meta-row');
+  if (!row) return;
+  row.remove();
+  persistExportSettings()
+    .then((next) => {
+      exportSettingsCache = next;
+      renderMetaRows(exportSettingsCache.properties);
+      setExportStatus('属性已更新。', 'success', true);
+    })
+    .catch(() => {
+      setExportStatus('属性保存失败。', 'error');
+    });
+}
+
+function sanitizeSegment(input, fallback = 'untitled') {
+  const cleaned = String(input || '')
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/g, '');
+  return cleaned || fallback;
+}
+
+function renderTemplate(template, vars) {
+  return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) =>
+    Object.prototype.hasOwnProperty.call(vars, key) ? String(vars[key] || '') : ''
+  );
+}
+
+function formatMultilineQuote(text) {
+  return cleanText(text)
+    .split('\n')
+    .map((line) => `> ${line}`)
+    .join('\n');
+}
+
+function buildSingleThreadMarkdown(root, items) {
+  const chunks = [];
+  if (cleanText(root?.text)) {
+    chunks.push('## 原帖');
+    chunks.push(formatMultilineQuote(root.text));
+  }
+
+  if (items.length) {
+    chunks.push('## 回复');
+  }
+
+  items.forEach((row) => {
+    const who = row.handle ? `@${String(row.handle).replace(/^@/, '')}` : '@未知';
+    const when = fmtTime(row?.tweetAt || row?.at);
+    chunks.push(`### ${who}${when ? ` · ${when}` : ''}`);
+    chunks.push(cleanText(row.text) || '（未保存正文）');
+  });
+
+  return chunks.filter(Boolean).join('\n\n');
+}
+
+function buildMergedMarkdown(groups) {
+  const chunks = [];
+  for (const group of groups) {
+    chunks.push(`## ${group.heading}`);
+    if (group.pageUrl) {
+      chunks.push(`来源：${group.pageUrl}`);
+    }
+    if (cleanText(group.rootText)) {
+      chunks.push(formatMultilineQuote(group.rootText));
+    }
+    group.items.forEach((row) => {
+      const who = row.handle ? `@${String(row.handle).replace(/^@/, '')}` : '@未知';
+      const when = fmtTime(row?.tweetAt || row?.at);
+      chunks.push(`### ${who}${when ? ` · ${when}` : ''}`);
+      chunks.push(cleanText(row.text) || '（未保存正文）');
+    });
+  }
+  return chunks.filter(Boolean).join('\n\n');
+}
+
+function buildExportModel(lib) {
+  const items = getReadItems(lib);
+  const threadRoots = lib.threadRoots || {};
+  const exportedAt = new Date();
+
+  if (selectedThreadId) {
+    const root = threadRoots[selectedThreadId] || null;
+    const titleSeed =
+      cleanText(root?.text) ||
+      cleanText(items[0]?.text) ||
+      `X Thread ${selectedThreadId}`;
+    const pageUrl = root?.pageUrl || items.find((row) => row.pageUrl)?.pageUrl || '';
+    const author = root?.handle
+      ? `@${String(root.handle).replace(/^@/, '')}`
+      : items[0]?.handle
+        ? `@${String(items[0].handle).replace(/^@/, '')}`
+        : '';
+    const publishedAt = root?.tweetAt || root?.at || items[0]?.tweetAt || items[0]?.at || null;
+    const description = cleanText(root?.text || items[0]?.text || '').slice(0, 160);
+
+    return {
+      title: titleSeed.slice(0, 80),
+      url: pageUrl,
+      author,
+      published: isoTime(publishedAt),
+      date: exportedAt.toISOString(),
+      threadId: selectedThreadId,
+      description,
+      view: 'thread',
+      itemsCount: String(items.length),
+      body: buildSingleThreadMarkdown(root, items)
+    };
+  }
+
+  const groupsMap = new Map();
+  for (const row of items) {
+    const key =
+      row.threadId ||
+      (row.pageUrl || '').match(/\/status\/(\d+)/)?.[1] ||
+      normPageKey(row.pageUrl || '');
+    if (!groupsMap.has(key)) groupsMap.set(key, []);
+    groupsMap.get(key).push(row);
+  }
+
+  const groups = Array.from(groupsMap.entries()).map(([key, rows]) => {
+    const root = threadRoots[key] || threadRoots[normPageKey(key)] || null;
+    const headingSeed =
+      cleanText(root?.text) ||
+      cleanText(rows[0]?.text) ||
+      `帖子 ${key}`;
+    return {
+      heading: headingSeed.slice(0, 80),
+      pageUrl: root?.pageUrl || rows[0]?.pageUrl || '',
+      rootText: root?.text || '',
+      items: rows.slice().sort((a, b) => (a.at || 0) - (b.at || 0))
+    };
+  });
+
+  return {
+    title: `X 阅读导出 ${exportedAt.toISOString().slice(0, 19).replace(/[:T]/g, '-')}`,
+    url: '',
+    author: '',
+    published: '',
+    date: exportedAt.toISOString(),
+    threadId: 'all',
+    description: cleanText(items[0]?.text || '').slice(0, 160),
+    view: 'all',
+    itemsCount: String(items.length),
+    body: buildMergedMarkdown(groups)
+  };
+}
+
+function yamlString(value) {
+  const text = String(value ?? '');
+  if (!text.trim()) return '""';
+  if (text.includes('\n')) {
+    return `|\n${text
+      .split('\n')
+      .map((line) => `  ${line}`)
+      .join('\n')}`;
+  }
+  return `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function buildFrontmatter(settings, vars) {
+  const lines = ['---'];
+  for (const property of settings.properties || []) {
+    const key = sanitizeSegment(property.key, '').replace(/\s+/g, '_');
+    if (!key) continue;
+    const value = renderTemplate(property.value, vars).trim();
+    lines.push(`${key}: ${yamlString(value)}`);
+  }
+  lines.push('---');
+  return lines.join('\n');
+}
+
+function splitRelativePathSegments(noteLocation, vars) {
+  return renderTemplate(noteLocation, vars)
+    .split(/[\\/]+/)
+    .map((part) => part.trim())
+    .filter((part) => part && part !== '.' && part !== '..')
+    .map((part) => sanitizeSegment(part, 'untitled'));
+}
+
+async function ensureExportDirectory(rootHandle, segments) {
+  let current = rootHandle;
+  for (const segment of segments) {
+    current = await current.getDirectoryHandle(segment, { create: true });
+  }
+  return current;
+}
+
+async function pickExportDirectory() {
+  if (!('showDirectoryPicker' in window)) {
+    setExportStatus('当前浏览器不支持目录授权。', 'error');
+    return;
+  }
+  try {
+    const handle = await window.showDirectoryPicker();
+    const granted = await ReadPreviewDirectoryStore.ensureWritePermission(handle);
+    if (!granted) {
+      setExportStatus('目录授权被拒绝。', 'error');
+      return;
+    }
+    await ReadPreviewDirectoryStore.set(handle);
+    exportDirectoryHandle = handle;
+    updateDirectoryStatus();
+    setExportStatus('目录已保存。', 'success', true);
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    setExportStatus(`选择目录失败：${error?.message || error}`, 'error');
+  }
+}
+
+async function exportMarkdown() {
+  if (!libraryCache) {
+    setExportStatus('当前没有可导出的内容。', 'error');
+    return;
+  }
+  if (!exportDirectoryHandle) {
+    setExportStatus('请先选择导出目录。', 'error');
+    return;
+  }
+
+  const granted = await ReadPreviewDirectoryStore.ensureWritePermission(exportDirectoryHandle);
+  if (!granted) {
+    setExportStatus('目录写入权限不可用，请重新选择目录。', 'error');
+    return;
+  }
+
+  try {
+    const model = buildExportModel(libraryCache);
+    clearTimeout(exportSaveTimer);
+    exportSettingsCache = MarkdownExportSettings.normalize(readExportSettingsFromDom());
+    const settings = await MarkdownExportSettings.save(exportSettingsCache);
+    exportSettingsCache = settings;
+    const vars = {
+      title: model.title,
+      url: model.url,
+      source: model.url,
+      author: model.author,
+      published: model.published,
+      date: model.date,
+      threadId: model.threadId,
+      description: model.description,
+      view: model.view,
+      itemsCount: model.itemsCount
+    };
+
+    const fileBase = sanitizeSegment(renderTemplate(settings.fileNameTemplate, vars), model.title);
+    const noteSegments = splitRelativePathSegments(settings.noteLocation, vars);
+    const targetDir = await ensureExportDirectory(exportDirectoryHandle, noteSegments);
+    const fileHandle = await targetDir.getFileHandle(`${fileBase}.md`, { create: true });
+    const frontmatter = buildFrontmatter(settings, vars);
+    const content = `${frontmatter}\n\n${model.body || ''}\n`;
+    const writable = await fileHandle.createWritable();
+    await writable.write(content);
+    await writable.close();
+
+    const savedPath = [...noteSegments, `${fileBase}.md`].join('/');
+    setExportStatus(`已导出到 ${exportDirectoryHandle.name}/${savedPath}`, 'success');
+  } catch (error) {
+    setExportStatus(`导出失败：${error?.message || error}`, 'error');
+  }
 }
 
 async function refresh() {
@@ -503,6 +902,41 @@ function bindEvents() {
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) refresh();
   });
+
+  $('btn_pick_export_dir')?.addEventListener('click', () => {
+    pickExportDirectory();
+  });
+
+  $('btn_export_md')?.addEventListener('click', () => {
+    exportMarkdown();
+  });
+
+  $('export_note_location')?.addEventListener('input', scheduleExportSettingsSave);
+  $('export_filename_template')?.addEventListener('input', scheduleExportSettingsSave);
+
+  $('btn_add_meta')?.addEventListener('click', () => {
+    addMetaPropertyRow();
+  });
+
+  $('export_meta_list')?.addEventListener('input', () => {
+    scheduleExportSettingsSave();
+  });
+
+  $('export_meta_list')?.addEventListener('click', (event) => {
+    if (!event.target.classList.contains('export-meta-remove')) return;
+    removeMetaPropertyRow(event.target);
+  });
+}
+
+async function initExportConfig() {
+  exportSettingsCache = await MarkdownExportSettings.load();
+  renderExportSettings();
+  try {
+    exportDirectoryHandle = await ReadPreviewDirectoryStore.get();
+  } catch {
+    exportDirectoryHandle = null;
+  }
+  updateDirectoryStatus();
 }
 
 async function init() {
@@ -517,6 +951,7 @@ async function init() {
     selectedThreadId = await loadStoredThreadId();
   }
 
+  await initExportConfig();
   await refresh();
 }
 

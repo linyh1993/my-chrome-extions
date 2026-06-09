@@ -19,25 +19,10 @@
     </div>
   </header>
 
-  <section class="preview-stats" aria-label="阅读概览">
-    <article class="preview-stat">
-      <span class="preview-stat-label">当前视图</span>
-      <strong id="view_mode_label" class="preview-stat-value">加载中</strong>
-    </article>
-    <article class="preview-stat">
-      <span class="preview-stat-label">帖子数</span>
-      <strong id="stat_thread_count" class="preview-stat-value">0</strong>
-    </article>
-    <article class="preview-stat">
-      <span class="preview-stat-label">非噪音回复</span>
-      <strong id="stat_signal_count" class="preview-stat-value">0</strong>
-    </article>
-  </section>
-
   <div class="thread-bar" id="thread_bar" hidden>
     <div class="thread-bar-head">
       <span class="thread-bar-label">当前帖子</span>
-      <span id="thread_total" class="thread-total"></span>
+      <span id="thread_total" class="thread-total" hidden></span>
     </div>
     <div class="thread-combobox" id="thread_combobox">
       <div class="thread-current" id="thread_current" tabindex="0" role="button" aria-haspopup="listbox"></div>
@@ -56,8 +41,45 @@
       <button type="button" id="thread_view_all" class="preview-btn preview-btn-secondary">全部帖子</button>
       <a id="thread_open_x" class="thread-open" href="#" target="_blank" rel="noopener">在 X 打开</a>
     </div>
-    <p class="thread-bar-hint">这个预览页只保留“阅读”体验：上面切帖子，下面直接看整理后的正文流。</p>
+    <p class="thread-bar-hint">这里只保留阅读动作：切帖子、看正文、导出 Markdown。</p>
   </div>
+
+  <section class="export-card" aria-labelledby="export_heading">
+    <div class="export-head">
+      <div>
+        <h2 id="export_heading">导出 Markdown</h2>
+        <p class="sub">选择本地目录后，可以把当前阅读视图直接写成 `.md` 文件，并附带 frontmatter。</p>
+      </div>
+      <div class="export-actions">
+        <button type="button" id="btn_pick_export_dir" class="preview-btn preview-btn-secondary">选择目录</button>
+        <button type="button" id="btn_export_md" class="preview-btn">导出当前视图</button>
+      </div>
+    </div>
+
+    <p id="export_dir_status" class="export-dir-status">未选择导出目录</p>
+    <p class="hint export-hint">模板变量：`{{title}}`、`{{url}}`、`{{author}}`、`{{published}}`、`{{date}}`、`{{threadId}}`、`{{description}}`、`{{view}}`。</p>
+
+    <div class="export-grid">
+      <label class="export-field">
+        <span class="export-label">Note location</span>
+        <input id="export_note_location" class="export-input" type="text" placeholder="00-Inbox/02-Clippings" />
+      </label>
+      <label class="export-field">
+        <span class="export-label">文件名模板</span>
+        <input id="export_filename_template" class="export-input" type="text" placeholder="{{title}}" />
+      </label>
+    </div>
+
+    <div class="export-meta">
+      <div class="export-meta-head">
+        <h3>Meta Properties</h3>
+        <button type="button" id="btn_add_meta" class="preview-link export-add-link">+ Add property</button>
+      </div>
+      <div id="export_meta_list" class="export-meta-list"></div>
+    </div>
+
+    <p id="export_status" class="export-status" hidden></p>
+  </section>
 
   <main class="preview-panel">
     <div class="read-toolbar">
@@ -69,6 +91,8 @@
   </main>
 
   <script src="../../shared/constants.js"></script>
+  <script src="../../shared/markdown-export-settings.js"></script>
+  <script src="directory-handle-store.js"></script>
   <script src="read-preview.js"></script>
 </body>
 </html>
