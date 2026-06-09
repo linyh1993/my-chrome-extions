@@ -44,12 +44,39 @@
     <p class="thread-bar-hint">这里只保留阅读动作：切帖子、看正文、导出 Markdown。</p>
   </div>
 
-  <details class="export-card" id="export_card">
-    <summary class="export-summary">
-      <span class="export-summary-title">导出 Markdown</span>
-      <span class="export-summary-sub">默认折叠；展开后可配置目录、模板和 Meta。</span>
+  <details class="config-card stats-card" id="stats_card">
+    <summary class="config-summary">
+      <span class="config-summary-title">统计数据指标</span>
+      <span class="config-summary-sub">默认折叠；展开后查看当前阅读视图的帖子、回复和媒体汇总。</span>
     </summary>
-    <div class="export-body">
+    <div class="config-body stats-body">
+      <div class="stats-grid">
+        <section class="stat-tile">
+          <p class="stat-label">当前视图</p>
+          <p class="stat-value" id="stat_view_mode">-</p>
+        </section>
+        <section class="stat-tile">
+          <p class="stat-label">帖子数量</p>
+          <p class="stat-value" id="stat_thread_count">0</p>
+        </section>
+        <section class="stat-tile">
+          <p class="stat-label">回复数量</p>
+          <p class="stat-value" id="stat_reply_count">0</p>
+        </section>
+        <section class="stat-tile">
+          <p class="stat-label">媒体条目</p>
+          <p class="stat-value" id="stat_media_count">0</p>
+        </section>
+      </div>
+    </div>
+  </details>
+
+  <details class="config-card export-card" id="export_card">
+    <summary class="config-summary">
+      <span class="config-summary-title">导出 Markdown</span>
+      <span class="config-summary-sub">默认折叠；展开后可配置目录、模板和 Meta。</span>
+    </summary>
+    <div class="config-body export-body">
       <div class="export-head">
         <div>
           <h2 id="export_heading">导出 Markdown</h2>

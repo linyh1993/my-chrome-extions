@@ -97,6 +97,14 @@ function allSignalRows(lib) {
   return lib.signal || [];
 }
 
+function resolveThreadKey(row) {
+  return (
+    row?.threadId ||
+    (row?.pageUrl || '').match(/\/status\/(\d+)/)?.[1] ||
+    normPageKey(row?.pageUrl || '')
+  );
+}
+
 function buildThreadSummaries(lib) {
   const byThread = lib.archiveByThread || {};
   const roots = lib.threadRoots || {};
@@ -328,6 +336,45 @@ function getReadItems(lib) {
   return dedupeReadRows(rows);
 }
 
+function countMediaEntries(mediaList) {
+  return (Array.isArray(mediaList) ? mediaList : []).filter((item) => mediaTarget(item)).length;
+}
+
+function renderStats(lib) {
+  const viewMode = $('stat_view_mode');
+  const threadCount = $('stat_thread_count');
+  const replyCount = $('stat_reply_count');
+  const mediaCount = $('stat_media_count');
+  if (!viewMode || !threadCount || !replyCount || !mediaCount) return;
+
+  const items = getReadItems(lib);
+  const visibleThreadIds = new Set();
+  let visibleMediaCount = 0;
+
+  if (selectedThreadId) {
+    visibleThreadIds.add(selectedThreadId);
+    visibleMediaCount += countMediaEntries(lib.threadRoots?.[selectedThreadId]?.media);
+  }
+
+  for (const row of items) {
+    const key = resolveThreadKey(row);
+    if (key) visibleThreadIds.add(key);
+    visibleMediaCount += countMediaEntries(row.media);
+  }
+
+  if (!selectedThreadId) {
+    for (const key of visibleThreadIds) {
+      const root = lib.threadRoots?.[key] || lib.threadRoots?.[normPageKey(key)] || null;
+      visibleMediaCount += countMediaEntries(root?.media);
+    }
+  }
+
+  viewMode.textContent = selectedThreadId ? '单帖阅读' : '全部帖子';
+  threadCount.textContent = String(visibleThreadIds.size);
+  replyCount.textContent = String(items.length);
+  mediaCount.textContent = String(visibleMediaCount);
+}
+
 function appendReadComment(container, row) {
   const block = document.createElement('p');
   block.className = 'read-comment read-signal';
@@ -399,10 +446,7 @@ function renderReadFeed(lib) {
 
   const groups = new Map();
   for (const row of items) {
-    const key =
-      row.threadId ||
-      (row.pageUrl || '').match(/\/status\/(\d+)/)?.[1] ||
-      normPageKey(row.pageUrl || '');
+    const key = resolveThreadKey(row);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
   }
@@ -461,6 +505,7 @@ function renderPageHint() {
 
 function renderAll(lib) {
   renderThreadPicker(lib);
+  renderStats(lib);
   renderReadFeed(lib);
   renderPageHint();
 }
@@ -729,10 +774,7 @@ function buildExportModel(lib) {
 
   const groupsMap = new Map();
   for (const row of items) {
-    const key =
-      row.threadId ||
-      (row.pageUrl || '').match(/\/status\/(\d+)/)?.[1] ||
-      normPageKey(row.pageUrl || '');
+    const key = resolveThreadKey(row);
     if (!groupsMap.has(key)) groupsMap.set(key, []);
     groupsMap.get(key).push(row);
   }
