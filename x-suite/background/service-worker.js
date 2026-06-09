@@ -68,6 +68,37 @@ function notifyUnclassifyOnTabs(entry) {
   );
 }
 
+function threadUrlMatches(url, threadId, pageUrl = '') {
+  const raw = String(url || '').trim();
+  if (!raw) return false;
+  if (threadId && raw.includes(`/status/${threadId}`)) return true;
+  if (!pageUrl) return false;
+  try {
+    const target = new URL(pageUrl);
+    const current = new URL(raw);
+    return current.origin === target.origin && current.pathname === target.pathname;
+  } catch {
+    return raw.split('?')[0] === String(pageUrl).split('?')[0];
+  }
+}
+
+async function reloadThreadTabs(threadId, pageUrl = '') {
+  const tabs = await chrome.tabs.query({
+    url: ['*://x.com/*', '*://*.x.com/*', '*://twitter.com/*', '*://*.twitter.com/*']
+  });
+  let reloaded = 0;
+  for (const tab of tabs) {
+    if (!tab.id || !threadUrlMatches(tab.url, threadId, pageUrl)) continue;
+    try {
+      await chrome.tabs.reload(tab.id);
+      reloaded += 1;
+    } catch {
+      /* ignore */
+    }
+  }
+  return reloaded;
+}
+
 async function libraryPayload() {
   const settings = await XcfSettings.load();
   const lanes = await XcfArchive.getLibrary();
@@ -233,6 +264,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case XCF.MSG.CLEAR_ARCHIVE:
         sendResponse(await XcfArchive.clearFilteredOnly());
         break;
+      case XCF.MSG.CLEAR_THREAD_ARCHIVE: {
+        const threadId = String(msg.threadId || '').trim();
+        if (!threadId) {
+          sendResponse({ ok: false, error: 'missing_thread_id' });
+          break;
+        }
+        const result = await XcfArchive.clearThread(threadId);
+        const reloadedTabs = await reloadThreadTabs(threadId, result.pageUrl || msg.pageUrl || '');
+        sendResponse({
+          ok: true,
+          ...result,
+          reloadedTabs
+        });
+        break;
+      }
       case XCF.MSG.COMPACT_ARCHIVE: {
         const stats = await XcfArchive.compact();
         const lib = await XcfArchive.getLibrary();

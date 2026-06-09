@@ -38,11 +38,14 @@
       <ul id="thread_results" class="thread-results" role="listbox" hidden></ul>
     </div>
     <div class="thread-bar-actions">
+      <button type="button" id="thread_clear_current" class="preview-btn preview-btn-danger" hidden>清空并重抓当前帖子</button>
       <button type="button" id="thread_view_all" class="preview-btn preview-btn-secondary">全部帖子</button>
       <a id="thread_open_x" class="thread-open" href="#" target="_blank" rel="noopener">在 X 打开</a>
     </div>
     <p class="thread-bar-hint">这里只保留阅读动作：切帖子、看正文、导出 Markdown。</p>
   </div>
+
+  <p id="thread_action_status" class="thread-action-status" hidden></p>
 
   <details class="config-card stats-card" id="stats_card">
     <summary class="config-summary">

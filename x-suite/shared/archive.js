@@ -384,6 +384,32 @@ const XcfArchive = (() => {
     return flatten(next);
   }
 
+  async function clearThread(threadId) {
+    const tid = String(threadId || '').trim();
+    if (!tid) {
+      return { threadId: '', removedReplies: 0, removedRoot: false, pageUrl: '' };
+    }
+
+    const map = await loadByThread();
+    const removedReplies = Array.isArray(map[tid]) ? map[tid].length : 0;
+    if (tid in map) {
+      delete map[tid];
+      await saveByThread(map);
+    }
+
+    let roots = await loadThreadRoots();
+    roots = await migrateThreadRoots(roots);
+    const root = roots[tid] || null;
+    const pageUrl = root?.pageUrl || '';
+    const removedRoot = Boolean(root);
+    if (removedRoot) {
+      delete roots[tid];
+      await saveThreadRoots(roots);
+    }
+
+    return { threadId: tid, removedReplies, removedRoot, pageUrl };
+  }
+
   function loadThreadRoots() {
     return new Promise((resolve) => {
       chrome.storage.local.get({ [THREAD_KEY]: {} }, (data) => {
@@ -511,6 +537,7 @@ const XcfArchive = (() => {
     removeEntry,
     clear,
     clearFilteredOnly,
+    clearThread,
     loadByThread,
     loadThreadRoots,
     upsertThreadRoot,

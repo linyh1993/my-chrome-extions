@@ -13,6 +13,10 @@ let exportSettingsCache = null;
 let exportDirectoryHandle = null;
 let exportSaveTimer = null;
 let exportStatusTimer = null;
+let selectedThreadPageUrl = '';
+let threadActionStatusTimer = null;
+let threadClearBusy = false;
+let threadFollowUpRefreshTimers = [];
 
 function send(type, payload = {}) {
   return new Promise((resolve) => {
@@ -229,6 +233,57 @@ function displayedRowText(row) {
   return cleanText(row?.text);
 }
 
+function setThreadActionStatus(message, tone = 'success', autoHide = false) {
+  const el = $('thread_action_status');
+  if (!el) return;
+  clearTimeout(threadActionStatusTimer);
+  el.hidden = false;
+  el.textContent = message;
+  el.className = `thread-action-status is-${tone}`;
+  if (autoHide) {
+    threadActionStatusTimer = setTimeout(() => {
+      el.hidden = true;
+    }, 2600);
+  }
+}
+
+function clearThreadActionStatus() {
+  const el = $('thread_action_status');
+  if (!el) return;
+  clearTimeout(threadActionStatusTimer);
+  el.hidden = true;
+  el.textContent = '';
+  el.className = 'thread-action-status';
+}
+
+function buildPendingThreadItem(threadId) {
+  if (!threadId) return null;
+  return {
+    id: threadId,
+    label: `帖子 ${threadId}（等待重新抓取）`,
+    latestAt: 0,
+    pageUrl: selectedThreadPageUrl || ''
+  };
+}
+
+function clearFollowUpRefreshTimers() {
+  for (const timerId of threadFollowUpRefreshTimers) {
+    clearTimeout(timerId);
+  }
+  threadFollowUpRefreshTimers = [];
+}
+
+function scheduleFollowUpRefreshes() {
+  clearFollowUpRefreshTimers();
+  for (const delay of [1800, 4200]) {
+    const timerId = setTimeout(() => {
+      threadFollowUpRefreshTimers = threadFollowUpRefreshTimers.filter((id) => id !== timerId);
+      refresh();
+    }, delay);
+    threadFollowUpRefreshTimers.push(timerId);
+  }
+}
+
 function renderThreadResults(query) {
   const list = $('thread_results');
   if (!list) return;
@@ -272,33 +327,52 @@ function renderThreadPicker(lib) {
   const total = $('thread_total');
   const openLink = $('thread_open_x');
   const viewAllBtn = $('thread_view_all');
+  const clearBtn = $('thread_clear_current');
   if (!bar) return;
 
   const summaries = buildThreadSummaries(lib);
   threadSummariesCache = summaries;
 
   if (!summaries.length) {
-    bar.hidden = true;
-    selectedThreadId = null;
-    threadViewAll = false;
-    renderThreadCurrent(null);
+    if (selectedThreadId && !threadViewAll) {
+      bar.hidden = false;
+      renderThreadCurrent(buildPendingThreadItem(selectedThreadId));
+      if (clearBtn) {
+        clearBtn.hidden = false;
+        clearBtn.disabled = threadClearBusy;
+      }
+      if (openLink) {
+        openLink.href = selectedThreadPageUrl || '#';
+        openLink.hidden = !selectedThreadPageUrl;
+      }
+      if (viewAllBtn) {
+        viewAllBtn.hidden = false;
+      }
+    } else {
+      bar.hidden = true;
+      selectedThreadId = null;
+      threadViewAll = false;
+      selectedThreadPageUrl = '';
+      clearThreadActionStatus();
+      renderThreadCurrent(null);
+    }
     return;
   }
 
   bar.hidden = false;
-  if (selectedThreadId && !summaries.some((item) => item.id === selectedThreadId)) {
-    selectedThreadId = pickDefaultThreadId(lib);
-    threadViewAll = !selectedThreadId;
-  }
 
   if (total) {
     total.textContent = '';
     total.hidden = true;
   }
 
-  const current = selectedThreadId
+  const resolvedCurrent = selectedThreadId
     ? summaries.find((item) => item.id === selectedThreadId) || null
     : null;
+  const current = resolvedCurrent || (selectedThreadId && !threadViewAll
+    ? buildPendingThreadItem(selectedThreadId)
+    : null);
+  if (resolvedCurrent?.pageUrl) selectedThreadPageUrl = resolvedCurrent.pageUrl;
   renderThreadCurrent(current);
 
   if (openLink) {
@@ -315,6 +389,11 @@ function renderThreadPicker(lib) {
     viewAllBtn.hidden = threadViewAll || !selectedThreadId;
   }
 
+  if (clearBtn) {
+    clearBtn.hidden = !selectedThreadId || threadViewAll;
+    clearBtn.disabled = threadClearBusy;
+  }
+
   const search = $('thread_search');
   if (search && document.activeElement !== search) {
     renderThreadResults(search.value || '');
@@ -324,6 +403,14 @@ function renderThreadPicker(lib) {
 async function setSelectedThread(threadId) {
   selectedThreadId = threadId || null;
   threadViewAll = !threadId;
+  if (!threadId) {
+    selectedThreadPageUrl = '';
+    clearFollowUpRefreshTimers();
+    clearThreadActionStatus();
+  } else {
+    const current = threadSummariesCache.find((item) => item.id === threadId) || null;
+    if (current?.pageUrl) selectedThreadPageUrl = current.pageUrl;
+  }
   await persistThreadId(selectedThreadId);
   applyHash();
   if (libraryCache) renderAll(libraryCache);
@@ -1111,6 +1198,56 @@ async function exportAllThreadsMarkdown() {
   }
 }
 
+function currentThreadPageUrl(lib, threadId) {
+  if (!threadId) return '';
+  const rootUrl = lib?.threadRoots?.[threadId]?.pageUrl;
+  if (rootUrl) return rootUrl;
+  const summaryUrl = threadSummariesCache.find((item) => item.id === threadId)?.pageUrl;
+  return summaryUrl || selectedThreadPageUrl || '';
+}
+
+async function clearCurrentThreadAndRefresh() {
+  const threadId = selectedThreadId;
+  if (!threadId || threadViewAll || threadClearBusy) return;
+
+  const prompt = `确认清空帖子 ${threadId} 的已采集数据，并尝试刷新当前 X 页面重新抓取吗？`;
+  if (typeof window.confirm === 'function' && !window.confirm(prompt)) {
+    return;
+  }
+
+  threadClearBusy = true;
+  if ($('thread_clear_current')) $('thread_clear_current').disabled = true;
+  setThreadActionStatus('正在清空该帖子数据，并尝试刷新当前 X 页面重新抓取…', 'success');
+
+  try {
+    const pageUrl = currentThreadPageUrl(libraryCache, threadId);
+    selectedThreadPageUrl = pageUrl || selectedThreadPageUrl;
+    const result = await send(XCF.MSG.CLEAR_THREAD_ARCHIVE, { threadId, pageUrl });
+    await persistThreadId(threadId);
+    await refresh();
+
+    if (!result?.ok) {
+      setThreadActionStatus('清空帖子数据失败，请重试。', 'error');
+      return;
+    }
+
+    const reloadedTabs = Number(result.reloadedTabs || 0);
+    const base = `已清空帖子 ${threadId} 的数据`;
+    if (reloadedTabs > 0) {
+      scheduleFollowUpRefreshes();
+      setThreadActionStatus(`${base}，并刷新了 ${reloadedTabs} 个 X 页面重新抓取。`, 'success');
+    } else {
+      setThreadActionStatus(`${base}。未找到已打开的对应帖子页，请回到 X 帖子页手动刷新一次。`, 'error');
+    }
+  } catch (error) {
+    setThreadActionStatus(`清空帖子数据失败：${error?.message || error}`, 'error');
+  } finally {
+    threadClearBusy = false;
+    if ($('thread_clear_current')) $('thread_clear_current').disabled = false;
+    if (libraryCache) renderThreadPicker(libraryCache);
+  }
+}
+
 async function refresh() {
   const lib = await send(XCF.MSG.GET_LIBRARY);
   if (!lib) return;
@@ -1130,6 +1267,10 @@ function bindEvents() {
     $('thread_search').value = '';
     setSelectedThread(null);
     hideThreadResults();
+  });
+
+  $('thread_clear_current')?.addEventListener('click', () => {
+    clearCurrentThreadAndRefresh();
   });
 
   $('thread_current')?.addEventListener('click', () => {

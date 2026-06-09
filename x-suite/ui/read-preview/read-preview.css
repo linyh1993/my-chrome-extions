@@ -81,6 +81,17 @@ body.read-preview-page {
   color: var(--xcf-ink);
 }
 
+.preview-btn-danger {
+  border-color: rgba(180, 35, 24, 0.24);
+  background: rgba(180, 35, 24, 0.08);
+  color: #8a2020;
+}
+
+.preview-btn-danger:hover {
+  border-color: rgba(180, 35, 24, 0.38);
+  background: rgba(180, 35, 24, 0.12);
+}
+
 .preview-link {
   border: 1px solid rgba(29, 155, 240, 0.22);
   background: rgba(29, 155, 240, 0.08);
@@ -341,6 +352,19 @@ body.read-preview-page {
 .preview-inline-meta {
   font-size: 0.75rem;
   color: var(--xcf-muted);
+}
+
+.thread-action-status {
+  margin: 10px 2px 0;
+  font-size: 0.8125rem;
+}
+
+.thread-action-status.is-success {
+  color: #0f7b4a;
+}
+
+.thread-action-status.is-error {
+  color: #b42318;
 }
 
 .read-feed-plain {
