@@ -44,32 +44,6 @@
     <p class="thread-bar-hint">这里只保留阅读动作：切帖子、看正文、导出 Markdown。</p>
   </div>
 
-  <section class="translate-card" aria-labelledby="translate_heading">
-    <div class="translate-head">
-      <div>
-        <h2 id="translate_heading">原生翻译</h2>
-        <p class="sub">使用 Chrome 内建翻译 API 按块翻译当前阅读视图，保留分段与换行；导出时会带上当前翻译结果。</p>
-      </div>
-      <div class="translate-actions">
-        <button type="button" id="btn_translate_native" class="preview-btn">翻译当前视图</button>
-        <button type="button" id="btn_reset_translation" class="preview-btn preview-btn-secondary" hidden>还原原文</button>
-      </div>
-    </div>
-
-    <div class="translate-grid">
-      <label class="export-field">
-        <span class="export-label">源语言</span>
-        <select id="translate_source_language" class="export-input"></select>
-      </label>
-      <label class="export-field">
-        <span class="export-label">目标语言</span>
-        <select id="translate_target_language" class="export-input"></select>
-      </label>
-    </div>
-
-    <p id="translate_status" class="translate-status is-muted">未启用翻译。</p>
-  </section>
-
   <details class="export-card" id="export_card">
     <summary class="export-summary">
       <span class="export-summary-title">导出 Markdown</span>
@@ -124,7 +98,6 @@
 
   <script src="../../shared/constants.js"></script>
   <script src="../../shared/markdown-export-settings.js"></script>
-  <script src="../../shared/read-preview-settings.js"></script>
   <script src="directory-handle-store.js"></script>
   <script src="read-preview.js"></script>
 </body>
