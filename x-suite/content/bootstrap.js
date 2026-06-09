@@ -103,6 +103,12 @@ const XcfBootstrap = (() => {
           });
           return true;
         }
+        if (msg.type === XCF.MSG.RECAPTURE_THREAD_ON_PAGE) {
+          XcfProcessor.recaptureCurrentThread(msg.threadId).then((result) => {
+            sendResponse(result || { ok: false });
+          });
+          return true;
+        }
         return false;
       });
     } catch {

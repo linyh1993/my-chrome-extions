@@ -82,21 +82,26 @@ function threadUrlMatches(url, threadId, pageUrl = '') {
   }
 }
 
-async function reloadThreadTabs(threadId, pageUrl = '') {
+async function recaptureThreadTabs(threadId, pageUrl = '') {
   const tabs = await chrome.tabs.query({
     url: ['*://x.com/*', '*://*.x.com/*', '*://twitter.com/*', '*://*.twitter.com/*']
   });
-  let reloaded = 0;
+  let recaptured = 0;
   for (const tab of tabs) {
     if (!tab.id || !threadUrlMatches(tab.url, threadId, pageUrl)) continue;
     try {
-      await chrome.tabs.reload(tab.id);
-      reloaded += 1;
+      const res = await chrome.tabs.sendMessage(tab.id, {
+        type: XCF.MSG.RECAPTURE_THREAD_ON_PAGE,
+        threadId
+      });
+      if (res?.ok) {
+        recaptured += 1;
+      }
     } catch {
       /* ignore */
     }
   }
-  return reloaded;
+  return recaptured;
 }
 
 async function libraryPayload() {
@@ -271,11 +276,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           break;
         }
         const result = await XcfArchive.clearThread(threadId);
-        const reloadedTabs = await reloadThreadTabs(threadId, result.pageUrl || msg.pageUrl || '');
+        const recapturedTabs = await recaptureThreadTabs(threadId, result.pageUrl || msg.pageUrl || '');
         sendResponse({
           ok: true,
           ...result,
-          reloadedTabs
+          recapturedTabs
         });
         break;
       }

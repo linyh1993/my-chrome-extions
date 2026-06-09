@@ -20,6 +20,7 @@ const XCF = {
     GET_LIBRARY: 'getLibrary',
     CLEAR_ARCHIVE: 'clearArchive',
     CLEAR_THREAD_ARCHIVE: 'clearThreadArchive',
+    RECAPTURE_THREAD_ON_PAGE: 'recaptureThreadOnPage',
     EXPORT_DATA: 'exportData',
     BLOCK_ARCHIVE_ENTRY: 'blockArchiveEntry',
     RESTORE_ARCHIVE_ENTRY: 'restoreArchiveEntry',

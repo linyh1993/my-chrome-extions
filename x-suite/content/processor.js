@@ -241,6 +241,42 @@ const XcfProcessor = (() => {
     XcfBootstrap.refreshPanel();
   }
 
+  async function recaptureCurrentThread(threadId) {
+    if (!XcfRoute.isPostThreadActive()) return { ok: false, reason: 'inactive' };
+    const currentThreadId = XcfRoute.pageThreadId();
+    if (!currentThreadId || String(threadId || '') !== String(currentThreadId)) {
+      return { ok: false, reason: 'thread_mismatch' };
+    }
+
+    XcfScan.abortScrollCollect();
+    XcfScan.clearTimers();
+    XcfScan.teardownCaptureObserver();
+    S().loggedArchiveKeys.clear();
+    S().loggedThreadRoots.delete(currentThreadId);
+
+    for (const article of S().adapter.findArticles()) {
+      delete article.dataset.xcfLogKey;
+      delete article.dataset.xcfProcessed;
+      delete article.dataset.xcfSignalLogged;
+      delete article.dataset.xcfCaptureObserved;
+      delete article.dataset.xcfPendingText;
+      delete article.dataset.xcfMainPost;
+      delete article.dataset.xcfFolded;
+      article.classList.remove('xcf-hidden-article');
+      XcfFold.getTweetRow?.(article)?.classList?.remove('xcf-hidden-article');
+    }
+
+    XcfFold.cleanupOrphanBars();
+    XcfFold.recountFolded();
+    XcfFold.refreshSummary();
+    XcfBootstrap.refreshPanel();
+
+    await XcfArchiveLog.hydrateKeys();
+    XcfScan.scheduleScan(true);
+    XcfScan.scheduleLiveCaptureWave([500, 1600, 3200]);
+    return { ok: true };
+  }
+
   return {
     rememberOverride,
     isOverridden,
@@ -248,6 +284,7 @@ const XcfProcessor = (() => {
     blockHandle,
     whitelistHandle,
     unclassifyEntry,
-    refoldAllNoise
+    refoldAllNoise,
+    recaptureCurrentThread
   };
 })();

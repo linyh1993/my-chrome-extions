@@ -1210,14 +1210,14 @@ async function clearCurrentThreadAndRefresh() {
   const threadId = selectedThreadId;
   if (!threadId || threadViewAll || threadClearBusy) return;
 
-  const prompt = `确认清空帖子 ${threadId} 的已采集数据，并尝试刷新当前 X 页面重新抓取吗？`;
+  const prompt = `确认清空帖子 ${threadId} 的已采集数据，并从当前已打开的 X 页面重新抓取吗？`;
   if (typeof window.confirm === 'function' && !window.confirm(prompt)) {
     return;
   }
 
   threadClearBusy = true;
   if ($('thread_clear_current')) $('thread_clear_current').disabled = true;
-  setThreadActionStatus('正在清空该帖子数据，并尝试刷新当前 X 页面重新抓取…', 'success');
+  setThreadActionStatus('正在清空该帖子数据，并从当前已打开的 X 页面重新抓取…', 'success');
 
   try {
     const pageUrl = currentThreadPageUrl(libraryCache, threadId);
@@ -1231,13 +1231,13 @@ async function clearCurrentThreadAndRefresh() {
       return;
     }
 
-    const reloadedTabs = Number(result.reloadedTabs || 0);
+    const recapturedTabs = Number(result.recapturedTabs || 0);
     const base = `已清空帖子 ${threadId} 的数据`;
-    if (reloadedTabs > 0) {
+    if (recapturedTabs > 0) {
       scheduleFollowUpRefreshes();
-      setThreadActionStatus(`${base}，并刷新了 ${reloadedTabs} 个 X 页面重新抓取。`, 'success');
+      setThreadActionStatus(`${base}，并从 ${recapturedTabs} 个已打开的 X 页面重新抓取。`, 'success');
     } else {
-      setThreadActionStatus(`${base}。未找到已打开的对应帖子页，请回到 X 帖子页手动刷新一次。`, 'error');
+      setThreadActionStatus(`${base}。未找到已打开的对应帖子页，请保持帖子页打开后再点一次。`, 'error');
     }
   } catch (error) {
     setThreadActionStatus(`清空帖子数据失败：${error?.message || error}`, 'error');
