@@ -112,6 +112,10 @@ const XcfProcessor = (() => {
 
     delete article.dataset.xcfPendingText;
     article.dataset.xcfProcessed = '1';
+    if (!(meta.text || '').trim() && !(meta.media || []).length) {
+      article.dataset.xcfPendingText = '1';
+      return;
+    }
     XcfArchiveLog.commitRow(article, meta, (a, m) => {
       article.dataset.xcfLogKey = XcfArchiveLog.captureKey(a, m);
       article.dataset.xcfSignalLogged = '1';

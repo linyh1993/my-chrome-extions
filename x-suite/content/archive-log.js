@@ -80,18 +80,17 @@ const XcfArchiveLog = (() => {
       fn(article, m);
     };
 
-    if ((meta.text || '').trim()) {
+    if ((meta.text || '').trim() || (meta.media || []).length > 0) {
       run(meta);
       return;
     }
     if (attempt >= TEXT_RETRY_MS.length) {
-      if (meta.handle) run(meta);
       return;
     }
     setTimeout(() => {
       if (!article.isConnected || !XcfRoute.isPostThreadActive()) return;
       const again = S().adapter.extractMeta(article);
-      if ((again.text || '').trim()) {
+      if ((again.text || '').trim() || (again.media || []).length > 0) {
         run(again);
         return;
       }
@@ -125,7 +124,7 @@ const XcfArchiveLog = (() => {
     const root = adapter.getThreadRootArticle();
     if (!root) return;
     const meta = adapter.extractMeta(root);
-    if (!(meta.text || '').trim()) return;
+    if (!(meta.text || '').trim() && !(meta.media || []).length) return;
     S().loggedThreadRoots.add(threadId);
     let pageUrl = location.href;
     try {

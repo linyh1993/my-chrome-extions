@@ -7,10 +7,14 @@ const XcfScan = (() => {
     clearTimeout(S().scrollTimer);
     clearTimeout(S().scrollCaptureTimer);
     clearTimeout(S().afterScrollScanTimer);
+    for (const timerId of S().liveCaptureTimerIds || []) {
+      clearTimeout(timerId);
+    }
     S().scanTimer = null;
     S().scrollTimer = null;
     S().scrollCaptureTimer = null;
     S().afterScrollScanTimer = null;
+    S().liveCaptureTimerIds = [];
     S().isScrolling = false;
   }
 
@@ -120,7 +124,22 @@ const XcfScan = (() => {
     S().afterScrollScanTimer = setTimeout(() => {
       scan();
       setTimeout(() => capturePass(), 500);
+      scheduleLiveCaptureWave([1400, 3000]);
     }, 120);
+  }
+
+  function scheduleLiveCaptureWave(delayMs = 1600) {
+    if (!XcfRoute.isPostThreadActive()) return;
+    const delays = Array.isArray(delayMs) ? delayMs : [delayMs];
+    for (const ms of delays) {
+      const timerId = setTimeout(() => {
+        S().liveCaptureTimerIds = (S().liveCaptureTimerIds || []).filter((id) => id !== timerId);
+        if (!XcfRoute.isPostThreadActive()) return;
+        capturePass();
+        scan();
+      }, ms);
+      S().liveCaptureTimerIds = [...(S().liveCaptureTimerIds || []), timerId];
+    }
   }
 
   function scheduleScrollCollectIfNeeded(delayMs = 1200) {
@@ -239,6 +258,7 @@ const XcfScan = (() => {
       if (!XcfRoute.isPostThreadActive()) return;
       scheduleScan(false);
       capturePass();
+      scheduleLiveCaptureWave(1800);
     });
     S().domObserver.observe(target, { childList: true, subtree: true });
   }
@@ -262,6 +282,7 @@ const XcfScan = (() => {
       if (!XcfRoute.isPostThreadActive()) return;
       scheduleScan(true);
       scheduleScrollCollectIfNeeded(1200);
+      scheduleLiveCaptureWave(2200);
     });
   }
 
@@ -272,6 +293,7 @@ const XcfScan = (() => {
     scan,
     scheduleScan,
     scheduleScrollCollectIfNeeded,
+    scheduleLiveCaptureWave,
     hookScroll,
     observeDom,
     onRouteChange

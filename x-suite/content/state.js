@@ -14,6 +14,7 @@ const XcfContent = {
   collectScrollDone: false,
   collectScrollRunning: false,
   collectScrollTimerId: null,
+  liveCaptureTimerIds: [],
   suppressScrollEvents: 0,
   isScrolling: false,
   scanTimer: null,
