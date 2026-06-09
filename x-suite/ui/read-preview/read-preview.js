@@ -3,6 +3,47 @@ const $ = (id) => document.getElementById(id);
 const PREVIEW_THREAD_SESSION_KEY = 'xsuite_read_preview_thread';
 const THREAD_RECENT_LIMIT = 15;
 const THREAD_RESULTS_LIMIT = 40;
+const SUPPORTED_TRANSLATION_LANGUAGES = [
+  { code: 'ar', label: 'Arabic' },
+  { code: 'bg', label: 'Bulgarian' },
+  { code: 'bn', label: 'Bengali' },
+  { code: 'cs', label: 'Czech' },
+  { code: 'da', label: 'Danish' },
+  { code: 'de', label: 'German' },
+  { code: 'el', label: 'Greek' },
+  { code: 'en', label: 'English' },
+  { code: 'es', label: 'Spanish' },
+  { code: 'fi', label: 'Finnish' },
+  { code: 'fr', label: 'French' },
+  { code: 'hi', label: 'Hindi' },
+  { code: 'hr', label: 'Croatian' },
+  { code: 'hu', label: 'Hungarian' },
+  { code: 'id', label: 'Indonesian' },
+  { code: 'it', label: 'Italian' },
+  { code: 'iw', label: 'Hebrew' },
+  { code: 'ja', label: 'Japanese' },
+  { code: 'kn', label: 'Kannada' },
+  { code: 'ko', label: 'Korean' },
+  { code: 'lt', label: 'Lithuanian' },
+  { code: 'mr', label: 'Marathi' },
+  { code: 'nl', label: 'Dutch' },
+  { code: 'no', label: 'Norwegian' },
+  { code: 'pl', label: 'Polish' },
+  { code: 'pt', label: 'Portuguese' },
+  { code: 'ro', label: 'Romanian' },
+  { code: 'ru', label: 'Russian' },
+  { code: 'sk', label: 'Slovak' },
+  { code: 'sl', label: 'Slovenian' },
+  { code: 'sv', label: 'Swedish' },
+  { code: 'ta', label: 'Tamil' },
+  { code: 'te', label: 'Telugu' },
+  { code: 'th', label: 'Thai' },
+  { code: 'tr', label: 'Turkish' },
+  { code: 'uk', label: 'Ukrainian' },
+  { code: 'vi', label: 'Vietnamese' },
+  { code: 'zh', label: 'Chinese (Simplified)' },
+  { code: 'zh-Hant', label: 'Chinese (Traditional)' }
+];
 
 let libraryCache = null;
 let selectedThreadId = null;
@@ -13,6 +54,15 @@ let exportSettingsCache = null;
 let exportDirectoryHandle = null;
 let exportSaveTimer = null;
 let exportStatusTimer = null;
+let readPreviewSettingsCache = null;
+let translationStatusTimer = null;
+let translationState = {
+  active: false,
+  sourceLanguage: '',
+  targetLanguage: '',
+  rowTexts: new Map(),
+  rootTexts: new Map()
+};
 
 function send(type, payload = {}) {
   return new Promise((resolve) => {
@@ -50,6 +100,16 @@ function cleanText(text) {
     .replace(/\r\n/g, '\n')
     .replace(/\u0000/g, '')
     .trim();
+}
+
+function clearTranslationState() {
+  translationState = {
+    active: false,
+    sourceLanguage: '',
+    targetLanguage: '',
+    rowTexts: new Map(),
+    rootTexts: new Map()
+  };
 }
 
 function dedupeReadRows(rows) {
@@ -213,6 +273,26 @@ function renderThreadCurrent(item) {
   current.title = item.pageUrl || item.id;
 }
 
+function rootTranslationKey(threadId, root) {
+  return String(threadId || root?.tweetId || root?.pageUrl || '');
+}
+
+function displayedRootText(threadId, root) {
+  const key = rootTranslationKey(threadId, root);
+  if (translationState.active && translationState.rootTexts.has(key)) {
+    return translationState.rootTexts.get(key);
+  }
+  return cleanText(root?.text);
+}
+
+function displayedRowText(row) {
+  const rowId = String(row?.id || '');
+  if (translationState.active && translationState.rowTexts.has(rowId)) {
+    return translationState.rowTexts.get(rowId);
+  }
+  return cleanText(row?.text);
+}
+
 function renderThreadResults(query) {
   const list = $('thread_results');
   if (!list) return;
@@ -323,7 +403,7 @@ function getReadItems(lib) {
 function appendReadComment(container, row) {
   const block = document.createElement('p');
   block.className = 'read-comment read-signal';
-  const text = cleanText(row.text);
+  const text = displayedRowText(row);
   block.textContent = text || '（未保存正文；请回到原帖等待采集完成后再刷新）';
   container.appendChild(block);
 
@@ -362,10 +442,11 @@ function renderReadFeed(lib) {
 
   if (selectedThreadId) {
     const root = threadRoots[selectedThreadId] || null;
-    if (root && cleanText(root.text)) {
+    const rootTextValue = displayedRootText(selectedThreadId, root);
+    if (root && rootTextValue) {
       const rootText = document.createElement('p');
       rootText.className = 'read-root';
-      rootText.textContent = cleanText(root.text);
+      rootText.textContent = rootTextValue;
       doc.appendChild(rootText);
 
       const sep = document.createElement('div');
@@ -417,10 +498,11 @@ function renderReadFeed(lib) {
     firstGroup = false;
 
     const root = threadRoots[key] || threadRoots[normPageKey(key)] || null;
-    if (root && cleanText(root.text)) {
+    const rootTextValue = displayedRootText(key, root);
+    if (root && rootTextValue) {
       const rootText = document.createElement('p');
       rootText.className = 'read-root';
-      rootText.textContent = cleanText(root.text);
+      rootText.textContent = rootTextValue;
       doc.appendChild(rootText);
 
       const sep = document.createElement('div');
@@ -447,6 +529,262 @@ function renderPageHint() {
   $('page_hint').textContent = selectedThreadId
     ? '单帖模式：展示主贴和当前帖子的非噪音回复，并可直接导出 Markdown。'
     : '合并模式：按帖子分组展示所有已采集的非噪音回复，并可直接导出 Markdown。';
+}
+
+function setTranslateStatus(message, tone = 'muted', autoHide = false) {
+  const el = $('translate_status');
+  if (!el) return;
+  clearTimeout(translationStatusTimer);
+  el.textContent = message;
+  el.className = `translate-status is-${tone}`;
+  if (autoHide) {
+    translationStatusTimer = setTimeout(() => {
+      el.textContent = translationState.active
+        ? `当前显示 ${translationState.sourceLanguage} → ${translationState.targetLanguage} 翻译结果。`
+        : '未启用翻译。';
+      el.className = translationState.active
+        ? 'translate-status is-success'
+        : 'translate-status is-muted';
+    }, 2600);
+  }
+}
+
+function renderTranslateLanguageOptions() {
+  const source = $('translate_source_language');
+  const target = $('translate_target_language');
+  if (!source || !target) return;
+
+  source.textContent = '';
+  target.textContent = '';
+
+  const autoOption = document.createElement('option');
+  autoOption.value = 'auto';
+  autoOption.textContent = '自动检测';
+  source.appendChild(autoOption);
+
+  for (const item of SUPPORTED_TRANSLATION_LANGUAGES) {
+    const sourceOption = document.createElement('option');
+    sourceOption.value = item.code;
+    sourceOption.textContent = `${item.label} (${item.code})`;
+    source.appendChild(sourceOption);
+
+    const targetOption = document.createElement('option');
+    targetOption.value = item.code;
+    targetOption.textContent = `${item.label} (${item.code})`;
+    target.appendChild(targetOption);
+  }
+}
+
+function renderReadPreviewSettings() {
+  if (!readPreviewSettingsCache) return;
+  $('translate_source_language').value = readPreviewSettingsCache.sourceLanguage || 'auto';
+  $('translate_target_language').value = readPreviewSettingsCache.targetLanguage || 'zh';
+}
+
+async function persistReadPreviewSettings() {
+  readPreviewSettingsCache = await ReadPreviewSettings.save({
+    sourceLanguage: $('translate_source_language')?.value || 'auto',
+    targetLanguage: $('translate_target_language')?.value || 'zh'
+  });
+  return readPreviewSettingsCache;
+}
+
+function collectCurrentTranslationUnits(lib) {
+  const items = getReadItems(lib);
+  const threadRoots = lib.threadRoots || {};
+  const rootUnits = [];
+  const rowUnits = [];
+
+  if (selectedThreadId) {
+    const root = threadRoots[selectedThreadId] || null;
+    const rootText = cleanText(root?.text);
+    if (rootText) {
+      rootUnits.push({
+        key: rootTranslationKey(selectedThreadId, root),
+        text: rootText
+      });
+    }
+    for (const row of items) {
+      const text = cleanText(row.text);
+      if (!text) continue;
+      rowUnits.push({
+        key: String(row.id || ''),
+        text
+      });
+    }
+    return { rootUnits, rowUnits };
+  }
+
+  const groups = new Map();
+  for (const row of items) {
+    const key =
+      row.threadId ||
+      (row.pageUrl || '').match(/\/status\/(\d+)/)?.[1] ||
+      normPageKey(row.pageUrl || '');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+
+  for (const [key, rows] of groups.entries()) {
+    const root = threadRoots[key] || threadRoots[normPageKey(key)] || null;
+    const rootText = cleanText(root?.text);
+    if (rootText) {
+      rootUnits.push({
+        key: rootTranslationKey(key, root),
+        text: rootText
+      });
+    }
+    for (const row of rows) {
+      const text = cleanText(row.text);
+      if (!text) continue;
+      rowUnits.push({
+        key: String(row.id || ''),
+        text
+      });
+    }
+  }
+
+  return { rootUnits, rowUnits };
+}
+
+function translationSeedText(units) {
+  const texts = [];
+  for (const unit of units.rootUnits) texts.push(unit.text);
+  for (const unit of units.rowUnits) texts.push(unit.text);
+  return texts.join('\n').slice(0, 4000);
+}
+
+async function detectSourceLanguage(preferredSourceLanguage, sampleText) {
+  if (preferredSourceLanguage && preferredSourceLanguage !== 'auto') {
+    return preferredSourceLanguage;
+  }
+  if (!sampleText) return 'en';
+  if (!('LanguageDetector' in self)) {
+    throw new Error('当前 Chrome 不支持 Language Detector API，无法自动检测源语言。请手动选择源语言。');
+  }
+
+  const availability = await LanguageDetector.availability();
+  if (availability === 'unavailable') {
+    throw new Error('Language Detector API 当前不可用，请手动选择源语言。');
+  }
+
+  const detector = await LanguageDetector.create();
+  const results = await detector.detect(sampleText);
+  const best = results?.[0]?.detectedLanguage;
+  detector.destroy?.();
+  if (!best) {
+    throw new Error('未能识别当前内容语言，请手动选择源语言。');
+  }
+  return best;
+}
+
+async function translateTextPreservingLines(translator, text) {
+  const source = String(text || '');
+  if (!source.trim()) return source;
+
+  const segments = source.split(/(\n+)/);
+  const out = [];
+  for (const segment of segments) {
+    if (!segment) continue;
+    if (/^\n+$/.test(segment)) {
+      out.push(segment);
+      continue;
+    }
+    out.push(await translator.translate(segment));
+  }
+  return out.join('');
+}
+
+async function translateCurrentView() {
+  if (!libraryCache) {
+    setTranslateStatus('当前没有可翻译的内容。', 'error');
+    return;
+  }
+  if (!('Translator' in self)) {
+    setTranslateStatus('当前 Chrome 不支持 Translator API。需要 Chrome 138+ 桌面版。', 'error');
+    return;
+  }
+  if (!navigator.userActivation?.isActive) {
+    setTranslateStatus('请直接点击“翻译当前视图”按钮触发模型创建。', 'error');
+    return;
+  }
+
+  const prefs = await persistReadPreviewSettings();
+  const units = collectCurrentTranslationUnits(libraryCache);
+  const seedText = translationSeedText(units);
+  if (!seedText.trim()) {
+    setTranslateStatus('当前视图没有可翻译文本。', 'error');
+    return;
+  }
+
+  try {
+    setTranslateStatus('正在检测语言并准备翻译模型…', 'muted');
+    const sourceLanguage = await detectSourceLanguage(prefs.sourceLanguage, seedText);
+    const targetLanguage = prefs.targetLanguage;
+    if (!targetLanguage) {
+      throw new Error('请先选择目标语言。');
+    }
+    if (sourceLanguage === targetLanguage) {
+      throw new Error('源语言和目标语言相同，无需翻译。');
+    }
+
+    const availability = await Translator.availability({
+      sourceLanguage,
+      targetLanguage
+    });
+    if (availability === 'unavailable') {
+      throw new Error(`当前设备不支持 ${sourceLanguage} → ${targetLanguage} 这组语言翻译。`);
+    }
+
+    setTranslateStatus('正在下载或创建翻译模型…', 'muted');
+    const translator = await Translator.create({
+      sourceLanguage,
+      targetLanguage
+    });
+
+    const nextRootTexts = new Map();
+    const nextRowTexts = new Map();
+    const allUnits = [
+      ...units.rootUnits.map((item) => ({ ...item, kind: 'root' })),
+      ...units.rowUnits.map((item) => ({ ...item, kind: 'row' }))
+    ];
+
+    setTranslateStatus(`正在翻译 ${allUnits.length} 个文本块…`, 'muted');
+    for (const unit of allUnits) {
+      const translated = await translateTextPreservingLines(translator, unit.text);
+      if (unit.kind === 'root') nextRootTexts.set(unit.key, translated);
+      else nextRowTexts.set(unit.key, translated);
+    }
+    translator.destroy?.();
+
+    translationState = {
+      active: true,
+      sourceLanguage,
+      targetLanguage,
+      rootTexts: nextRootTexts,
+      rowTexts: nextRowTexts
+    };
+
+    $('btn_reset_translation').hidden = false;
+    renderAll(libraryCache);
+    setTranslateStatus(`当前显示 ${sourceLanguage} → ${targetLanguage} 翻译结果。`, 'success');
+  } catch (error) {
+    clearTranslationState();
+    $('btn_reset_translation').hidden = true;
+    renderAll(libraryCache);
+    setTranslateStatus(`翻译失败：${error?.message || error}`, 'error');
+  }
+}
+
+function resetTranslationView(showHint = true, rerender = true) {
+  clearTranslationState();
+  $('btn_reset_translation').hidden = true;
+  if (rerender && libraryCache) renderAll(libraryCache);
+  if (showHint) {
+    setTranslateStatus('已还原原文。', 'muted', true);
+  } else {
+    setTranslateStatus('未启用翻译。', 'muted');
+  }
 }
 
 function renderAll(lib) {
@@ -638,9 +976,10 @@ function appendMediaMarkdown(chunks, mediaList) {
 
 function buildSingleThreadMarkdown(root, items) {
   const chunks = [];
-  if (cleanText(root?.text)) {
+  const rootBodyText = displayedRootText(selectedThreadId, root);
+  if (rootBodyText) {
     chunks.push('## 原帖');
-    chunks.push(cleanText(root.text));
+    chunks.push(rootBodyText);
     appendMediaMarkdown(chunks, root?.media);
   }
 
@@ -652,7 +991,7 @@ function buildSingleThreadMarkdown(root, items) {
     const who = row.handle ? `@${String(row.handle).replace(/^@/, '')}` : '@未知';
     const when = fmtTime(row?.tweetAt || row?.at);
     chunks.push(`### ${who}${when ? ` · ${when}` : ''}`);
-    chunks.push(cleanText(row.text) || '（未保存正文）');
+    chunks.push(displayedRowText(row) || '（未保存正文）');
     appendMediaMarkdown(chunks, row.media);
   });
 
@@ -674,7 +1013,7 @@ function buildMergedMarkdown(groups) {
       const who = row.handle ? `@${String(row.handle).replace(/^@/, '')}` : '@未知';
       const when = fmtTime(row?.tweetAt || row?.at);
       chunks.push(`### ${who}${when ? ` · ${when}` : ''}`);
-      chunks.push(cleanText(row.text) || '（未保存正文）');
+      chunks.push(displayedRowText(row) || '（未保存正文）');
       appendMediaMarkdown(chunks, row.media);
     });
   }
@@ -689,8 +1028,8 @@ function buildExportModel(lib) {
   if (selectedThreadId) {
     const root = threadRoots[selectedThreadId] || null;
     const titleSeed =
-      cleanText(root?.text) ||
-      cleanText(items[0]?.text) ||
+      displayedRootText(selectedThreadId, root) ||
+      displayedRowText(items[0]) ||
       `X Thread ${selectedThreadId}`;
     const pageUrl = root?.pageUrl || items.find((row) => row.pageUrl)?.pageUrl || '';
     const author = root?.handle
@@ -699,7 +1038,8 @@ function buildExportModel(lib) {
         ? `@${String(items[0].handle).replace(/^@/, '')}`
         : '';
     const publishedAt = root?.tweetAt || root?.at || items[0]?.tweetAt || items[0]?.at || null;
-    const description = cleanText(root?.text || items[0]?.text || '').slice(0, 160);
+    const description = (displayedRootText(selectedThreadId, root) || displayedRowText(items[0]) || '')
+      .slice(0, 160);
 
     return {
       title: titleSeed.slice(0, 80),
@@ -728,13 +1068,13 @@ function buildExportModel(lib) {
   const groups = Array.from(groupsMap.entries()).map(([key, rows]) => {
     const root = threadRoots[key] || threadRoots[normPageKey(key)] || null;
     const headingSeed =
-      cleanText(root?.text) ||
-      cleanText(rows[0]?.text) ||
+      displayedRootText(key, root) ||
+      displayedRowText(rows[0]) ||
       `帖子 ${key}`;
     return {
       heading: headingSeed.slice(0, 80),
       pageUrl: root?.pageUrl || rows[0]?.pageUrl || '',
-      rootText: root?.text || '',
+      rootText: displayedRootText(key, root),
       rootMedia: root?.media || [],
       items: rows.slice().sort((a, b) => (a.at || 0) - (b.at || 0))
     };
@@ -747,7 +1087,7 @@ function buildExportModel(lib) {
     published: '',
     date: exportedAt.toISOString(),
     threadId: 'all',
-    description: cleanText(items[0]?.text || '').slice(0, 160),
+    description: (displayedRowText(items[0]) || '').slice(0, 160),
     view: 'all',
     itemsCount: String(items.length),
     body: buildMergedMarkdown(groups)
@@ -874,6 +1214,7 @@ async function refresh() {
   if (!threadViewAll && selectedThreadId == null) {
     selectedThreadId = pickDefaultThreadId(lib) || null;
   }
+  resetTranslationView(false, false);
   libraryCache = lib;
   renderAll(lib);
 }
@@ -940,6 +1281,22 @@ function bindEvents() {
     exportMarkdown();
   });
 
+  $('btn_translate_native')?.addEventListener('click', () => {
+    translateCurrentView();
+  });
+
+  $('btn_reset_translation')?.addEventListener('click', () => {
+    resetTranslationView();
+  });
+
+  $('translate_source_language')?.addEventListener('change', () => {
+    persistReadPreviewSettings().catch(() => {});
+  });
+
+  $('translate_target_language')?.addEventListener('change', () => {
+    persistReadPreviewSettings().catch(() => {});
+  });
+
   $('export_note_location')?.addEventListener('input', scheduleExportSettingsSave);
   $('export_filename_template')?.addEventListener('input', scheduleExportSettingsSave);
 
@@ -968,6 +1325,14 @@ async function initExportConfig() {
   updateDirectoryStatus();
 }
 
+async function initTranslateConfig() {
+  renderTranslateLanguageOptions();
+  readPreviewSettingsCache = await ReadPreviewSettings.load();
+  renderReadPreviewSettings();
+  $('btn_reset_translation').hidden = !translationState.active;
+  setTranslateStatus('未启用翻译。', 'muted');
+}
+
 async function init() {
   bindEvents();
 
@@ -980,6 +1345,7 @@ async function init() {
     selectedThreadId = await loadStoredThreadId();
   }
 
+  await initTranslateConfig();
   await initExportConfig();
   await refresh();
 }
