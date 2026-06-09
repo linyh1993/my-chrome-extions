@@ -1,6 +1,7 @@
 /** @file X / Twitter 站点适配器 */
 (() => {
   const HOSTS = ['x.com', 'twitter.com'];
+  const OWN_HOSTS = new Set(['x.com', 'www.x.com', 'twitter.com', 'www.twitter.com', 't.co']);
   const RESERVED = new Set(['status', 'i', 'search', 'home', 'explore', 'hashtag']);
 
   const SPAM_LABEL =
@@ -391,6 +392,67 @@
       .trim();
   }
 
+  function hostOf(url) {
+    try {
+      return new URL(url).hostname.toLowerCase();
+    } catch {
+      return '';
+    }
+  }
+
+  function firstUrlInText(text) {
+    const match = String(text || '').match(/https?:\/\/[^\s<>"')\]]+/i);
+    return match ? match[0] : '';
+  }
+
+  function trimTrailingUrlPunctuation(url) {
+    return String(url || '').replace(/[),.;!?]+$/g, '');
+  }
+
+  function isExternalUrl(url) {
+    const host = hostOf(url);
+    return Boolean(host && !OWN_HOSTS.has(host));
+  }
+
+  function resolveAnchorUrl(anchor) {
+    if (!anchor) return '';
+
+    const rawHref = String(anchor.href || anchor.getAttribute('href') || '').trim();
+    const candidates = [
+      anchor.getAttribute('data-expanded-url'),
+      anchor.getAttribute('data-full-url'),
+      anchor.getAttribute('title'),
+      anchor.getAttribute('aria-label'),
+      rawHref,
+      anchor.textContent
+    ];
+
+    let fallback = '';
+    for (const candidate of candidates) {
+      const extracted = trimTrailingUrlPunctuation(firstUrlInText(candidate) || candidate || '');
+      if (!/^https?:\/\//i.test(extracted)) continue;
+      if (!fallback) fallback = extracted;
+      if (isExternalUrl(extracted)) return extracted;
+    }
+
+    return fallback;
+  }
+
+  function rewriteTextLinks(root, text) {
+    let out = String(text || '');
+    if (!out) return out;
+
+    for (const anchor of root.querySelectorAll('a[href]')) {
+      const visible = normalizeBlockText(anchor.innerText || anchor.textContent || '');
+      const resolved = resolveAnchorUrl(anchor);
+      if (!visible || !resolved || visible === resolved) continue;
+      if (!/^https?:\/\//i.test(visible) && !/^t\.co\/\S+$/i.test(visible)) continue;
+      out = out.split(visible).join(resolved);
+    }
+
+    return out;
+  }
+
   function isPrimaryTextCandidate(el, article, excluded) {
     if (!el || !article.contains(el)) return false;
     if (isExcludedTweetText(el, excluded)) return false;
@@ -439,18 +501,23 @@
     const parts = [];
     for (const el of article.querySelectorAll('[data-testid="tweetText"]')) {
       if (!isPrimaryTextCandidate(el, article, excluded)) continue;
-      pushUniqueTextBlock(parts, el.innerText || el.textContent || '');
+      pushUniqueTextBlock(parts, rewriteTextLinks(el, el.innerText || el.textContent || ''));
     }
     for (const el of article.querySelectorAll('[lang], [dir="auto"]')) {
       if (!isPrimaryTextCandidate(el, article, excluded)) continue;
-      pushUniqueTextBlock(parts, el.innerText || el.textContent || '');
+      pushUniqueTextBlock(parts, rewriteTextLinks(el, el.innerText || el.textContent || ''));
     }
     return parts.join('\n\n');
   }
 
   function findReferenceLink(node) {
+    const statusHref = node.querySelector('a[href*="/status/"]')?.href;
+    if (statusHref) return statusHref;
+    for (const anchor of node.querySelectorAll('a[href]')) {
+      const resolved = resolveAnchorUrl(anchor);
+      if (resolved) return resolved;
+    }
     return (
-      node.querySelector('a[href*="/status/"]')?.href ||
       node.querySelector('a[href^="http"]')?.href ||
       node.querySelector('a[href]')?.href ||
       ''
@@ -483,12 +550,58 @@
     return out;
   }
 
+  function normalizeReferenceText(text, title, url) {
+    const normalized = normalizeBlockText(text);
+    if (!normalized) return '';
+    if (normalized === normalizeBlockText(title) || normalized === normalizeBlockText(url)) {
+      return '';
+    }
+    return normalized;
+  }
+
+  function collapseExternalReferenceEcho(text, references) {
+    const normalized = normalizeBlockText(text);
+    if (!normalized) return '';
+
+    const externalRefs = (references || []).filter(
+      (item) => item?.type === 'external_card' && item?.url
+    );
+    if (!externalRefs.length) return normalized;
+
+    const emitted = new Set();
+    const out = [];
+    for (const rawLine of normalized.split('\n')) {
+      const line = normalizeBlockText(rawLine);
+      if (!line) continue;
+
+      let replaced = false;
+      for (const ref of externalRefs) {
+        const title = normalizeBlockText(ref.title);
+        const url = normalizeBlockText(ref.url);
+        if (!url) continue;
+        if (line !== title && line !== url && !/^https?:\/\/t\.co\/\S+$/i.test(line)) continue;
+        if (!emitted.has(url)) {
+          out.push(url);
+          emitted.add(url);
+        }
+        replaced = true;
+        break;
+      }
+
+      if (!replaced && out[out.length - 1] !== line) {
+        out.push(line);
+      }
+    }
+
+    return out.join('\n');
+  }
+
   function extractReferences(article) {
     const refs = [];
 
     for (const quote of article.querySelectorAll('[data-testid="quoteTweet"]')) {
       const text = Array.from(quote.querySelectorAll('[data-testid="tweetText"], [lang], [dir="auto"]'))
-        .map((el) => normalizeBlockText(el.innerText || el.textContent || ''))
+        .map((el) => normalizeBlockText(rewriteTextLinks(el, el.innerText || el.textContent || '')))
         .filter(Boolean)
         .join('\n\n');
       refs.push({
@@ -500,7 +613,9 @@
     }
 
     for (const card of article.querySelectorAll('[data-testid="card.wrapper"]')) {
-      const text = normalizeBlockText(card.innerText || card.textContent || '');
+      const title = referenceTitleFromText(card.innerText || card.textContent || '', '');
+      const url = findReferenceLink(card);
+      const text = normalizeReferenceText(card.innerText || card.textContent || '', title, url);
       refs.push({
         type: 'external_card',
         url: findReferenceLink(card),
@@ -510,6 +625,36 @@
     }
 
     return dedupeReferences(refs);
+  }
+
+  function normalizeExtractedReferences(article, references) {
+    const cards = Array.from(article.querySelectorAll('[data-testid="card.wrapper"]'));
+    let cardIndex = 0;
+
+    return dedupeReferences(
+      (references || []).map((item) => {
+        if (item?.type !== 'external_card') return item;
+
+        const card = cards[cardIndex++] || null;
+        const url = card ? findReferenceLink(card) : String(item?.url || '').trim();
+        const title =
+          referenceTitleFromText(card?.innerText || card?.textContent || '', '') ||
+          String(item?.title || '').trim() ||
+          'external card';
+        const text = normalizeReferenceText(
+          card?.innerText || card?.textContent || item?.text || '',
+          title,
+          url
+        );
+
+        return {
+          ...item,
+          url,
+          title,
+          text
+        };
+      })
+    );
   }
 
   function extractTweetTime(article) {
@@ -615,7 +760,8 @@
 
   function extractMeta(article) {
     const profile = resolveProfile(article);
-    const text = extractPrimaryTweetText(article);
+    const references = normalizeExtractedReferences(article, extractReferences(article));
+    const text = collapseExternalReferenceEcho(extractPrimaryTweetText(article), references);
 
     return {
       handle: profile.handle,
@@ -623,7 +769,7 @@
       profileBlob: profile.profileBlob,
       text,
       media: extractMedia(article),
-      references: extractReferences(article),
+      references,
       isAd: isPromotedOrAd(article),
       inProbableSpam: isInProbableSpamSection(article)
     };

@@ -526,10 +526,11 @@ function appendReadAttachments(container, item) {
       refBlock.appendChild(link);
     }
 
-    if (cleanText(ref.text)) {
+    const bodyText = referenceBodyText(ref);
+    if (bodyText) {
       const body = document.createElement('p');
       body.className = 'read-reference-body';
-      body.textContent = cleanText(ref.text);
+      body.textContent = bodyText;
       refBlock.appendChild(body);
     }
 
@@ -848,6 +849,15 @@ function referenceLabel(item) {
   return '引用';
 }
 
+function referenceBodyText(item) {
+  const text = cleanText(item?.text);
+  if (!text) return '';
+  const title = cleanText(item?.title);
+  const url = String(item?.url || '').trim();
+  if (text === title || text === url) return '';
+  return text;
+}
+
 function appendReferencesMarkdown(chunks, references) {
   const refs = Array.isArray(references) ? references : [];
   if (!refs.length) return;
@@ -855,7 +865,7 @@ function appendReferencesMarkdown(chunks, references) {
   chunks.push('#### 引用');
   for (const item of refs) {
     const title = String(item?.title || '').trim();
-    const text = cleanText(item?.text);
+    const text = referenceBodyText(item);
     const url = String(item?.url || '').trim();
     chunks.push(`- ${title || referenceLabel(item)}${url ? `: ${url}` : ''}`);
     if (text) {
