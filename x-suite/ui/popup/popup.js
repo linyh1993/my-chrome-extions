@@ -1,4 +1,5 @@
 const $ = (id) => document.getElementById(id);
+const READ_PREVIEW_SESSION_KEY = 'xsuite_read_preview_thread';
 
 function send(type, payload = {}) {
   return new Promise((resolve) => {
@@ -6,9 +7,29 @@ function send(type, payload = {}) {
   });
 }
 
+async function getActiveThreadId() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tab?.url?.match(/\/status\/(\d+)/)?.[1] || null;
+  } catch {
+    return null;
+  }
+}
+
 async function openOptionsMain(sectionId) {
   await chrome.storage.session.set({ [XCF.SESSION.OPTIONS_MAIN]: sectionId });
   chrome.runtime.openOptionsPage();
+}
+
+async function openReadPreviewPage() {
+  const threadId = await getActiveThreadId();
+  if (threadId) {
+    await chrome.storage.session.set({ [READ_PREVIEW_SESSION_KEY]: threadId });
+  }
+  const path = threadId
+    ? `ui/read-preview/read-preview.html#thread/${threadId}`
+    : 'ui/read-preview/read-preview.html#all';
+  await chrome.tabs.create({ url: chrome.runtime.getURL(path) });
 }
 
 async function loadUi() {
@@ -44,15 +65,19 @@ $('open_filter_settings').addEventListener('click', async () => {
 
 $('open_library').addEventListener('click', async () => {
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const tid = tab?.url?.match(/\/status\/(\d+)/)?.[1];
-    if (tid) {
-      await chrome.storage.session.set({ [XCF.SESSION.OPTIONS_THREAD]: tid });
+    const threadId = await getActiveThreadId();
+    if (threadId) {
+      await chrome.storage.session.set({ [XCF.SESSION.OPTIONS_THREAD]: threadId });
     }
   } catch {
     /* ignore */
   }
   await openOptionsMain('library');
+  window.close();
+});
+
+$('open_read_preview').addEventListener('click', async () => {
+  await openReadPreviewPage();
   window.close();
 });
 

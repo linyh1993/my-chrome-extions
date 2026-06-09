@@ -1,6 +1,7 @@
 const spSite = document.getElementById('sp-site');
 const spStatus = document.getElementById('sp-status');
 const spToggle = document.getElementById('sp-toggle');
+const READ_PREVIEW_SESSION_KEY = 'xsuite_read_preview_thread';
 
 function mirrorMsg(action, payload = {}) {
   return { domain: 'mirror', action, ...payload };
@@ -10,6 +11,26 @@ function sendFilter(type, payload = {}) {
   return new Promise((resolve) => {
     chrome.runtime.sendMessage({ type, ...payload }, resolve);
   });
+}
+
+async function getActiveThreadId() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tab?.url?.match(/\/status\/(\d+)/)?.[1] || null;
+  } catch {
+    return null;
+  }
+}
+
+async function openReadPreviewPage() {
+  const threadId = await getActiveThreadId();
+  if (threadId) {
+    await chrome.storage.session.set({ [READ_PREVIEW_SESSION_KEY]: threadId });
+  }
+  const path = threadId
+    ? `ui/read-preview/read-preview.html#thread/${threadId}`
+    : 'ui/read-preview/read-preview.html#all';
+  await chrome.tabs.create({ url: chrome.runtime.getURL(path) });
 }
 
 function refreshTabStatus() {
@@ -80,6 +101,11 @@ document.getElementById('sp_open_options_mirror')?.addEventListener('click', (e)
   chrome.storage.session.set({ [XCF.SESSION.OPTIONS_MAIN]: 'mirror' }, () => {
     chrome.runtime.openOptionsPage();
   });
+});
+
+document.getElementById('sp_open_read_preview')?.addEventListener('click', async (e) => {
+  e.preventDefault();
+  await openReadPreviewPage();
 });
 
 refreshTabStatus();

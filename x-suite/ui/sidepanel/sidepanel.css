@@ -103,6 +103,23 @@ body {
   line-height: 1.45;
 }
 
+.sp-foot-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-top: 10px;
+}
+
+.sp-foot-links a {
+  color: #9ecbff;
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.sp-foot-links a:hover {
+  text-decoration: underline;
+}
+
 .copier-switch {
   position: relative;
   display: inline-block;
