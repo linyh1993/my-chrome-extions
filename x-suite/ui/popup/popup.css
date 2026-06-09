@@ -118,3 +118,21 @@ button.secondary {
   color: #536471;
   text-align: center;
 }
+
+.popup-status {
+  min-height: 16px;
+  margin-top: 8px;
+}
+
+.popup-status.is-error {
+  color: #c62828;
+}
+
+.popup-status.is-success {
+  color: #127a43;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}

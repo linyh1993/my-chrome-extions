@@ -274,6 +274,7 @@ const XcfProcessor = (() => {
 
     await XcfArchiveLog.hydrateKeys();
     XcfScan.scheduleScan(true);
+    XcfScan.scheduleScrollCollectIfNeeded(250);
     XcfScan.scheduleLiveCaptureWave([500, 1600, 3200]);
     return { ok: true };
   }
