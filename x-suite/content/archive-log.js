@@ -28,6 +28,7 @@ const XcfArchiveLog = (() => {
       displayName: meta.displayName,
       text: meta.text,
       media: meta.media || undefined,
+      references: meta.references || undefined,
       tweetId: tid && pageId && tid !== pageId ? tid : '',
       threadId,
       pageUrl: location.href,
@@ -80,7 +81,7 @@ const XcfArchiveLog = (() => {
       fn(article, m);
     };
 
-    if ((meta.text || '').trim() || (meta.media || []).length > 0) {
+    if ((meta.text || '').trim() || (meta.media || []).length > 0 || (meta.references || []).length > 0) {
       run(meta);
       return;
     }
@@ -90,7 +91,7 @@ const XcfArchiveLog = (() => {
     setTimeout(() => {
       if (!article.isConnected || !XcfRoute.isPostThreadActive()) return;
       const again = S().adapter.extractMeta(article);
-      if ((again.text || '').trim() || (again.media || []).length > 0) {
+      if ((again.text || '').trim() || (again.media || []).length > 0 || (again.references || []).length > 0) {
         run(again);
         return;
       }
@@ -115,16 +116,30 @@ const XcfArchiveLog = (() => {
     return S().hydratePromise;
   }
 
+  function threadRootSnapshot(meta) {
+    const text = String(meta?.text || '').trim();
+    const media = Array.isArray(meta?.media) ? meta.media : [];
+    const references = Array.isArray(meta?.references) ? meta.references : [];
+    return JSON.stringify({
+      text,
+      media: media.map((item) => `${item.type}|${item.src || ''}|${item.poster || ''}`).sort(),
+      references: references.map((item) => `${item.type}|${item.url || ''}|${item.title || ''}|${String(item.text || '').slice(0, 240)}`).sort()
+    });
+  }
+
   function maybeLogThreadRoot() {
     if (!XcfRoute.isPostThreadActive()) return;
     const adapter = S().adapter;
     if (!adapter?.getThreadRootArticle || !adapter?.extractMeta) return;
     const threadId = XcfRoute.pageThreadId();
-    if (!threadId || S().loggedThreadRoots.has(threadId)) return;
+    if (!threadId) return;
     const root = adapter.getThreadRootArticle();
     if (!root) return;
     const meta = adapter.extractMeta(root);
-    if (!(meta.text || '').trim() && !(meta.media || []).length) return;
+    if (!(meta.text || '').trim() && !(meta.media || []).length && !(meta.references || []).length) return;
+    const snapshot = threadRootSnapshot(meta);
+    if (S().threadRootSnapshots.get(threadId) === snapshot) return;
+    S().threadRootSnapshots.set(threadId, snapshot);
     S().loggedThreadRoots.add(threadId);
     let pageUrl = location.href;
     try {
@@ -141,6 +156,7 @@ const XcfArchiveLog = (() => {
         displayName: meta.displayName,
         text: meta.text,
         media: meta.media || undefined,
+        references: meta.references || undefined,
         pageUrl,
         metrics: adapter.extractMetrics?.(root) || undefined
       }

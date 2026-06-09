@@ -271,6 +271,7 @@ const XcfScan = (() => {
     S().overrideTweetIds.clear();
     S().loggedArchiveKeys.clear();
     S().loggedThreadRoots.clear();
+    S().threadRootSnapshots.clear();
     XcfFold.resetPageState();
 
     if (!XcfRoute.isPostThreadActive()) {

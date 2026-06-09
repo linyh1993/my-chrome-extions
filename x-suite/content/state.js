@@ -23,5 +23,6 @@ const XcfContent = {
   afterScrollScanTimer: null,
   overrideTweetIds: new Set(),
   loggedArchiveKeys: new Set(),
-  loggedThreadRoots: new Set()
+  loggedThreadRoots: new Set(),
+  threadRootSnapshots: new Map()
 };

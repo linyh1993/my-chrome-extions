@@ -30,6 +30,7 @@ const XcfBootstrap = (() => {
     S().overrideTweetIds.clear();
     S().loggedArchiveKeys.clear();
     S().loggedThreadRoots.clear();
+    S().threadRootSnapshots.clear();
     setTimeout(() => {
       S().pauseObserver = false;
       refreshPanel();

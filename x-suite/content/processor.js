@@ -253,6 +253,7 @@ const XcfProcessor = (() => {
     XcfScan.teardownCaptureObserver();
     S().loggedArchiveKeys.clear();
     S().loggedThreadRoots.delete(currentThreadId);
+    S().threadRootSnapshots.delete(currentThreadId);
 
     for (const article of S().adapter.findArticles()) {
       delete article.dataset.xcfLogKey;

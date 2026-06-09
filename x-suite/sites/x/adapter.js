@@ -12,6 +12,19 @@
   const EXCLUDED_TEXT_ANCESTORS =
     '[data-testid="quoteTweet"], [data-testid="card.wrapper"]';
 
+  const EXCLUDED_TEXT_BLOCK_ANCESTORS = [
+    '[data-testid="User-Name"]',
+    '[data-testid="User-Names"]',
+    '[data-testid="socialContext"]',
+    '[role="group"]',
+    'time',
+    '[data-testid="reply"]',
+    '[data-testid="retweet"]',
+    '[data-testid="like"]',
+    '[data-testid="bookmark"]',
+    '[data-testid="analytics"]'
+  ].join(', ');
+
   let cachedHref = '';
   let cachedPageId = null;
   let cachedThreadRoot = undefined;
@@ -369,6 +382,36 @@
     return false;
   }
 
+  function normalizeBlockText(text) {
+    return String(text || '')
+      .replace(/\u00a0/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n[ \t]+/g, '\n')
+      .trim();
+  }
+
+  function isPrimaryTextCandidate(el, article, excluded) {
+    if (!el || !article.contains(el)) return false;
+    if (isExcludedTweetText(el, excluded)) return false;
+    if (el.closest(EXCLUDED_TEXT_BLOCK_ANCESTORS)) return false;
+    return true;
+  }
+
+  function pushUniqueTextBlock(parts, text) {
+    const normalized = normalizeBlockText(text);
+    if (!normalized) return;
+    if (parts.includes(normalized)) return;
+    const last = parts[parts.length - 1] || '';
+    if (last && (last.includes(normalized) || normalized.includes(last))) {
+      if (normalized.length > last.length) {
+        parts[parts.length - 1] = normalized;
+      }
+      return;
+    }
+    parts.push(normalized);
+  }
+
   function extractDisplayName(article, userBlock, handle) {
     const blob = extractProfileBlob(article, handle, userBlock);
     if (blob) return blob.split(/\s+/).slice(0, 12).join(' ').trim();
@@ -395,12 +438,78 @@
     const excluded = Array.from(article.querySelectorAll(EXCLUDED_TEXT_ANCESTORS));
     const parts = [];
     for (const el of article.querySelectorAll('[data-testid="tweetText"]')) {
-      if (isExcludedTweetText(el, excluded)) continue;
-      const text = (el.innerText || '').replace(/\n+/g, '\n').trim();
-      if (text) parts.push(text);
+      if (!isPrimaryTextCandidate(el, article, excluded)) continue;
+      pushUniqueTextBlock(parts, el.innerText || el.textContent || '');
     }
-    if (parts.length) return parts.join('\n');
-    return '';
+    for (const el of article.querySelectorAll('[lang], [dir="auto"]')) {
+      if (!isPrimaryTextCandidate(el, article, excluded)) continue;
+      pushUniqueTextBlock(parts, el.innerText || el.textContent || '');
+    }
+    return parts.join('\n\n');
+  }
+
+  function findReferenceLink(node) {
+    return (
+      node.querySelector('a[href*="/status/"]')?.href ||
+      node.querySelector('a[href^="http"]')?.href ||
+      node.querySelector('a[href]')?.href ||
+      ''
+    );
+  }
+
+  function referenceTitleFromText(text, fallback) {
+    const first = normalizeBlockText(text).split('\n')[0] || '';
+    return first.slice(0, 120) || fallback;
+  }
+
+  function dedupeReferences(list) {
+    const seen = new Set();
+    const out = [];
+    for (const item of list || []) {
+      const type = String(item?.type || '').trim();
+      const url = String(item?.url || '').trim();
+      const title = String(item?.title || '').trim();
+      const text = normalizeBlockText(item?.text || '');
+      const key = `${type}|${url}|${title}|${text.slice(0, 200)}`;
+      if ((!url && !text) || seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        type,
+        url,
+        title,
+        text
+      });
+    }
+    return out;
+  }
+
+  function extractReferences(article) {
+    const refs = [];
+
+    for (const quote of article.querySelectorAll('[data-testid="quoteTweet"]')) {
+      const text = Array.from(quote.querySelectorAll('[data-testid="tweetText"], [lang], [dir="auto"]'))
+        .map((el) => normalizeBlockText(el.innerText || el.textContent || ''))
+        .filter(Boolean)
+        .join('\n\n');
+      refs.push({
+        type: 'quote_tweet',
+        url: findReferenceLink(quote),
+        title: referenceTitleFromText(text, '引用帖子'),
+        text
+      });
+    }
+
+    for (const card of article.querySelectorAll('[data-testid="card.wrapper"]')) {
+      const text = normalizeBlockText(card.innerText || card.textContent || '');
+      refs.push({
+        type: 'external_card',
+        url: findReferenceLink(card),
+        title: referenceTitleFromText(text, '外部卡片'),
+        text
+      });
+    }
+
+    return dedupeReferences(refs);
   }
 
   function extractTweetTime(article) {
@@ -514,6 +623,7 @@
       profileBlob: profile.profileBlob,
       text,
       media: extractMedia(article),
+      references: extractReferences(article),
       isAd: isPromotedOrAd(article),
       inProbableSpam: isInProbableSpamSection(article)
     };

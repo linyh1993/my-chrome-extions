@@ -354,6 +354,48 @@ body.read-preview-page {
   color: var(--xcf-muted);
 }
 
+.read-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 10px 0 0;
+}
+
+.read-attachment-image {
+  display: block;
+  max-width: 100%;
+  border: 1px solid rgba(15, 20, 25, 0.08);
+  border-radius: 14px;
+}
+
+.read-attachment-link {
+  color: #0f6db8;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.read-reference {
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 20, 25, 0.08);
+  border-radius: 14px;
+  background: rgba(247, 250, 252, 0.9);
+}
+
+.read-reference-title,
+.read-reference-body {
+  margin: 0;
+}
+
+.read-reference-title {
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.read-reference-body {
+  margin-top: 8px;
+  white-space: pre-wrap;
+}
+
 .thread-action-status {
   margin: 10px 2px 0;
   font-size: 0.8125rem;

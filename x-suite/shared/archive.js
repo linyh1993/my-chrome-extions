@@ -76,6 +76,8 @@ const XcfArchive = (() => {
     const rm = row.metrics || {};
     const prevMedia = Array.isArray(prev.media) ? prev.media : [];
     const rowMedia = Array.isArray(row.media) ? row.media : [];
+    const prevReferences = Array.isArray(prev.references) ? prev.references : [];
+    const rowReferences = Array.isArray(row.references) ? row.references : [];
     const media = [];
     const seenMedia = new Set();
     for (const item of [...prevMedia, ...rowMedia]) {
@@ -94,6 +96,23 @@ const XcfArchive = (() => {
         pageUrl
       });
     }
+    const references = [];
+    const seenReferences = new Set();
+    for (const item of [...prevReferences, ...rowReferences]) {
+      const type = String(item?.type || '').trim();
+      const url = String(item?.url || '').trim();
+      const title = String(item?.title || '').trim();
+      const text = String(item?.text || '').trim();
+      const key = `${type}|${url}|${title}|${text.slice(0, 240)}`;
+      if ((!url && !text) || seenReferences.has(key)) continue;
+      seenReferences.add(key);
+      references.push({
+        type,
+        url,
+        title,
+        text
+      });
+    }
     return {
       ...prev,
       ...row,
@@ -109,6 +128,7 @@ const XcfArchive = (() => {
           ? XCF.COMMENT_KIND.NOISE
           : row.kind || prev.kind || XCF.COMMENT_KIND.SIGNAL,
       media,
+      references,
       metrics: {
         reply: Math.max(pm.reply || 0, rm.reply || 0),
         repost: Math.max(pm.repost || 0, rm.repost || 0),
@@ -128,8 +148,9 @@ const XcfArchive = (() => {
       tweetAt: entry.tweetAt || null,
       handle: entry.handle || '',
       displayName: entry.displayName || '',
-      text: (entry.text || '').slice(0, 500),
+      text: (entry.text || '').slice(0, 8000),
       media: Array.isArray(entry.media) ? entry.media.slice(0, 12) : [],
+      references: Array.isArray(entry.references) ? entry.references.slice(0, 8) : [],
       tweetId: entry.tweetId || '',
       threadId,
       ruleId: entry.ruleId || '',
@@ -451,19 +472,30 @@ const XcfArchive = (() => {
     let map = await loadThreadRoots();
     map = await migrateThreadRoots(map);
     const prev = map[threadId] || {};
+    const mergedAssets = mergeRow(
+      {
+        media: Array.isArray(prev.media) ? prev.media : [],
+        references: Array.isArray(prev.references) ? prev.references : [],
+        metrics: prev.metrics || null
+      },
+      {
+        media: Array.isArray(entry.media) ? entry.media : [],
+        references: Array.isArray(entry.references) ? entry.references : [],
+        metrics: entry.metrics || null
+      }
+    );
+    const nextText = String(entry.text || '').trim();
+    const prevText = String(prev.text || '').trim();
     const next = {
       tweetId: threadId,
       pageUrl: entry.pageUrl || prev.pageUrl || '',
       at: entry.at || prev.at || Date.now(),
       handle: entry.handle || prev.handle || '',
       displayName: entry.displayName || prev.displayName || '',
-      text: (entry.text || prev.text || '').slice(0, 2000),
-      media: Array.isArray(entry.media)
-        ? entry.media.slice(0, 12)
-        : Array.isArray(prev.media)
-          ? prev.media
-          : [],
-      metrics: entry.metrics || prev.metrics || null
+      text: (nextText.length >= prevText.length ? nextText : prevText).slice(0, 12000),
+      media: Array.isArray(mergedAssets.media) ? mergedAssets.media.slice(0, 12) : [],
+      references: Array.isArray(mergedAssets.references) ? mergedAssets.references.slice(0, 8) : [],
+      metrics: mergedAssets.metrics || prev.metrics || entry.metrics || null
     };
     map[threadId] = next;
     await saveThreadRoots(map);

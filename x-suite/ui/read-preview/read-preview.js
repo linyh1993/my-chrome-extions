@@ -475,6 +475,68 @@ function appendReadComment(container, row) {
   const when = fmtTime(row?.tweetAt || row?.at);
   meta.textContent = when ? `${who} · ${when}` : who;
   container.appendChild(meta);
+  appendReadAttachments(container, row);
+}
+
+function appendReadAttachments(container, item) {
+  const media = Array.isArray(item?.media) ? item.media.filter((entry) => mediaTarget(entry)) : [];
+  const references = Array.isArray(item?.references) ? item.references : [];
+  if (!media.length && !references.length) return;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'read-attachments';
+
+  for (const entry of media) {
+    const target = mediaTarget(entry);
+    if (!target) continue;
+    if (entry.type === 'image') {
+      const img = document.createElement('img');
+      img.className = 'read-attachment-image';
+      img.src = target;
+      img.alt = entry.alt || 'image';
+      img.loading = 'lazy';
+      wrap.appendChild(img);
+      continue;
+    }
+    const link = document.createElement('a');
+    link.className = 'read-attachment-link';
+    link.href = target;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = `${mediaLabel(entry)}: ${target}`;
+    wrap.appendChild(link);
+  }
+
+  for (const ref of references) {
+    const refBlock = document.createElement('div');
+    refBlock.className = 'read-reference';
+
+    const title = document.createElement('p');
+    title.className = 'read-reference-title';
+    title.textContent = ref.title || referenceLabel(ref);
+    refBlock.appendChild(title);
+
+    if (ref.url) {
+      const link = document.createElement('a');
+      link.className = 'read-attachment-link';
+      link.href = ref.url;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = ref.url;
+      refBlock.appendChild(link);
+    }
+
+    if (cleanText(ref.text)) {
+      const body = document.createElement('p');
+      body.className = 'read-reference-body';
+      body.textContent = cleanText(ref.text);
+      refBlock.appendChild(body);
+    }
+
+    wrap.appendChild(refBlock);
+  }
+
+  container.appendChild(wrap);
 }
 
 function renderReadFeed(lib) {
@@ -510,6 +572,7 @@ function renderReadFeed(lib) {
       rootText.className = 'read-root';
       rootText.textContent = rootTextValue;
       doc.appendChild(rootText);
+      appendReadAttachments(doc, root);
 
       const sep = document.createElement('div');
       sep.className = 'read-sep';
@@ -563,6 +626,7 @@ function renderReadFeed(lib) {
       rootText.className = 'read-root';
       rootText.textContent = rootTextValue;
       doc.appendChild(rootText);
+      appendReadAttachments(doc, root);
 
       const sep = document.createElement('div');
       sep.className = 'read-sep';
@@ -778,12 +842,35 @@ function appendMediaMarkdown(chunks, mediaList) {
   }
 }
 
+function referenceLabel(item) {
+  if (item?.type === 'quote_tweet') return '引用帖子';
+  if (item?.type === 'external_card') return '外部卡片';
+  return '引用';
+}
+
+function appendReferencesMarkdown(chunks, references) {
+  const refs = Array.isArray(references) ? references : [];
+  if (!refs.length) return;
+
+  chunks.push('#### 引用');
+  for (const item of refs) {
+    const title = String(item?.title || '').trim();
+    const text = cleanText(item?.text);
+    const url = String(item?.url || '').trim();
+    chunks.push(`- ${title || referenceLabel(item)}${url ? `: ${url}` : ''}`);
+    if (text) {
+      chunks.push(text);
+    }
+  }
+}
+
 function appendReplyMarkdown(chunks, row) {
   const who = row.handle ? `@${String(row.handle).replace(/^@/, '')}` : '@未知';
   const when = fmtTime(row?.tweetAt || row?.at);
   chunks.push(`### ${who}${when ? ` 路 ${when}` : ''}`);
   chunks.push(displayedRowText(row) || '（未保存正文）');
   appendMediaMarkdown(chunks, row.media);
+  appendReferencesMarkdown(chunks, row.references);
 }
 
 function appendReplySection(chunks, title, rows) {
@@ -802,6 +889,7 @@ function buildSingleThreadMarkdown(root, items) {
     chunks.push('## 原帖');
     chunks.push(rootBodyText);
     appendMediaMarkdown(chunks, root?.media);
+    appendReferencesMarkdown(chunks, root?.references);
   }
 
   if (items.length) {
@@ -814,6 +902,7 @@ function buildSingleThreadMarkdown(root, items) {
     chunks.push(`### ${who}${when ? ` · ${when}` : ''}`);
     chunks.push(displayedRowText(row) || '（未保存正文）');
     appendMediaMarkdown(chunks, row.media);
+    appendReferencesMarkdown(chunks, row.references);
   });
 
   return chunks.filter(Boolean).join('\n\n');
@@ -826,6 +915,7 @@ function buildFullThreadMarkdown(root, { signalRows = [], noiseRows = [], confir
     chunks.push('## 原帖');
     chunks.push(rootBodyText);
     appendMediaMarkdown(chunks, root?.media);
+    appendReferencesMarkdown(chunks, root?.references);
   }
 
   appendReplySection(chunks, '非噪音回复', signalRows);
@@ -845,6 +935,7 @@ function buildMergedMarkdown(groups) {
     if (cleanText(group.rootText)) {
       chunks.push(cleanText(group.rootText));
       appendMediaMarkdown(chunks, group.rootMedia);
+      appendReferencesMarkdown(chunks, group.rootReferences);
     }
     group.items.forEach((row) => {
       const who = row.handle ? `@${String(row.handle).replace(/^@/, '')}` : '@未知';
@@ -852,6 +943,7 @@ function buildMergedMarkdown(groups) {
       chunks.push(`### ${who}${when ? ` · ${when}` : ''}`);
       chunks.push(displayedRowText(row) || '（未保存正文）');
       appendMediaMarkdown(chunks, row.media);
+      appendReferencesMarkdown(chunks, row.references);
     });
   }
   return chunks.filter(Boolean).join('\n\n');
@@ -971,6 +1063,7 @@ function buildExportModel(lib) {
       pageUrl: root?.pageUrl || rows[0]?.pageUrl || '',
       rootText: displayedRootText(key, root),
       rootMedia: root?.media || [],
+      rootReferences: root?.references || [],
       items: rows.slice().sort((a, b) => (a.at || 0) - (b.at || 0))
     };
   });
