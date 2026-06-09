@@ -33,6 +33,7 @@
 | 目录                           | 说明                                          | 入口                                                                          |
 | ---------------------------- | ------------------------------------------- | --------------------------------------------------------------------------- |
 | `x-suite/`                   | **推荐**：X 专用合并扩展（评论过滤 + 可选 GraphQL 镜像）       | `README.md`、`manifest.json`、`ui/`、`content/`、`background/service-worker.js` |
+| `traffic-relay/`             | 通用流量复刻：任意站点 API 镜像到本地（CDP Network）          | `README.md`、`manifest.json`、`background/service-worker.js`、`shared/config.js` |
 | `archive/legacy-extensions/` | 已归档：`x-comment-filter`、`traffic-relay`（勿加载） | `archive/README.md`                                                         |
 | `chrome-capture-toolkit/`    | Chrome CDP 抓包与精简导出；PowerShell 启动 + Node CLI | `README.md`、`scripts/powershell/`、`src/capture/`、`docs/`                    |
 

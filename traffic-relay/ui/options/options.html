@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>流量复刻 — 设置</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <main class="opts">
+    <header>
+      <h1>流量复刻设置</h1>
+      <p class="opts-sub">
+        按站点配置域名与 URL 路径。仅抓取 <strong>GET / POST</strong>，且响应为
+        <strong>application/json</strong>（含 GraphQL）的请求。
+      </p>
+    </header>
+
+    <form id="opts-form">
+      <section class="opts-card">
+        <label class="opts-label" for="mirror-url">本地镜像地址</label>
+        <input id="mirror-url" type="url" required placeholder="http://127.0.0.1:9090/mirror-traffic" />
+        <p class="opts-hint">所有站点共用；扩展以 POST + JSON 转发到此地址。</p>
+      </section>
+
+      <section class="opts-card">
+        <div class="opts-row-head">
+          <h2 class="opts-card-title">站点列表</h2>
+          <button type="button" id="add-site" class="opts-btn opts-btn--sm">添加站点</button>
+        </div>
+        <p class="opts-hint opts-hint--top">
+          域名每行一个（如 <code>x.com</code>，子域自动匹配）。路径每行一条（如 <code>/api/graphql</code>）；
+          留空则默认匹配 <code>/api/graphql</code>、<code>/graphql</code>、<code>/api/</code>。
+        </p>
+        <div id="sites-list"></div>
+      </section>
+
+      <div class="opts-actions">
+        <button type="submit" class="opts-btn">保存</button>
+        <span id="opts-status" class="opts-status" hidden>已保存</span>
+      </div>
+    </form>
+  </main>
+
+  <template id="site-row-template">
+    <fieldset class="site-row">
+      <div class="site-row-head">
+        <label class="opts-check site-enabled-wrap">
+          <input type="checkbox" class="site-enabled" checked />
+          <strong class="site-title">站点</strong>
+        </label>
+        <button type="button" class="site-remove opts-btn opts-btn--ghost opts-btn--sm">删除</button>
+      </div>
+      <label class="opts-label">显示名称</label>
+      <input type="text" class="site-label" required placeholder="例：X / Twitter" />
+      <label class="opts-label">ID（payload 中的 siteId）</label>
+      <input type="text" class="site-id" required placeholder="例：x" />
+      <label class="opts-label">域名（每行一个）</label>
+      <textarea class="site-hosts" rows="2" required placeholder="x.com&#10;twitter.com"></textarea>
+      <label class="opts-label">URL 路径过滤（每行一条，可留空用默认）</label>
+      <textarea class="site-paths" rows="2" placeholder="/api/graphql"></textarea>
+    </fieldset>
+  </template>
+
+  <script src="../../shared/config.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

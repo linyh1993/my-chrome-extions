@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "流量复刻",
+  "version": "2.1.0",
+  "description": "按站点将 GET/POST JSON（含 GraphQL）API 流量镜像到本地，支持动态配置多站点。",
+  "permissions": [
+    "debugger",
+    "storage",
+    "sidePanel",
+    "tabs"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "打开流量复刻侧边栏",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "ui/options/options.html",
+    "open_in_tab": true
+  },
+  "side_panel": {
+    "default_path": "ui/sidepanel/sidepanel.html"
+  },
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "ui/state.js",
+        "content/panel.js"
+      ],
+      "css": [
+        "content/panel.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
