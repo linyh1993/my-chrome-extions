@@ -691,6 +691,23 @@ function appendMediaMarkdown(chunks, mediaList) {
   }
 }
 
+function appendReplyMarkdown(chunks, row) {
+  const who = row.handle ? `@${String(row.handle).replace(/^@/, '')}` : '@未知';
+  const when = fmtTime(row?.tweetAt || row?.at);
+  chunks.push(`### ${who}${when ? ` 路 ${when}` : ''}`);
+  chunks.push(displayedRowText(row) || '（未保存正文）');
+  appendMediaMarkdown(chunks, row.media);
+}
+
+function appendReplySection(chunks, title, rows) {
+  const list = Array.isArray(rows) ? rows.slice().sort((a, b) => (a.at || 0) - (b.at || 0)) : [];
+  if (!list.length) return;
+  chunks.push(`## ${title}`);
+  list.forEach((row) => {
+    appendReplyMarkdown(chunks, row);
+  });
+}
+
 function buildSingleThreadMarkdown(root, items) {
   const chunks = [];
   const rootBodyText = displayedRootText(selectedThreadId, root);
@@ -715,6 +732,22 @@ function buildSingleThreadMarkdown(root, items) {
   return chunks.filter(Boolean).join('\n\n');
 }
 
+function buildFullThreadMarkdown(root, { signalRows = [], noiseRows = [], confirmedRows = [] } = {}) {
+  const chunks = [];
+  const rootBodyText = cleanText(root?.text);
+  if (rootBodyText) {
+    chunks.push('## 原帖');
+    chunks.push(rootBodyText);
+    appendMediaMarkdown(chunks, root?.media);
+  }
+
+  appendReplySection(chunks, '非噪音回复', signalRows);
+  appendReplySection(chunks, '噪音回复', noiseRows);
+  appendReplySection(chunks, '已确认噪音', confirmedRows);
+
+  return chunks.filter(Boolean).join('\n\n');
+}
+
 function buildMergedMarkdown(groups) {
   const chunks = [];
   for (const group of groups) {
@@ -735,6 +768,67 @@ function buildMergedMarkdown(groups) {
     });
   }
   return chunks.filter(Boolean).join('\n\n');
+}
+
+function pickThreadExportAnchor(root, signalRows, noiseRows, confirmedRows) {
+  return (
+    signalRows.find((row) => displayedRowText(row)) ||
+    noiseRows.find((row) => displayedRowText(row)) ||
+    confirmedRows.find((row) => displayedRowText(row)) ||
+    signalRows[0] ||
+    noiseRows[0] ||
+    confirmedRows[0] ||
+    root ||
+    null
+  );
+}
+
+function buildFullThreadExportModel(lib, threadId, exportedAt = new Date()) {
+  const threadRoots = lib.threadRoots || {};
+  const root = threadRoots[threadId] || threadRoots[normPageKey(threadId)] || null;
+  const signalRows = threadRows(lib, threadId, { blocked: false, lane: 'signal' });
+  const noiseRows = threadRows(lib, threadId, { blocked: false, lane: 'noise' });
+  const confirmedRows = threadRows(lib, threadId, { blocked: true, lane: 'noise' });
+  const anchor = pickThreadExportAnchor(root, signalRows, noiseRows, confirmedRows);
+  const titleSeed =
+    cleanText(root?.text) ||
+    displayedRowText(anchor) ||
+    `X Thread ${threadId}`;
+  const pageUrl = root?.pageUrl || anchor?.pageUrl || '';
+  const author = root?.handle
+    ? `@${String(root.handle).replace(/^@/, '')}`
+    : anchor?.handle
+      ? `@${String(anchor.handle).replace(/^@/, '')}`
+      : '';
+  const publishedAt =
+    root?.tweetAt || root?.at || anchor?.tweetAt || anchor?.at || null;
+  const description = (
+    cleanText(root?.text) ||
+    displayedRowText(anchor) ||
+    ''
+  ).slice(0, 160);
+  const body = buildFullThreadMarkdown(root, { signalRows, noiseRows, confirmedRows });
+  const itemsCount = signalRows.length + noiseRows.length + confirmedRows.length;
+
+  return {
+    title: titleSeed.slice(0, 80),
+    url: pageUrl,
+    author,
+    published: isoTime(publishedAt),
+    date: exportedAt.toISOString(),
+    threadId,
+    description,
+    view: 'thread-full',
+    itemsCount: String(itemsCount),
+    body
+  };
+}
+
+function buildAllThreadExportModels(lib) {
+  const exportedAt = new Date();
+  return buildThreadSummaries(lib)
+    .map((item) => buildFullThreadExportModel(lib, item.id, exportedAt))
+    .filter((model) => model.body || model.url || model.description);
 }
 
 function buildExportModel(lib) {
@@ -832,6 +926,21 @@ function buildFrontmatter(settings, vars) {
   return lines.join('\n');
 }
 
+function buildExportVars(model) {
+  return {
+    title: model.title,
+    url: model.url,
+    source: model.url,
+    author: model.author,
+    published: model.published,
+    date: model.date,
+    threadId: model.threadId,
+    description: model.description,
+    view: model.view,
+    itemsCount: model.itemsCount
+  };
+}
+
 function splitRelativePathSegments(noteLocation, vars) {
   return renderTemplate(noteLocation, vars)
     .split(/[\\/]+/)
@@ -846,6 +955,65 @@ async function ensureExportDirectory(rootHandle, segments) {
     current = await current.getDirectoryHandle(segment, { create: true });
   }
   return current;
+}
+
+function ensureUniqueFileBase(fileBase, noteSegments, model, usedPaths) {
+  if (!usedPaths) return fileBase;
+  let candidate = fileBase;
+  let key = [...noteSegments, `${candidate}.md`.toLowerCase()].join('/');
+  if (!usedPaths.has(key)) {
+    usedPaths.add(key);
+    return candidate;
+  }
+
+  let index = 1;
+  do {
+    const suffix = index === 1 && model.threadId ? `-${model.threadId}` : `-${index + 1}`;
+    candidate = sanitizeSegment(`${fileBase}${suffix}`, model.title);
+    key = [...noteSegments, `${candidate}.md`.toLowerCase()].join('/');
+    index += 1;
+  } while (usedPaths.has(key));
+
+  usedPaths.add(key);
+  return candidate;
+}
+
+async function prepareExportState() {
+  if (!libraryCache) {
+    setExportStatus('当前没有可导出的内容。', 'error');
+    return null;
+  }
+  if (!exportDirectoryHandle) {
+    setExportStatus('请先选择导出目录。', 'error');
+    return null;
+  }
+
+  const granted = await ReadPreviewDirectoryStore.ensureWritePermission(exportDirectoryHandle);
+  if (!granted) {
+    setExportStatus('目录写入权限不可用，请重新选择目录。', 'error');
+    return null;
+  }
+
+  clearTimeout(exportSaveTimer);
+  exportSettingsCache = MarkdownExportSettings.normalize(readExportSettingsFromDom());
+  const settings = await MarkdownExportSettings.save(exportSettingsCache);
+  exportSettingsCache = settings;
+  return settings;
+}
+
+async function writeMarkdownModel(model, settings, usedPaths = null) {
+  const vars = buildExportVars(model);
+  const rawFileBase = sanitizeSegment(renderTemplate(settings.fileNameTemplate, vars), model.title);
+  const noteSegments = splitRelativePathSegments(settings.noteLocation, vars);
+  const fileBase = ensureUniqueFileBase(rawFileBase, noteSegments, model, usedPaths);
+  const targetDir = await ensureExportDirectory(exportDirectoryHandle, noteSegments);
+  const fileHandle = await targetDir.getFileHandle(`${fileBase}.md`, { create: true });
+  const frontmatter = buildFrontmatter(settings, vars);
+  const content = `${frontmatter}\n\n${model.body || ''}\n`;
+  const writable = await fileHandle.createWritable();
+  await writable.write(content);
+  await writable.close();
+  return [...noteSegments, `${fileBase}.md`].join('/');
 }
 
 async function pickExportDirectory() {
@@ -922,6 +1090,27 @@ async function exportMarkdown() {
   }
 }
 
+async function exportAllThreadsMarkdown() {
+  try {
+    const settings = await prepareExportState();
+    if (!settings) return;
+    const models = buildAllThreadExportModels(libraryCache);
+    if (!models.length) {
+      setExportStatus('当前没有可批量导出的帖子。', 'error');
+      return;
+    }
+
+    const usedPaths = new Set();
+    for (const model of models) {
+      await writeMarkdownModel(model, settings, usedPaths);
+    }
+
+    setExportStatus(`已批量导出 ${models.length} 个帖子到 ${exportDirectoryHandle.name}`, 'success');
+  } catch (error) {
+    setExportStatus(`批量导出失败：${error?.message || error}`, 'error');
+  }
+}
+
 async function refresh() {
   const lib = await send(XCF.MSG.GET_LIBRARY);
   if (!lib) return;
@@ -992,6 +1181,10 @@ function bindEvents() {
 
   $('btn_export_md')?.addEventListener('click', () => {
     exportMarkdown();
+  });
+
+  $('btn_export_all_md')?.addEventListener('click', () => {
+    exportAllThreadsMarkdown();
   });
 
   $('export_note_location')?.addEventListener('input', scheduleExportSettingsSave);
