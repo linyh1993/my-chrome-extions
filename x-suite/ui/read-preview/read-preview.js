@@ -42,6 +42,20 @@ function isoTime(ts) {
   }
 }
 
+function fmtDate(ts) {
+  if (!ts) return '';
+  try {
+    const date = new Date(ts);
+    if (Number.isNaN(date.getTime())) return '';
+    const year = String(date.getFullYear());
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  } catch {
+    return '';
+  }
+}
+
 function normText(text) {
   return String(text || '')
     .replace(/\s+/g, ' ')
@@ -874,10 +888,37 @@ function appendReferencesMarkdown(chunks, references) {
   }
 }
 
+function replyAuthorLabel(row) {
+  const handle = row?.handle ? `@${String(row.handle).replace(/^@/, '')}` : '';
+  const displayName = cleanText(row?.displayName).replace(/\s+/g, ' ');
+  if (displayName && handle) return `${displayName} ${handle}`;
+  return displayName || handle || '未知用户';
+}
+
+function replyPermalink(row) {
+  const tweetId = String(row?.tweetId || '').trim();
+  const handle = String(row?.handle || '').replace(/^@/, '').trim();
+  if (tweetId && handle) {
+    return `https://x.com/${encodeURIComponent(handle)}/status/${encodeURIComponent(tweetId)}`;
+  }
+  if (tweetId) {
+    return `https://x.com/i/web/status/${encodeURIComponent(tweetId)}`;
+  }
+  return String(row?.pageUrl || '').trim();
+}
+
+function replyMarkdownHeading(row) {
+  const author = replyAuthorLabel(row);
+  const date = fmtDate(row?.tweetAt || row?.at);
+  const url = replyPermalink(row);
+  const datePart = date
+    ? (url ? `[${date}](${url})` : date)
+    : (url ? `[链接](${url})` : '');
+  return [`**${author}**`, datePart].filter(Boolean).join(' · ');
+}
+
 function appendReplyMarkdown(chunks, row) {
-  const who = row.handle ? `@${String(row.handle).replace(/^@/, '')}` : '@未知';
-  const when = fmtTime(row?.tweetAt || row?.at);
-  chunks.push(`### ${who}${when ? ` 路 ${when}` : ''}`);
+  chunks.push(replyMarkdownHeading(row));
   chunks.push(displayedRowText(row) || '（未保存正文）');
   appendMediaMarkdown(chunks, row.media);
   appendReferencesMarkdown(chunks, row.references);
@@ -907,9 +948,7 @@ function buildSingleThreadMarkdown(root, items) {
   }
 
   items.forEach((row) => {
-    const who = row.handle ? `@${String(row.handle).replace(/^@/, '')}` : '@未知';
-    const when = fmtTime(row?.tweetAt || row?.at);
-    chunks.push(`### ${who}${when ? ` · ${when}` : ''}`);
+    chunks.push(replyMarkdownHeading(row));
     chunks.push(displayedRowText(row) || '（未保存正文）');
     appendMediaMarkdown(chunks, row.media);
     appendReferencesMarkdown(chunks, row.references);
@@ -948,9 +987,7 @@ function buildMergedMarkdown(groups) {
       appendReferencesMarkdown(chunks, group.rootReferences);
     }
     group.items.forEach((row) => {
-      const who = row.handle ? `@${String(row.handle).replace(/^@/, '')}` : '@未知';
-      const when = fmtTime(row?.tweetAt || row?.at);
-      chunks.push(`### ${who}${when ? ` · ${when}` : ''}`);
+      chunks.push(replyMarkdownHeading(row));
       chunks.push(displayedRowText(row) || '（未保存正文）');
       appendMediaMarkdown(chunks, row.media);
       appendReferencesMarkdown(chunks, row.references);
