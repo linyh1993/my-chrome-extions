@@ -14,7 +14,7 @@
 ## 安装
 
 1. `chrome://extensions` → 开发者模式 → 加载 **`x-suite`** 目录（含本文件与 `manifest.json` 的文件夹）
-2. 勿再加载 `archive/legacy-extensions/` 下的旧扩展，也不要与 `traffic-relay/` 同时附加到同一标签页
+2. 勿再加载 `archive/legacy-extensions/` 下的旧扩展，也不要与 `archive/inactive-projects/traffic-relay/` 同时附加到同一标签页
 3. 打开 `https://x.com/.../status/...` 验证评论过滤
 4. 流量镜像：安装时已包含 **debugger** 权限，手动开启即可镜像 HTTP GraphQL 与 WebSocket 事件（仍需本机接收服务）
 

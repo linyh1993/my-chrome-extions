@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <header class="sp-header">
+    <h1>流量复刻</h1>
+    <p class="sp-subtitle">控制当前标签页</p>
+  </header>
+
+  <section class="sp-card">
+    <div class="sp-row">
+      <span class="sp-label">当前站点</span>
+      <span id="sp-hostname" class="sp-site">—</span>
+    </div>
+    <div class="sp-row">
+      <span class="sp-label">监听状态</span>
+      <span id="sp-status" class="sp-status">—</span>
+    </div>
+    <div class="sp-row sp-row--stack">
+      <span class="sp-label">镜像地址</span>
+      <span id="sp-mirror" class="sp-mirror">—</span>
+    </div>
+    <label class="sp-switch-row">
+      <span>流量复刻</span>
+      <span class="copier-switch">
+        <input id="sp-toggle" type="checkbox" />
+        <span class="copier-slider"></span>
+      </span>
+    </label>
+  </section>
+
+  <section class="sp-card">
+    <h2 class="sp-card-title">页面悬浮 UI</h2>
+    <p class="sp-desc">仅影响当前页右下角控件，可随时恢复。</p>
+    <div class="sp-btn-group">
+      <button type="button" id="sp-ui-expanded" class="sp-btn">显示面板</button>
+      <button type="button" id="sp-ui-minimized" class="sp-btn sp-btn--ghost">紧凑条</button>
+      <button type="button" id="sp-ui-hidden" class="sp-btn sp-btn--ghost">完全隐藏</button>
+    </div>
+  </section>
+
+  <p class="sp-foot">
+    <a id="sp-open-options" href="#">打开设置</a> 管理站点列表与过滤规则。
+  </p>
+
+  <script src="../state.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

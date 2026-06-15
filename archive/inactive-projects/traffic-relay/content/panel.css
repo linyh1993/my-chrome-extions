@@ -1,0 +1,183 @@
+/* 悬浮面板 */
+#traffic-copier-root {
+  position: fixed;
+  bottom: 20px;
+  right: 0;
+  z-index: 99999999;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  pointer-events: none;
+}
+
+#traffic-copier-root * {
+  pointer-events: auto;
+}
+
+.copier-peek {
+  position: fixed;
+  right: 0;
+  bottom: 80px;
+  z-index: 99999999;
+  writing-mode: vertical-rl;
+  letter-spacing: 2px;
+  padding: 10px 6px;
+  border: none;
+  border-radius: 6px 0 0 6px;
+  background: rgba(34, 34, 34, 0.92);
+  color: #9ecbff;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: -2px 2px 8px rgba(0, 0, 0, 0.35);
+  opacity: 0.55;
+  transition: opacity 0.2s, right 0.2s;
+}
+
+.copier-peek:hover {
+  opacity: 1;
+}
+
+.copier-peek[hidden] {
+  display: none;
+}
+
+.copier-panel {
+  margin-right: 20px;
+  background-color: #222;
+  color: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  min-width: 220px;
+  overflow: hidden;
+}
+
+.copier-panel[hidden] {
+  display: none;
+}
+
+.copier-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #3a3a3a;
+}
+
+.copier-header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.copier-icon-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #aaa;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.copier-icon-btn:hover {
+  background: #444;
+  color: #fff;
+}
+
+.copier-panel-body {
+  padding: 10px 12px 12px;
+}
+
+.copier-panel--compact .copier-panel-body {
+  padding: 8px 10px;
+}
+
+.copier-panel--compact .copier-hint,
+.copier-panel--compact .copier-status-text {
+  display: none;
+}
+
+.copier-site-badge {
+  padding: 2px 8px;
+  background-color: #444;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #9ecbff;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copier-status-text {
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 8px;
+}
+
+.copier-status-text.copier-status-on {
+  color: #5dffa0;
+}
+
+.copier-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.copier-text {
+  margin-right: 12px;
+}
+
+.copier-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #666;
+  line-height: 1.35;
+}
+
+.copier-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.copier-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.copier-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background-color: #555;
+  transition: 0.3s;
+  border-radius: 34px;
+}
+
+.copier-slider:before {
+  position: absolute;
+  content: '';
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+input:checked + .copier-slider {
+  background-color: #007bff;
+}
+
+input:checked + .copier-slider:before {
+  transform: translateX(20px);
+}

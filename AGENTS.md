@@ -7,6 +7,7 @@
 - 任何任务都必须先读 [rules/andrej-karpathy-coding-guidelines.md](rules/andrej-karpathy-coding-guidelines.md)，再开始计划和实现。
 - 修改 Chrome 扩展代码、manifest、权限、消息通信、content script、service worker、storage、side panel 时，在上述文件之后继续读 [rules/chrome-extension-guide.md](rules/chrome-extension-guide.md)。
 - 修改具体子项目时，优先读该子项目自己的 `README.md` 和现有代码。
+- `archive/` 下的归档项目默认**禁止读取**，避免历史实现制造噪音；只有用户明确要求读取、对比、迁移，或强制要求从归档中取信息时，才允许进入。
 - 如果本轮上下文中已经读取过某个规则文件，优先回顾上下文，不要重复读取；只有内容不确定、可能已变更或需要精确核对时才重新读取。
 - 默认不要访问 Chrome 官方文档；优先按本仓库指南和现有代码实现。只有用户明确要求，或本地指南无法覆盖且不查证会带来明显风险时，才访问 Chrome 官方文档。
 
@@ -32,9 +33,7 @@
 
 | 目录                           | 说明                                          | 入口                                                                          |
 | ---------------------------- | ------------------------------------------- | --------------------------------------------------------------------------- |
-| `x-suite/`                   | **推荐**：X 专用合并扩展（评论过滤 + 可选 GraphQL 镜像）       | `README.md`、`manifest.json`、`ui/`、`content/`、`background/service-worker.js` |
-| `traffic-relay/`             | 通用流量复刻：任意站点 API 镜像到本地（CDP Network）          | `README.md`、`manifest.json`、`background/service-worker.js`、`shared/config.js` |
-| `archive/legacy-extensions/` | 已归档：`x-comment-filter`、`traffic-relay`（勿加载） | `archive/README.md`                                                         |
-| `chrome-capture-toolkit/`    | Chrome CDP 抓包与精简导出；PowerShell 启动 + Node CLI | `README.md`、`scripts/powershell/`、`src/capture/`、`docs/`                    |
-
+| `x-suite/`                   | **推荐**：X 专用合并扩展（评论过滤 + 可选 GraphQL / WebSocket 镜像） | `README.md`、`manifest.json`、`ui/`、`content/`、`background/service-worker.js` |
+| `archive/legacy-extensions/` | 已归档：合并前旧扩展快照（勿加载，默认勿读）                      | `archive/README.md`                                                         |
+| `archive/inactive-projects/` | 已归档：停用的独立项目 `traffic-relay`、`chrome-capture-toolkit`（默认勿读） | `archive/README.md`                                                         |
 
