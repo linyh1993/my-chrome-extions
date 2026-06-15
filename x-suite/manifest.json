@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "X Suite",
   "version": "1.3.3",
-  "description": "X 专用工具：Thread 评论过滤 + 可选 GraphQL 流量镜像到本机。",
+  "description": "X 专用工具：Thread 评论过滤 + 可选 GraphQL / WebSocket 流量镜像到本机。",
   "permissions": ["storage", "debugger", "sidePanel", "tabs"],
   "host_permissions": [
     "*://x.com/*",

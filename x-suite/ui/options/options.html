@@ -67,14 +67,14 @@
   <div id="main_mirror" class="main-section" hidden>
     <section class="settings-card">
       <h2>流量镜像</h2>
-      <p class="hint">默认开启。使用 <code>debugger</code> 读取 Network，将 GraphQL POST 到本机；需自行启动接收服务。</p>
+      <p class="hint">默认开启。使用 <code>debugger</code> 读取 Network，将 GraphQL POST 与 WebSocket 事件转发到本机；需自行启动接收服务。</p>
       <p class="hint" id="mirror_live_status">—</p>
       <label class="field">
         <span class="field-label">本机接收地址</span>
         <input type="url" id="mirror_url" class="field-input" spellcheck="false" />
       </label>
       <label class="field">
-        <span class="field-label">追踪路径（X 固定）</span>
+        <span class="field-label">追踪规则（X 固定）</span>
         <code id="mirror_path_display" class="field-code">/api/graphql</code>
       </label>
       <label class="field">

@@ -177,7 +177,7 @@
     const cfg = await MirrorSettings.load();
     const filterSettings = await sendFilter(XCF.MSG.GET_SETTINGS);
     $('mirror_url').value = cfg.mirrorUrl;
-    $('mirror_path_display').textContent = (cfg.pathIncludes || []).join(', ') || '/api/graphql';
+    $('mirror_path_display').textContent = 'HTTP: /api/graphql · WS: 同 host 全部路径';
     $('mirror_default_mode').value = XCF.displayModeFromPanelUi(
       filterSettings?.panelUi || {}
     );

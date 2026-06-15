@@ -1,9 +1,10 @@
-/** @file 流量镜像：debugger 与 Network 转发（service worker 侧） */
+/** @file Mirror debugger + Network relay logic for the service worker. */
 const MirrorBg = (() => {
   const attachedTabs = new Set();
-  const tabSiteConfig = new Map();
-  const debuggerVersion = '1.3';
+  const tabMirrorCtx = new Map();
   const trackedRequests = new Map();
+  const trackedWebSockets = new Map();
+  const debuggerVersion = '1.3';
 
   function hasDebuggerPermission() {
     return new Promise((resolve) => {
@@ -36,6 +37,13 @@ const MirrorBg = (() => {
     return cfg?.enabled !== false;
   }
 
+  function createMirrorCtx(site, cfg) {
+    return {
+      site,
+      mirrorUrl: cfg?.mirrorUrl || MirrorSettings.DEFAULTS.mirrorUrl
+    };
+  }
+
   function getSiteUrlPatterns() {
     const patterns = new Set();
     for (const site of SITES) {
@@ -53,7 +61,7 @@ const MirrorBg = (() => {
     MirrorSettings.load().then((cfg) => {
       if (!isMirrorEnabled(cfg)) return;
       resolveSiteForTab(tabId, (site) => {
-        if (site) enableMirrorOnTab(tabId);
+        if (site) attachDebugger(tabId, cfg, site);
       });
     });
   }
@@ -107,11 +115,25 @@ const MirrorBg = (() => {
         });
         return;
       }
-      if (!attachedTabs.has(tabId)) attachDebugger(tabId);
-      else updatePageStatus(tabId, true, tabSiteConfig.get(tabId));
-      sendResponse?.({
-        ok: true,
-        isAttached: attachedTabs.has(tabId) || granted
+
+      MirrorSettings.load().then((cfg) => {
+        if (!isMirrorEnabled(cfg)) {
+          sendResponse?.({ ok: true, isAttached: false, mirrorEnabled: false });
+          return;
+        }
+
+        if (!attachedTabs.has(tabId)) {
+          attachDebugger(tabId, cfg);
+        } else {
+          const ctx = tabMirrorCtx.get(tabId);
+          if (ctx) ctx.mirrorUrl = cfg.mirrorUrl || ctx.mirrorUrl;
+          updatePageStatus(tabId, true, ctx?.site || null);
+        }
+
+        sendResponse?.({
+          ok: true,
+          isAttached: attachedTabs.has(tabId) || granted
+        });
       });
     });
   }
@@ -122,11 +144,7 @@ const MirrorBg = (() => {
       return;
     }
     chrome.tabs.get(tabId, (tab) => {
-      if (chrome.runtime.lastError) {
-        callback(null);
-        return;
-      }
-      if (!tab?.url) {
+      if (chrome.runtime.lastError || !tab?.url) {
         callback(null);
         return;
       }
@@ -147,57 +165,67 @@ const MirrorBg = (() => {
 
       chrome.tabs.sendMessage(tabId, payload, () => {
         if (chrome.runtime.lastError) {
-          /* content 未就绪 */
+          /* content not ready */
         }
       });
 
       chrome.runtime.sendMessage(payload).catch(() => {
-        /* side panel 未打开 */
+        /* side panel not open */
       });
     });
   }
 
-  function attachDebugger(tabId) {
-    resolveSiteForTab(tabId, (site) => {
+  function attachDebugger(tabId, cfg, resolvedSite = null) {
+    const attachSite = (site) => {
       if (!site) {
         updatePageStatus(tabId, false);
         return;
       }
 
-      tabSiteConfig.set(tabId, site);
-      console.log(`[mirror Tab ${tabId}] 附加调试器 (${site.label})…`);
+      const ctx = createMirrorCtx(site, cfg);
+      tabMirrorCtx.set(tabId, ctx);
+      console.log(`[mirror Tab ${tabId}] attach debugger (${site.label})...`);
 
       chrome.debugger.attach({ tabId }, debuggerVersion, () => {
         if (chrome.runtime.lastError) {
-          console.error(
-            `[mirror Tab ${tabId}] attach 失败:`,
-            chrome.runtime.lastError.message
-          );
-          tabSiteConfig.delete(tabId);
+          console.error(`[mirror Tab ${tabId}] attach failed:`, chrome.runtime.lastError.message);
+          tabMirrorCtx.delete(tabId);
           updatePageStatus(tabId, false);
           return;
         }
+
         chrome.debugger.sendCommand({ tabId }, 'Network.enable', {}, () => {
           if (chrome.runtime.lastError) {
             console.error(
-              `[mirror Tab ${tabId}] Network.enable 失败:`,
+              `[mirror Tab ${tabId}] Network.enable failed:`,
               chrome.runtime.lastError.message
             );
             detachDebugger(tabId);
-          } else {
-            attachedTabs.add(tabId);
-            updatePageStatus(tabId, true, site);
+            return;
           }
+          attachedTabs.add(tabId);
+          updatePageStatus(tabId, true, site);
         });
       });
-    });
+    };
+
+    if (resolvedSite) {
+      attachSite(resolvedSite);
+      return;
+    }
+
+    resolveSiteForTab(tabId, attachSite);
   }
 
   function clearTabState(tabId) {
     attachedTabs.delete(tabId);
-    tabSiteConfig.delete(tabId);
+    tabMirrorCtx.delete(tabId);
+
     for (const [requestId, data] of trackedRequests.entries()) {
       if (data.tabId === tabId) trackedRequests.delete(requestId);
+    }
+    for (const [requestId, data] of trackedWebSockets.entries()) {
+      if (data.tabId === tabId) trackedWebSockets.delete(requestId);
     }
   }
 
@@ -216,10 +244,7 @@ const MirrorBg = (() => {
     chrome.debugger.sendCommand({ tabId }, 'Network.disable', {}, () => {
       chrome.debugger.detach({ tabId }, () => {
         if (chrome.runtime.lastError) {
-          console.warn(
-            `[mirror Tab ${tabId}] detach:`,
-            chrome.runtime.lastError.message
-          );
+          console.warn(`[mirror Tab ${tabId}] detach:`, chrome.runtime.lastError.message);
         }
         finish();
       });
@@ -233,24 +258,7 @@ const MirrorBg = (() => {
     updatePageStatus(tabId, false);
   });
 
-  async function forwardFullTraffic(trafficData) {
-    const payload = {
-      siteId: trafficData.siteId,
-      request: trafficData.request,
-      response: trafficData.response,
-      responseBody: trafficData.responseBody
-    };
-
-    let mirrorUrl = trafficData.mirrorUrl;
-    if (typeof MirrorSettings !== 'undefined') {
-      try {
-        const cfg = await MirrorSettings.load();
-        mirrorUrl = cfg.mirrorUrl || mirrorUrl;
-      } catch {
-        /* 使用请求缓存 URL */
-      }
-    }
-
+  async function postMirrorPayload(tabId, mirrorUrl, payload) {
     try {
       const response = await fetch(mirrorUrl, {
         method: 'POST',
@@ -258,17 +266,117 @@ const MirrorBg = (() => {
         body: JSON.stringify(payload)
       });
       if (!response.ok) {
-        console.error(
-          `[mirror Tab ${trafficData.tabId}] 本地接口:`,
-          response.status,
-          response.statusText
-        );
+        console.error(`[mirror Tab ${tabId}] local endpoint:`, response.status, response.statusText);
       }
     } catch (error) {
-      console.error(
-        `[mirror Tab ${trafficData.tabId}] 本地请求失败:`,
-        error.message
-      );
+      console.error(`[mirror Tab ${tabId}] local request failed:`, error.message);
+    }
+  }
+
+  async function forwardFullTraffic(trafficData) {
+    await postMirrorPayload(trafficData.tabId, trafficData.mirrorUrl, {
+      siteId: trafficData.siteId,
+      request: trafficData.request,
+      response: trafficData.response,
+      responseBody: trafficData.responseBody
+    });
+  }
+
+  async function forwardWebSocketEvent(socketData, eventType, extra = {}) {
+    await postMirrorPayload(socketData.tabId, socketData.mirrorUrl, {
+      relayKind: 'websocket',
+      eventType,
+      siteId: socketData.siteId,
+      siteLabel: socketData.siteLabel,
+      websocket: {
+        requestId: socketData.requestId,
+        url: socketData.url,
+        openedAt: socketData.openedAt,
+        handshake: socketData.handshake,
+        sentSeq: socketData.sentSeq,
+        receivedSeq: socketData.receivedSeq
+      },
+      ...extra
+    });
+  }
+
+  function ensureWebSocketData(tabId, requestId, url = null) {
+    if (trackedWebSockets.has(requestId)) {
+      const current = trackedWebSockets.get(requestId);
+      if (url && !current.url) current.url = url;
+      return current;
+    }
+
+    const ctx = tabMirrorCtx.get(tabId);
+    if (!ctx?.site) return null;
+
+    if (!shouldTrackWebSocket(url || '', ctx.site)) return null;
+
+    const next = {
+      tabId,
+      mirrorUrl: ctx.mirrorUrl,
+      siteId: ctx.site.id,
+      siteLabel: ctx.site.label,
+      requestId,
+      url: url || null,
+      openedAt: new Date().toISOString(),
+      handshake: {
+        request: null,
+        response: null
+      },
+      sentSeq: 0,
+      receivedSeq: 0
+    };
+    trackedWebSockets.set(requestId, next);
+    return next;
+  }
+
+  function normalizeWebSocketFrame(frame, direction, sequence) {
+    const opcode = Number(frame?.opcode);
+    const payloadData = frame?.payloadData ?? null;
+    const isBinary = opcode === 2;
+    const isText = opcode === 1;
+
+    return {
+      direction,
+      sequence,
+      opcode,
+      opcodeName: webSocketOpcodeName(opcode),
+      payloadEncoding: isBinary ? 'base64' : 'utf8',
+      payloadData,
+      payloadJson: isText ? tryParseJson(payloadData) : null,
+      payloadSize: typeof payloadData === 'string' ? payloadData.length : null
+    };
+  }
+
+  function webSocketOpcodeName(opcode) {
+    switch (opcode) {
+      case 0:
+        return 'continuation';
+      case 1:
+        return 'text';
+      case 2:
+        return 'binary';
+      case 8:
+        return 'close';
+      case 9:
+        return 'ping';
+      case 10:
+        return 'pong';
+      default:
+        return 'unknown';
+    }
+  }
+
+  function tryParseJson(text) {
+    if (typeof text !== 'string') return null;
+    const trimmed = text.trim();
+    if (!trimmed) return null;
+    if (!(trimmed.startsWith('{') || trimmed.startsWith('[') || trimmed === 'null')) return null;
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return null;
     }
   }
 
@@ -276,17 +384,19 @@ const MirrorBg = (() => {
     const tabId = source.tabId;
     if (!attachedTabs.has(tabId)) return;
 
-    const site = tabSiteConfig.get(tabId);
-    if (!site) return;
+    const ctx = tabMirrorCtx.get(tabId);
+    if (!ctx?.site) return;
 
     switch (method) {
       case 'Network.requestWillBeSent': {
         const { requestId, request } = params;
-        if (!shouldTrackRequest(request.url, site)) break;
-      trackedRequests.set(requestId, {
-        tabId,
-        siteId: site.id,
-        jsonResponsesOnly: !!site.jsonResponsesOnly,
+        if (!shouldTrackRequest(request.url, ctx.site)) break;
+
+        trackedRequests.set(requestId, {
+          tabId,
+          mirrorUrl: ctx.mirrorUrl,
+          siteId: ctx.site.id,
+          jsonResponsesOnly: !!ctx.site.jsonResponsesOnly,
           request,
           response: null,
           responseBody: null
@@ -330,6 +440,88 @@ const MirrorBg = (() => {
         );
         break;
       }
+
+      case 'Network.webSocketCreated': {
+        const socketData = ensureWebSocketData(tabId, params.requestId, params.url);
+        if (!socketData) break;
+        forwardWebSocketEvent(socketData, 'created');
+        break;
+      }
+
+      case 'Network.webSocketWillSendHandshakeRequest': {
+        const socketData = ensureWebSocketData(tabId, params.requestId);
+        if (!socketData) break;
+
+        socketData.handshake.request = {
+          timestamp: params.timestamp ?? null,
+          wallTime: params.wallTime ?? null,
+          headers: params.request?.headers || {}
+        };
+        forwardWebSocketEvent(socketData, 'handshake-request', {
+          handshake: { request: socketData.handshake.request }
+        });
+        break;
+      }
+
+      case 'Network.webSocketHandshakeResponseReceived': {
+        const socketData = ensureWebSocketData(tabId, params.requestId);
+        if (!socketData) break;
+
+        socketData.handshake.response = {
+          timestamp: params.timestamp ?? null,
+          status: params.response?.status ?? null,
+          statusText: params.response?.statusText ?? null,
+          headers: params.response?.headers || {},
+          headersText: params.response?.headersText ?? null
+        };
+        forwardWebSocketEvent(socketData, 'handshake-response', {
+          handshake: { response: socketData.handshake.response }
+        });
+        break;
+      }
+
+      case 'Network.webSocketFrameSent':
+      case 'Network.webSocketFrameReceived': {
+        const socketData = ensureWebSocketData(tabId, params.requestId);
+        if (!socketData) break;
+
+        const direction = method === 'Network.webSocketFrameSent' ? 'sent' : 'received';
+        if (direction === 'sent') socketData.sentSeq += 1;
+        else socketData.receivedSeq += 1;
+
+        forwardWebSocketEvent(socketData, 'frame', {
+          frame: normalizeWebSocketFrame(
+            params.response,
+            direction,
+            direction === 'sent' ? socketData.sentSeq : socketData.receivedSeq
+          ),
+          timestamp: params.timestamp ?? null
+        });
+        break;
+      }
+
+      case 'Network.webSocketFrameError': {
+        const socketData = ensureWebSocketData(tabId, params.requestId);
+        if (!socketData) break;
+
+        forwardWebSocketEvent(socketData, 'frame-error', {
+          timestamp: params.timestamp ?? null,
+          errorMessage: params.errorMessage
+        });
+        break;
+      }
+
+      case 'Network.webSocketClosed': {
+        const socketData = ensureWebSocketData(tabId, params.requestId);
+        if (!socketData) break;
+
+        forwardWebSocketEvent(socketData, 'closed', {
+          timestamp: params.timestamp ?? null,
+          closedAt: new Date().toISOString()
+        });
+        trackedWebSockets.delete(params.requestId);
+        break;
+      }
     }
   });
 
@@ -351,6 +543,20 @@ const MirrorBg = (() => {
         if (tabId) ensureTabMirror(tabId);
       }
     );
+  });
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'sync' || !changes[MirrorSettings.STORAGE_KEY]) return;
+    const nextCfg = MirrorSettings.normalize(changes[MirrorSettings.STORAGE_KEY].newValue);
+    for (const ctx of tabMirrorCtx.values()) {
+      ctx.mirrorUrl = nextCfg.mirrorUrl;
+    }
+    for (const tracked of trackedRequests.values()) {
+      tracked.mirrorUrl = nextCfg.mirrorUrl;
+    }
+    for (const tracked of trackedWebSockets.values()) {
+      tracked.mirrorUrl = nextCfg.mirrorUrl;
+    }
   });
 
   function handleMessage(msg, sender, sendResponse) {
@@ -384,7 +590,7 @@ const MirrorBg = (() => {
                 hostname,
                 isAttached: attachedTabs.has(activeTab.id),
                 mirrorEnabled: isMirrorEnabled(cfg),
-                site: tabSiteConfig.get(activeTab.id) || site,
+                site: tabMirrorCtx.get(activeTab.id)?.site || site,
                 hasDebuggerPermission: hasDebugger
               });
             }
@@ -442,11 +648,8 @@ const MirrorBg = (() => {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
           const activeTabId = tabs[0]?.id;
           if (!activeTabId) return;
-          if (attachedTabs.has(activeTabId)) {
-            detachDebugger(activeTabId);
-          } else {
-            enableMirrorOnTab(activeTabId);
-          }
+          if (attachedTabs.has(activeTabId)) detachDebugger(activeTabId);
+          else enableMirrorOnTab(activeTabId);
         });
         return true;
 
@@ -458,11 +661,7 @@ const MirrorBg = (() => {
         if (tabId) {
           MirrorSettings.load().then((cfg) => {
             if (isMirrorEnabled(cfg)) ensureTabMirror(tabId);
-            updatePageStatus(
-              tabId,
-              attachedTabs.has(tabId),
-              tabSiteConfig.get(tabId)
-            );
+            updatePageStatus(tabId, attachedTabs.has(tabId), tabMirrorCtx.get(tabId)?.site || null);
           });
         }
         return true;
@@ -479,7 +678,7 @@ const MirrorBg = (() => {
   }
 
   function initOnInstalled() {
-    console.log('[mirror] 已加载站点:', SITES.map((s) => s.id).join(', '));
+    console.log('[mirror] loaded sites:', SITES.map((site) => site.id).join(', '));
     restoreEnabledMirrors();
   }
 

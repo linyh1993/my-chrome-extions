@@ -1,10 +1,13 @@
 // X 专用：GraphQL 流量镜像配置
+const WS_PROTOCOLS = new Set(['ws:', 'wss:']);
+
 const SITES = [
   {
     id: 'x',
     label: 'X',
     hosts: ['x.com', 'twitter.com'],
     pathIncludes: ['/api/graphql'],
+    webSocketPathIncludes: [],
     urlPatterns: [
       '*://*.x.com/*',
       '*://x.com/*',
@@ -40,7 +43,9 @@ function urlMatchesPathRules(url, pathIncludes) {
 
 function requestUrlMatchesSite(url, site) {
   try {
-    return hostMatches(new URL(url).hostname, site.hosts);
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    return hostMatches(parsed.hostname, site.hosts);
   } catch {
     return false;
   }
@@ -52,6 +57,20 @@ function shouldTrackRequest(url, site) {
     return urlMatchesPathRules(url, site.pathIncludes);
   }
   return !!site.jsonResponsesOnly;
+}
+
+function shouldTrackWebSocket(url, site) {
+  try {
+    const parsed = new URL(url);
+    if (!WS_PROTOCOLS.has(parsed.protocol)) return false;
+    if (!hostMatches(parsed.hostname, site.hosts)) return false;
+    if (site.webSocketPathIncludes?.length > 0) {
+      return urlMatchesPathRules(url, site.webSocketPathIncludes);
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function getResponseMimeType(response) {
