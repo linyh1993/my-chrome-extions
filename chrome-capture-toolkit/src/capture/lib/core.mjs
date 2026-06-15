@@ -34,6 +34,14 @@ Options:
   --no-split                 Disable split files
   --include-base64           Keep binary response bodies as base64 instead of skipping them
   --help                     Show this help
+
+Output:
+  HTTP route files are written under the split directory as before.
+  WebSocket sessions are written under:
+    <split-dir>/ws/<host>/<pageKey>/<wsKey>/
+      session.json
+      messages.ndjson
+      summary.json
 `;
 
 export const OPS_HELP = `Capture Chrome requests for the OPS system with menu-aware routing.
@@ -69,6 +77,14 @@ Options:
   --no-split                 Disable split files
   --include-base64           Keep binary response bodies as base64 instead of skipping them
   --help                     Show this help
+
+Output:
+  HTTP route files are written under the split directory as before.
+  WebSocket sessions are written under:
+    <split-dir>/ws/<host>/<pageKey>/<wsKey>/
+      session.json
+      messages.ndjson
+      summary.json
 `;
 
 const VALUE_FLAGS = new Set([
@@ -212,6 +228,37 @@ export function routeRootFor(splitTarget) {
   return splitTarget.root;
 }
 
+export function buildWebSocketTarget(args, target, aggregatePath, splitTarget) {
+  if (splitTarget.mode !== "none" && splitTarget.root) {
+    return {
+      mode: "fixed",
+      root: path.join(splitTarget.root, "ws"),
+    };
+  }
+
+  if (aggregatePath) {
+    return {
+      mode: "fixed",
+      root: path.join(path.dirname(aggregatePath), `${path.parse(aggregatePath).name}-ws`),
+    };
+  }
+
+  const fallbackName = sanitizePart(args.sessionName || target.title || "untitled-page", "untitled-page");
+  const baseDir = args.outputDir ? path.resolve(process.cwd(), args.outputDir) : process.cwd();
+  return {
+    mode: "fixed",
+    root: path.join(baseDir, fallbackName, "ws"),
+  };
+}
+
+export function buildWebSocketSessionDirectory(rootDir, target, urlString, requestId) {
+  const host = hostPart(urlString);
+  const pageKey = pageKeyForTarget(target);
+  const pathHint = pathHintForUrl(urlString);
+  const wsKey = `${pathHint}__${shortHash(`${urlString}::${requestId}`)}`;
+  return path.join(rootDir, host, pageKey, wsKey);
+}
+
 export function buildRouteFilePath(rootDir, urlString, layout) {
   try {
     const url = new URL(urlString);
@@ -332,4 +379,38 @@ function includesAny(value, terms, emptyMeansPass = true) {
 
 function includesExact(value, terms) {
   return !terms.length || terms.includes(value);
+}
+
+function pageKeyForTarget(target) {
+  const title = String(target?.title || "").trim();
+  if (title) {
+    return compactPart(title, "untitled-page");
+  }
+
+  try {
+    const url = new URL(target?.url || "");
+    const segments = url.pathname.split("/").filter(Boolean);
+    const tail = segments.slice(-2).join("__");
+    return compactPart(tail || url.host || "untitled-page", "untitled-page");
+  } catch {
+    return "untitled-page";
+  }
+}
+
+function pathHintForUrl(urlString) {
+  try {
+    const url = new URL(urlString);
+    const segments = url.pathname.split("/").filter(Boolean);
+    return compactPart(segments[segments.length - 1] || "_root", "_root");
+  } catch {
+    return "_unknown";
+  }
+}
+
+function hostPart(urlString) {
+  try {
+    return compactPart(new URL(urlString).host, "_unknown-host");
+  } catch {
+    return "_unknown-host";
+  }
 }

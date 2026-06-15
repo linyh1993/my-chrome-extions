@@ -112,3 +112,21 @@ node .\src\capture\cli\simplify-capture.mjs --input .\_tmp-simplify-source --out
 - 所有帮助命令执行成功
 - 所有入口脚本能正确解析路径
 - 通用抓包、OPS 抓包、精简导出都能完成基础启动或处理
+- 通用抓包启动日志中能看到 `WebSocket files:` 输出路径
+
+## WebSocket 追加检查
+
+在存在 WebSocket 页面时，可追加执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\powershell\start-capture.ps1 `
+  -HostContains "<目标站点>" `
+  -SessionName smoke-ws `
+  -OutputDir .\_tmp-ws
+```
+
+预期结果：
+
+- 输出目录下出现 `.\_tmp-ws\smoke-ws\ws\`
+- 每条 WebSocket 连接独立目录，包含 `session.json`、`messages.ndjson`、`summary.json`
+- 文本帧逐条写入 `messages.ndjson`
