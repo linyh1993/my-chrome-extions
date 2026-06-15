@@ -12,6 +12,7 @@ const attachedTabs = new Set();
 const tabContext = new Map();
 const debuggerVersion = '1.3';
 const trackedRequests = new Map();
+const trackedWebSockets = new Map();
 
 function resolveTabContext(tabId, callback) {
   chrome.tabs.get(tabId, (tab) => {
@@ -138,6 +139,9 @@ function detachDebugger(tabId) {
     for (const [requestId, data] of trackedRequests.entries()) {
       if (data.tabId === tabId) trackedRequests.delete(requestId);
     }
+    for (const [requestId, data] of trackedWebSockets.entries()) {
+      if (data.tabId === tabId) trackedWebSockets.delete(requestId);
+    }
     updatePageStatus(tabId, false);
   });
 }
@@ -200,6 +204,105 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       });
       break;
     }
+
+    case 'Network.webSocketCreated': {
+      const { requestId, url } = params;
+      if (!shouldTrackWebSocket(url, ctx.site)) break;
+
+      trackedWebSockets.set(requestId, {
+        tabId,
+        siteId: ctx.site.id,
+        siteLabel: ctx.site.label,
+        mirrorUrl: ctx.mirrorUrl,
+        page: { hostname: ctx.hostname },
+        requestId,
+        url,
+        openedAt: new Date().toISOString(),
+        handshake: {
+          request: null,
+          response: null
+        },
+        sentSeq: 0,
+        receivedSeq: 0
+      });
+      forwardWebSocketEvent(trackedWebSockets.get(requestId), 'created');
+      break;
+    }
+
+    case 'Network.webSocketWillSendHandshakeRequest': {
+      const tracked = trackedWebSockets.get(params.requestId);
+      if (!tracked) break;
+
+      tracked.handshake.request = {
+        timestamp: params.timestamp ?? null,
+        wallTime: params.wallTime ?? null,
+        headers: params.request?.headers || {}
+      };
+      forwardWebSocketEvent(tracked, 'handshake-request', {
+        handshake: { request: tracked.handshake.request }
+      });
+      break;
+    }
+
+    case 'Network.webSocketHandshakeResponseReceived': {
+      const tracked = trackedWebSockets.get(params.requestId);
+      if (!tracked) break;
+
+      tracked.handshake.response = {
+        timestamp: params.timestamp ?? null,
+        status: params.response?.status ?? null,
+        statusText: params.response?.statusText ?? null,
+        headers: params.response?.headers || {},
+        headersText: params.response?.headersText ?? null
+      };
+      forwardWebSocketEvent(tracked, 'handshake-response', {
+        handshake: { response: tracked.handshake.response }
+      });
+      break;
+    }
+
+    case 'Network.webSocketFrameSent':
+    case 'Network.webSocketFrameReceived': {
+      const tracked = trackedWebSockets.get(params.requestId);
+      if (!tracked) break;
+
+      const direction = method === 'Network.webSocketFrameSent' ? 'sent' : 'received';
+      if (direction === 'sent') tracked.sentSeq += 1;
+      else tracked.receivedSeq += 1;
+
+      forwardWebSocketEvent(tracked, 'frame', {
+        frame: normalizeWebSocketFrame(
+          params.response,
+          direction,
+          direction === 'sent' ? tracked.sentSeq : tracked.receivedSeq
+        ),
+        timestamp: params.timestamp ?? null
+      });
+      break;
+    }
+
+    case 'Network.webSocketFrameError': {
+      const tracked = trackedWebSockets.get(params.requestId);
+      if (!tracked) break;
+
+      forwardWebSocketEvent(tracked, 'frame-error', {
+        timestamp: params.timestamp ?? null,
+        errorMessage: params.errorMessage
+      });
+      break;
+    }
+
+    case 'Network.webSocketClosed': {
+      const tracked = trackedWebSockets.get(params.requestId);
+      if (!tracked) break;
+
+      forwardWebSocketEvent(tracked, 'closed', {
+        timestamp: params.timestamp ?? null,
+        closedAt: new Date().toISOString()
+      });
+      trackedWebSockets.delete(params.requestId);
+      break;
+    }
   }
 });
 
@@ -212,17 +315,42 @@ async function forwardTraffic(tracked) {
     responseBody: tracked.responseBody
   };
 
+  await postMirrorPayload(tracked.mirrorUrl, tracked.tabId, payload);
+}
+
+async function forwardWebSocketEvent(tracked, eventType, extra = {}) {
+  const payload = {
+    relayKind: 'websocket',
+    eventType,
+    siteId: tracked.siteId,
+    siteLabel: tracked.siteLabel,
+    page: tracked.page,
+    websocket: {
+      requestId: tracked.requestId,
+      url: tracked.url,
+      openedAt: tracked.openedAt,
+      handshake: tracked.handshake,
+      sentSeq: tracked.sentSeq,
+      receivedSeq: tracked.receivedSeq
+    },
+    ...extra
+  };
+
+  await postMirrorPayload(tracked.mirrorUrl, tracked.tabId, payload);
+}
+
+async function postMirrorPayload(mirrorUrl, tabId, payload) {
   try {
-    const response = await fetch(tracked.mirrorUrl, {
+    const response = await fetch(mirrorUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
     if (!response.ok) {
-      console.error(`[Tab ${tracked.tabId}] 本地接口 ${response.status} ${response.statusText}`);
+      console.error(`[Tab ${tabId}] 本地接口 ${response.status} ${response.statusText}`);
     }
   } catch (error) {
-    console.error(`[Tab ${tracked.tabId}] 转发失败:`, error.message);
+    console.error(`[Tab ${tabId}] 转发失败:`, error.message);
   }
 }
 
@@ -244,3 +372,52 @@ function updatePageStatus(tabId, isAttached, ctx = null) {
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (attachedTabs.has(tabId)) detachDebugger(tabId);
 });
+
+function normalizeWebSocketFrame(frame, direction, sequence) {
+  const opcode = Number(frame?.opcode);
+  const payloadData = frame?.payloadData ?? null;
+  const isBinary = opcode === 2;
+  const isText = opcode === 1;
+
+  return {
+    direction,
+    sequence,
+    opcode,
+    opcodeName: webSocketOpcodeName(opcode),
+    payloadEncoding: isBinary ? 'base64' : 'utf8',
+    payloadData,
+    payloadJson: isText ? tryParseJson(payloadData) : null,
+    payloadSize: typeof payloadData === 'string' ? payloadData.length : null
+  };
+}
+
+function webSocketOpcodeName(opcode) {
+  switch (opcode) {
+    case 0:
+      return 'continuation';
+    case 1:
+      return 'text';
+    case 2:
+      return 'binary';
+    case 8:
+      return 'close';
+    case 9:
+      return 'ping';
+    case 10:
+      return 'pong';
+    default:
+      return 'unknown';
+  }
+}
+
+function tryParseJson(text) {
+  if (typeof text !== 'string') return null;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  if (!(trimmed.startsWith('{') || trimmed.startsWith('[') || trimmed === 'null')) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
