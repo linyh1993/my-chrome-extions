@@ -2,6 +2,10 @@
 importScripts(
   '../shared/mirror-settings.js',
   '../mirror/sites-config.js',
+  '../mirror/debugger-session.js',
+  '../mirror/http-relay.js',
+  '../mirror/http-tracker.js',
+  '../mirror/websocket-relay.js',
   '../mirror/debugger-bg.js'
 );
 

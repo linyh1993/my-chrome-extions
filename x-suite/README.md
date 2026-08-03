@@ -8,6 +8,7 @@
 - 转发 `/api/graphql` HTTP response body 到本机 endpoint。
 - 转发 X 站点 WebSocket / WSS 创建、握手、frame、关闭事件。
 - 默认接收地址：`http://127.0.0.1:9090/mirror-traffic`。
+- 如果当前 tab 已被 DevTools 或其它扩展占用 `chrome.debugger`，本扩展不能强制抢占；会提示占用并自动重试 attach。
 
 ## 安装
 
