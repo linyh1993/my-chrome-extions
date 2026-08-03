@@ -1,10 +1,15 @@
 /** @file Mirror debugger + Network relay logic for the service worker. */
 const MirrorBg = (() => {
   const attachedTabs = new Set();
+  const attachingTabs = new Map();
   const tabMirrorCtx = new Map();
   const trackedRequests = new Map();
   const trackedWebSockets = new Map();
+  const deliveryStateByTab = new Map();
   const debuggerVersion = '1.3';
+  const postTimeoutMs = 5000;
+  const postRetryDelayMs = 500;
+  const postAttempts = 2;
 
   function hasDebuggerPermission() {
     return new Promise((resolve) => {
@@ -56,14 +61,28 @@ const MirrorBg = (() => {
     return MirrorSettings.save({ enabled: Boolean(enabled) });
   }
 
-  function ensureTabMirror(tabId) {
-    if (!tabId || attachedTabs.has(tabId)) return;
-    MirrorSettings.load().then((cfg) => {
-      if (!isMirrorEnabled(cfg)) return;
-      resolveSiteForTab(tabId, (site) => {
-        if (site) attachDebugger(tabId, cfg, site);
-      });
+  async function ensureTabMirror(tabId) {
+    if (!tabId || attachedTabs.has(tabId)) {
+      return { ok: true, isAttached: attachedTabs.has(tabId) };
+    }
+    if (attachingTabs.has(tabId)) return attachingTabs.get(tabId);
+
+    const attachTask = (async () => {
+      const cfg = await MirrorSettings.load();
+      if (!isMirrorEnabled(cfg)) return { ok: true, isAttached: false, mirrorEnabled: false };
+
+      const site = await resolveSiteForTab(tabId);
+      if (!site) {
+        return { ok: false, isAttached: false, error: 'unsupported_site' };
+      }
+
+      return attachDebugger(tabId, cfg, site);
+    })().finally(() => {
+      attachingTabs.delete(tabId);
     });
+
+    attachingTabs.set(tabId, attachTask);
+    return attachTask;
   }
 
   function restoreEnabledMirrors() {
@@ -87,139 +106,111 @@ const MirrorBg = (() => {
     });
   }
 
-  function tabMirrorState(tabId, sendResponse) {
-    MirrorSettings.load().then((cfg) => {
-      const mirrorEnabled = isMirrorEnabled(cfg);
-      if (!tabId) {
-        sendResponse?.({ mirrorEnabled, isAttached: false, siteLabel: null });
-        return;
-      }
-      resolveSiteForTab(tabId, (site) => {
-        sendResponse?.({
-          mirrorEnabled,
-          isAttached: attachedTabs.has(tabId),
-          siteLabel: site?.label ?? null
-        });
+  async function enableMirrorOnTab(tabId, sendResponse) {
+    const granted = await ensureDebuggerPermission();
+    if (!granted) {
+      sendResponse?.({
+        ok: false,
+        isAttached: false,
+        permissionDenied: true
       });
-    });
-  }
-
-  function enableMirrorOnTab(tabId, sendResponse) {
-    ensureDebuggerPermission().then((granted) => {
-      if (!granted) {
-        updatePageStatus(tabId, false);
-        sendResponse?.({
-          ok: false,
-          isAttached: false,
-          permissionDenied: true
-        });
-        return;
-      }
-
-      MirrorSettings.load().then((cfg) => {
-        if (!isMirrorEnabled(cfg)) {
-          sendResponse?.({ ok: true, isAttached: false, mirrorEnabled: false });
-          return;
-        }
-
-        if (!attachedTabs.has(tabId)) {
-          attachDebugger(tabId, cfg);
-        } else {
-          const ctx = tabMirrorCtx.get(tabId);
-          if (ctx) ctx.mirrorUrl = cfg.mirrorUrl || ctx.mirrorUrl;
-          updatePageStatus(tabId, true, ctx?.site || null);
-        }
-
-        sendResponse?.({
-          ok: true,
-          isAttached: attachedTabs.has(tabId) || granted
-        });
-      });
-    });
-  }
-
-  function resolveSiteForTab(tabId, callback) {
-    if (!tabId) {
-      callback(null);
       return;
     }
-    chrome.tabs.get(tabId, (tab) => {
-      if (chrome.runtime.lastError || !tab?.url) {
-        callback(null);
+
+    sendResponse?.({ ...(await ensureTabMirror(tabId)), mirrorEnabled: true });
+  }
+
+  function resolveSiteForTab(tabId) {
+    return new Promise((resolve) => {
+      if (!tabId) {
+        resolve(null);
         return;
       }
-      callback(getSiteByUrl(tab.url));
+      chrome.tabs.get(tabId, (tab) => {
+        if (chrome.runtime.lastError || !tab?.url) {
+          resolve(null);
+          return;
+        }
+        resolve(getSiteByUrl(tab.url));
+      });
     });
   }
 
-  function updatePageStatus(tabId, isAttached, site = null) {
-    MirrorSettings.load().then((cfg) => {
-      const payload = {
-        domain: 'mirror',
-        action: 'UPDATE_STATUS',
-        status: isAttached,
-        mirrorEnabled: isMirrorEnabled(cfg),
-        siteLabel: site?.label ?? null,
-        siteId: site?.id ?? null
-      };
-
-      chrome.tabs.sendMessage(tabId, payload, () => {
-        if (chrome.runtime.lastError) {
-          /* content not ready */
-        }
-      });
-
-      chrome.runtime.sendMessage(payload).catch(() => {
-        /* side panel not open */
-      });
-    });
+  function buildTabStatus(tabId, cfg, site = null) {
+    return {
+      tabId,
+      delivery: deliveryStateByTab.get(tabId) || null,
+      isAttached: attachedTabs.has(tabId),
+      isAttaching: attachingTabs.has(tabId),
+      mirrorEnabled: isMirrorEnabled(cfg),
+      site: tabMirrorCtx.get(tabId)?.site || site,
+      siteLabel: site?.label ?? null
+    };
   }
 
   function attachDebugger(tabId, cfg, resolvedSite = null) {
-    const attachSite = (site) => {
-      if (!site) {
-        updatePageStatus(tabId, false);
-        return;
-      }
-
-      const ctx = createMirrorCtx(site, cfg);
-      tabMirrorCtx.set(tabId, ctx);
-      console.log(`[mirror Tab ${tabId}] attach debugger (${site.label})...`);
-
-      chrome.debugger.attach({ tabId }, debuggerVersion, () => {
-        if (chrome.runtime.lastError) {
-          console.error(`[mirror Tab ${tabId}] attach failed:`, chrome.runtime.lastError.message);
-          tabMirrorCtx.delete(tabId);
-          updatePageStatus(tabId, false);
+    return new Promise((resolve) => {
+      const attachSite = (site) => {
+        if (!site) {
+          resolve({ ok: false, isAttached: false, error: 'unsupported_site' });
           return;
         }
 
-        chrome.debugger.sendCommand({ tabId }, 'Network.enable', {}, () => {
+        const ctx = createMirrorCtx(site, cfg);
+        tabMirrorCtx.set(tabId, ctx);
+        console.log(`[mirror Tab ${tabId}] attach debugger (${site.label})...`);
+
+        chrome.debugger.attach({ tabId }, debuggerVersion, () => {
           if (chrome.runtime.lastError) {
-            console.error(
-              `[mirror Tab ${tabId}] Network.enable failed:`,
-              chrome.runtime.lastError.message
-            );
-            detachDebugger(tabId);
+            console.error(`[mirror Tab ${tabId}] attach failed:`, chrome.runtime.lastError.message);
+            tabMirrorCtx.delete(tabId);
+            resolve({
+              ok: false,
+              isAttached: false,
+              error: chrome.runtime.lastError.message || 'attach_failed'
+            });
             return;
           }
-          attachedTabs.add(tabId);
-          updatePageStatus(tabId, true, site);
+
+          chrome.debugger.sendCommand({ tabId }, 'Network.enable', {}, () => {
+            if (chrome.runtime.lastError) {
+              const error = chrome.runtime.lastError.message || 'network_enable_failed';
+              console.error(`[mirror Tab ${tabId}] Network.enable failed:`, error);
+              detachDebugger(tabId);
+              resolve({ ok: false, isAttached: false, error });
+              return;
+            }
+
+            Promise.all([MirrorSettings.load(), resolveSiteForTab(tabId)]).then(
+              ([nextCfg, currentSite]) => {
+                if (!isMirrorEnabled(nextCfg) || currentSite?.id !== site.id) {
+                  detachDebugger(tabId);
+                  resolve({ ok: true, isAttached: false, mirrorEnabled: isMirrorEnabled(nextCfg) });
+                  return;
+                }
+                ctx.mirrorUrl = nextCfg.mirrorUrl || ctx.mirrorUrl;
+                attachedTabs.add(tabId);
+                resolve({ ok: true, isAttached: true, site });
+              }
+            );
+          });
         });
-      });
-    };
+      };
 
-    if (resolvedSite) {
-      attachSite(resolvedSite);
-      return;
-    }
+      if (resolvedSite) {
+        attachSite(resolvedSite);
+        return;
+      }
 
-    resolveSiteForTab(tabId, attachSite);
+      resolveSiteForTab(tabId).then(attachSite);
+    });
   }
 
   function clearTabState(tabId) {
     attachedTabs.delete(tabId);
+    attachingTabs.delete(tabId);
     tabMirrorCtx.delete(tabId);
+    deliveryStateByTab.delete(tabId);
 
     for (const [requestId, data] of trackedRequests.entries()) {
       if (data.tabId === tabId) trackedRequests.delete(requestId);
@@ -232,13 +223,11 @@ const MirrorBg = (() => {
   function detachDebugger(tabId) {
     if (!attachedTabs.has(tabId)) {
       clearTabState(tabId);
-      updatePageStatus(tabId, false);
       return;
     }
 
     const finish = () => {
       clearTabState(tabId);
-      updatePageStatus(tabId, false);
     };
 
     chrome.debugger.sendCommand({ tabId }, 'Network.disable', {}, () => {
@@ -255,22 +244,54 @@ const MirrorBg = (() => {
     const tabId = source.tabId;
     if (!tabId) return;
     clearTabState(tabId);
-    updatePageStatus(tabId, false);
   });
 
-  async function postMirrorPayload(tabId, mirrorUrl, payload) {
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function rememberDelivery(tabId, patch) {
+    deliveryStateByTab.set(tabId, { at: Date.now(), ...patch });
+  }
+
+  async function fetchWithTimeout(url, options) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), postTimeoutMs);
     try {
-      const response = await fetch(mirrorUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!response.ok) {
-        console.error(`[mirror Tab ${tabId}] local endpoint:`, response.status, response.statusText);
-      }
-    } catch (error) {
-      console.error(`[mirror Tab ${tabId}] local request failed:`, error.message);
+      return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
     }
+  }
+
+  async function postMirrorPayload(tabId, mirrorUrl, payload) {
+    const body = JSON.stringify(payload);
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= postAttempts; attempt += 1) {
+      try {
+        const response = await fetchWithTimeout(mirrorUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body
+        });
+
+        if (response.ok) {
+          rememberDelivery(tabId, { ok: true, status: response.status });
+          return true;
+        }
+
+        lastError = `HTTP ${response.status} ${response.statusText}`.trim();
+      } catch (error) {
+        lastError = error?.name === 'AbortError' ? 'timeout' : error?.message || String(error);
+      }
+
+      if (attempt < postAttempts) await sleep(postRetryDelayMs);
+    }
+
+    rememberDelivery(tabId, { ok: false, error: lastError || 'post_failed' });
+    console.error(`[mirror Tab ${tabId}] local delivery failed:`, lastError);
+    return false;
   }
 
   async function forwardFullTraffic(trafficData) {
@@ -310,7 +331,7 @@ const MirrorBg = (() => {
     const ctx = tabMirrorCtx.get(tabId);
     if (!ctx?.site) return null;
 
-    if (!shouldTrackWebSocket(url || '', ctx.site)) return null;
+    if (url && !shouldTrackWebSocket(url, ctx.site)) return null;
 
     const next = {
       tabId,
@@ -441,6 +462,11 @@ const MirrorBg = (() => {
         break;
       }
 
+      case 'Network.loadingFailed': {
+        trackedRequests.delete(params.requestId);
+        break;
+      }
+
       case 'Network.webSocketCreated': {
         const socketData = ensureWebSocketData(tabId, params.requestId, params.url);
         if (!socketData) break;
@@ -449,7 +475,7 @@ const MirrorBg = (() => {
       }
 
       case 'Network.webSocketWillSendHandshakeRequest': {
-        const socketData = ensureWebSocketData(tabId, params.requestId);
+        const socketData = ensureWebSocketData(tabId, params.requestId, params.request?.url);
         if (!socketData) break;
 
         socketData.handshake.request = {
@@ -464,7 +490,7 @@ const MirrorBg = (() => {
       }
 
       case 'Network.webSocketHandshakeResponseReceived': {
-        const socketData = ensureWebSocketData(tabId, params.requestId);
+        const socketData = ensureWebSocketData(tabId, params.requestId, params.response?.url);
         if (!socketData) break;
 
         socketData.handshake.response = {
@@ -531,7 +557,10 @@ const MirrorBg = (() => {
 
   chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.status !== 'complete' || !tab?.url) return;
-    if (!getSiteByUrl(tab.url)) return;
+    if (!getSiteByUrl(tab.url)) {
+      detachDebugger(tabId);
+      return;
+    }
     ensureTabMirror(tabId);
   });
 
@@ -548,6 +577,11 @@ const MirrorBg = (() => {
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'sync' || !changes[MirrorSettings.STORAGE_KEY]) return;
     const nextCfg = MirrorSettings.normalize(changes[MirrorSettings.STORAGE_KEY].newValue);
+    if (!isMirrorEnabled(nextCfg)) {
+      for (const tabId of [...attachedTabs]) detachDebugger(tabId);
+      return;
+    }
+
     for (const ctx of tabMirrorCtx.values()) {
       ctx.mirrorUrl = nextCfg.mirrorUrl;
     }
@@ -557,18 +591,11 @@ const MirrorBg = (() => {
     for (const tracked of trackedWebSockets.values()) {
       tracked.mirrorUrl = nextCfg.mirrorUrl;
     }
+    restoreEnabledMirrors();
   });
 
   function handleMessage(msg, sender, sendResponse) {
-    const tabId = sender.tab?.id;
-
     switch (msg.action) {
-      case 'HAS_DEBUGGER_PERMISSION':
-        hasDebuggerPermission().then((granted) => {
-          sendResponse({ granted });
-        });
-        return true;
-
       case 'GET_ACTIVE_TAB_STATUS':
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
           const activeTab = tabs[0];
@@ -583,43 +610,13 @@ const MirrorBg = (() => {
           } catch {
             /* ignore */
           }
-          Promise.all([hasDebuggerPermission(), MirrorSettings.load()]).then(
-            ([hasDebugger, cfg]) => {
-              sendResponse({
-                tabId: activeTab.id,
-                hostname,
-                isAttached: attachedTabs.has(activeTab.id),
-                mirrorEnabled: isMirrorEnabled(cfg),
-                site: tabMirrorCtx.get(activeTab.id)?.site || site,
-                hasDebuggerPermission: hasDebugger
-              });
-            }
-          );
-        });
-        return true;
-
-      case 'GET_TAB_MIRROR_STATE':
-        tabMirrorState(tabId, sendResponse);
-        return true;
-
-      case 'ENSURE_TAB_MIRROR':
-        if (tabId) ensureTabMirror(tabId);
-        tabMirrorState(tabId, sendResponse);
-        return true;
-
-      case 'SET_MIRROR_ENABLED':
-        if (!tabId) {
-          sendResponse({ ok: false, isAttached: false });
-          return true;
-        }
-        persistMirrorEnabled(msg.enabled).then(() => {
-          if (!msg.enabled) {
-            detachDebugger(tabId);
-            sendResponse({ ok: true, isAttached: false, mirrorEnabled: false });
-            return;
-          }
-          enableMirrorOnTab(tabId, (res) => {
-            sendResponse?.({ ...res, mirrorEnabled: true });
+          Promise.all([hasDebuggerPermission(), MirrorSettings.load()]).then(([hasDebugger, cfg]) => {
+            if (site && isMirrorEnabled(cfg)) ensureTabMirror(activeTab.id);
+            sendResponse({
+              ...buildTabStatus(activeTab.id, cfg, site),
+              hostname,
+              hasDebuggerPermission: hasDebugger
+            });
           });
         });
         return true;
@@ -637,39 +634,9 @@ const MirrorBg = (() => {
               sendResponse({ ok: true, isAttached: false, mirrorEnabled: false });
               return;
             }
-            enableMirrorOnTab(activeTabId, (res) => {
-              sendResponse?.({ ...res, mirrorEnabled: true });
-            });
+            enableMirrorOnTab(activeTabId, sendResponse);
           });
         });
-        return true;
-
-      case 'TOGGLE_DEBUGGER_ACTIVE_TAB':
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-          const activeTabId = tabs[0]?.id;
-          if (!activeTabId) return;
-          if (attachedTabs.has(activeTabId)) detachDebugger(activeTabId);
-          else enableMirrorOnTab(activeTabId);
-        });
-        return true;
-
-      case 'GET_STATUS':
-        sendResponse({ isAttached: tabId ? attachedTabs.has(tabId) : false });
-        return true;
-
-      case 'SYNC_STATUS':
-        if (tabId) {
-          MirrorSettings.load().then((cfg) => {
-            if (isMirrorEnabled(cfg)) ensureTabMirror(tabId);
-            updatePageStatus(tabId, attachedTabs.has(tabId), tabMirrorCtx.get(tabId)?.site || null);
-          });
-        }
-        return true;
-
-      case 'TOGGLE_DEBUGGER':
-        if (!tabId) return true;
-        if (attachedTabs.has(tabId)) detachDebugger(tabId);
-        else enableMirrorOnTab(tabId);
         return true;
 
       default:
