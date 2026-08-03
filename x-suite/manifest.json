@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "X Suite",
-  "version": "1.3.3",
-  "description": "X 专用工具：Thread 评论过滤 + 可选 GraphQL / WebSocket 流量镜像到本机。",
-  "permissions": ["storage", "debugger", "sidePanel", "tabs"],
+  "name": "X Traffic Mirror",
+  "version": "2.0.0",
+  "description": "Mirror X GraphQL and WebSocket traffic to a local endpoint.",
+  "permissions": ["storage", "debugger", "tabs"],
   "host_permissions": [
     "*://x.com/*",
     "*://*.x.com/*",
@@ -16,7 +16,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "X Suite",
+    "default_title": "X Traffic Mirror",
     "default_popup": "ui/popup/popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
@@ -24,45 +24,7 @@
       "128": "icons/icon128.png"
     }
   },
-  "options_ui": {
-    "page": "ui/options/options.html",
-    "open_in_tab": true
-  },
-  "side_panel": {
-    "default_path": "ui/sidepanel/sidepanel.html"
-  },
   "background": {
     "service_worker": "background/service-worker.js"
-  },
-  "content_scripts": [
-    {
-      "matches": [
-        "*://x.com/*",
-        "*://*.x.com/*",
-        "*://twitter.com/*",
-        "*://*.twitter.com/*"
-      ],
-      "js": [
-        "shared/constants.js",
-        "shared/settings.js",
-        "filter/rules.js",
-        "core/filter-engine.js",
-        "core/fold.js",
-        "core/registry.js",
-        "sites/x/adapter.js",
-        "content/panel.js",
-        "content/state.js",
-        "content/runtime.js",
-        "content/route.js",
-        "content/archive-log.js",
-        "content/processor.js",
-        "content/scan.js",
-        "content/bootstrap.js",
-        "mirror/sites-config.js",
-        "content/mirror-bridge.js"
-      ],
-      "css": ["styles/content.css"],
-      "run_at": "document_idle"
-    }
-  ]
+  }
 }

@@ -3,31 +3,38 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>X Suite</title>
+  <title>X Traffic Mirror</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
   <header class="hdr">
-    <h1>X Suite</h1>
+    <h1>X Traffic Mirror</h1>
     <label class="switch">
       <input type="checkbox" id="enabled" />
-      <span>评论过滤</span>
+      <span>Mirror</span>
     </label>
   </header>
 
-  <p class="hint popup-lead">单帖 / Thread 垃圾评论默认折叠；流量镜像默认开启（需本机接收端就绪）。</p>
-  <p class="foot" id="page_stats"></p>
+  <section>
+    <div class="row">
+      <span class="label">Site</span>
+      <span id="site">-</span>
+    </div>
+    <div class="row">
+      <span class="label">Status</span>
+      <span id="status">-</span>
+    </div>
+  </section>
 
-  <nav class="popup-actions" aria-label="快捷入口">
-    <button type="button" id="open_filter_settings" class="primary">评论设置</button>
-    <button type="button" id="open_library" class="secondary">评论库</button>
-    <button type="button" id="open_read_preview" class="secondary">阅读预览</button>
-    <button type="button" id="capture_current_thread" class="secondary">抓取当前帖子数据</button>
-    <button type="button" id="open_mirror_panel" class="secondary">流量镜像</button>
-  </nav>
-  <p class="foot popup-status" id="capture_status"></p>
+  <label class="field">
+    <span>Local endpoint</span>
+    <input id="mirror_url" type="url" spellcheck="false" />
+  </label>
 
-  <script src="../../shared/constants.js"></script>
+  <button type="button" id="save" class="primary">Save</button>
+  <p class="foot" id="message"></p>
+
+  <script src="../../shared/mirror-settings.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
