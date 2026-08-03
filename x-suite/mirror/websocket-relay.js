@@ -1,4 +1,4 @@
-/** @file WebSocket CDP event tracking and payload shaping. */
+/** @file WebSocket 跟踪：按 requestId 维护握手、frame 序号与转发 payload。 */
 const MirrorWebSocketRelay = (() => {
   const trackedWebSockets = new Map();
 

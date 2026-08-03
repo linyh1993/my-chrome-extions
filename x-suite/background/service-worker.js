@@ -1,4 +1,4 @@
-/** @file Background service worker for X traffic mirroring. */
+/** @file X 流量镜像的后台入口；只注册生命周期与消息路由。 */
 importScripts(
   '../shared/mirror-settings.js',
   '../mirror/sites-config.js',

@@ -1,4 +1,4 @@
-/** @file GraphQL request tracking from CDP Network events. */
+/** @file GraphQL HTTP 跟踪：按 CDP requestId 关联请求、响应与 body。 */
 const MirrorHttpTracker = (() => {
   const trackedRequests = new Map();
 
@@ -37,7 +37,7 @@ const MirrorHttpTracker = (() => {
     const { requestId, request } = params;
     if (!shouldTrackRequest(request.url, ctx.site)) return;
 
-    // Response body is only available later at loadingFinished.
+    // response body 只能在 loadingFinished 后拉取，这里只登记请求元信息。
     trackedRequests.set(requestId, {
       tabId,
       mirrorUrl: ctx.mirrorUrl,
@@ -62,7 +62,7 @@ const MirrorHttpTracker = (() => {
   function pullAndForwardBody(tabId, requestId) {
     if (!trackedRequests.has(requestId)) return;
 
-    // CDP response bodies are pulled on demand, then immediately released.
+    // body 按需拉取，投递后立即释放 requestId，避免长期占内存。
     chrome.debugger.sendCommand({ tabId }, 'Network.getResponseBody', { requestId }, (bodyInfo) => {
       if (chrome.runtime.lastError) {
         trackedRequests.delete(requestId);

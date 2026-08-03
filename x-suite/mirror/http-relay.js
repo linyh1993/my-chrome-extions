@@ -1,4 +1,4 @@
-/** @file Bounded local HTTP delivery for mirrored traffic. */
+/** @file 本机 HTTP 投递：限制 timeout/retry，记录最近一次投递状态。 */
 const MirrorHttpRelay = (() => {
   const deliveryStateByTab = new Map();
   const postTimeoutMs = 5000;
@@ -35,7 +35,7 @@ const MirrorHttpRelay = (() => {
     const body = JSON.stringify(payload);
     let lastError = null;
 
-    // Keep delivery bounded: small retry, no unbounded queue inside the service worker.
+    // 投递必须有边界：短重试，不在 service worker 内维护无限队列。
     for (let attempt = 1; attempt <= postAttempts; attempt += 1) {
       try {
         const response = await fetchWithTimeout(mirrorUrl, {

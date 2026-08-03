@@ -1,6 +1,6 @@
-/** @file Mirror orchestration for tab lifecycle and CDP Network events. */
+/** @file 镜像编排层：管理 tab 生命周期、配置同步、CDP Network 事件分发。 */
 const MirrorBg = (() => {
-  // Tab-level runtime state. Service worker may restart, so every map is cache only.
+  // tab 级运行态；MV3 service worker 可能重启，这些 Map 只作可丢缓存。
   const attachedTabs = new Set();
   const attachingTabs = new Map();
   const tabMirrorCtx = new Map();
@@ -37,7 +37,7 @@ const MirrorBg = (() => {
     }
     if (attachingTabs.has(tabId)) return attachingTabs.get(tabId);
 
-    // One attach attempt per tab. Concurrent callers share the same Promise.
+    // 同一 tab 只允许一个 attach 过程；并发入口共享同一个 Promise，避免重复占用 debugger。
     const attachTask = (async () => {
       const cfg = await MirrorSettings.load();
       if (!isMirrorEnabled(cfg)) return { ok: true, isAttached: false, mirrorEnabled: false };
@@ -55,7 +55,7 @@ const MirrorBg = (() => {
   }
 
   function restoreEnabledMirrors() {
-    // Reconcile after startup/config changes; already-attached tabs are skipped by ensureTabMirror.
+    // 启动或配置变化后重扫目标 tab；已 attached 的 tab 会被 ensureTabMirror 跳过。
     MirrorSettings.load().then((cfg) => {
       if (!isMirrorEnabled(cfg)) return;
       chrome.tabs.query({ url: getSiteUrlPatterns() }, (tabs) => {
@@ -164,7 +164,7 @@ const MirrorBg = (() => {
       return networkResult;
     }
 
-    // Attach completion is async; verify config and URL again before marking active.
+    // attach 完成有延迟；落状态前二次校验开关与 URL，避免路由变化后误标 active。
     const [nextCfg, currentSite] = await Promise.all([MirrorSettings.load(), resolveSiteForTab(tabId)]);
     if (!isMirrorEnabled(nextCfg) || currentSite?.id !== site.id) {
       detachDebugger(tabId);
@@ -186,7 +186,7 @@ const MirrorBg = (() => {
   }
 
   function clearTabState(tabId) {
-    // Detach, close, and navigation cleanup all converge here.
+    // detach、tab 关闭、离开目标站点统一清理，防止请求和重试状态泄漏。
     attachedTabs.delete(tabId);
     attachingTabs.delete(tabId);
     tabMirrorCtx.delete(tabId);
@@ -226,7 +226,7 @@ const MirrorBg = (() => {
 
   chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.status !== 'complete' || !tab?.url) return;
-    // Navigating away from X should release the debugger attachment and cached traffic.
+    // 离开 X/Twitter 立即释放 debugger 与缓存，避免继续监听非目标站点。
     if (!getSiteByUrl(tab.url)) {
       detachDebugger(tabId);
       return;
@@ -244,7 +244,7 @@ const MirrorBg = (() => {
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'sync' || !changes[MirrorSettings.STORAGE_KEY]) return;
     const nextCfg = MirrorSettings.normalize(changes[MirrorSettings.STORAGE_KEY].newValue);
-    // Mirror enabled is global; turning it off stops every active tab.
+    // Mirror 开关是全局语义；关闭时停止所有 active tab，而不是只停当前页。
     if (!isMirrorEnabled(nextCfg)) {
       for (const tabId of [...attachedTabs]) detachDebugger(tabId);
       return;
@@ -270,7 +270,7 @@ const MirrorBg = (() => {
           const site = getSiteByUrl(activeTab.url || '');
           const hostname = safeHostname(activeTab.url);
           Promise.all([hasDebuggerPermission(), MirrorSettings.load()]).then(([hasDebugger, cfg]) => {
-            // Opening the popup doubles as a lightweight recovery path after worker wakeup.
+            // popup 查询顺手触发恢复；worker 被唤醒后可重新 attach 当前目标 tab。
             if (site && isMirrorEnabled(cfg)) ensureTabMirror(activeTab.id);
             sendResponse({
               ...buildTabStatus(activeTab.id, cfg, site),

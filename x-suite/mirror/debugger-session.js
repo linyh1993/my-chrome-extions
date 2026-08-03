@@ -1,4 +1,4 @@
-/** @file Small wrapper around chrome.debugger attach/detach. */
+/** @file chrome.debugger 最小封装：attach、Network.enable、detach 与占用错误归一化。 */
 const MirrorDebuggerSession = (() => {
   const debuggerVersion = '1.3';
 
