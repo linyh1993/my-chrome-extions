@@ -54,7 +54,11 @@ async function refresh() {
         ? 'Starting'
         : 'Off';
 
-  if (status.delivery?.ok === false) {
+  if (status.attachError?.debuggerBusy) {
+    setMessage('Debugger already in use by another tool.', 'error');
+  } else if (status.attachError?.ok === false) {
+    setMessage(status.attachError.message || status.attachError.error || 'Debugger attach failed.', 'error');
+  } else if (status.delivery?.ok === false) {
     setMessage(`Last delivery failed: ${status.delivery.error}`, 'error');
   } else {
     setMessage('');
@@ -63,7 +67,8 @@ async function refresh() {
 
 $('enabled').addEventListener('change', () => {
   sendMirror('SET_MIRROR_ENABLED_ACTIVE_TAB', { enabled: $('enabled').checked }).then((res) => {
-    if (res?.permissionDenied) setMessage('Debugger permission denied.', 'error');
+    if (res?.debuggerBusy) setMessage('Debugger already in use by another tool.', 'error');
+    else if (res?.permissionDenied) setMessage('Debugger permission denied.', 'error');
     else if (res?.ok === false) setMessage(res.error || 'Mirror update failed.', 'error');
     refresh();
   });

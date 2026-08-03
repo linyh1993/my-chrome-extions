@@ -30,10 +30,8 @@
 
 ## 子项目地图
 
-
-| 目录                           | 说明                                          | 入口                                                                          |
-| ---------------------------- | ------------------------------------------- | --------------------------------------------------------------------------- |
-| `x-suite/`                   | **推荐**：X 专用合并扩展（评论过滤 + 可选 GraphQL / WebSocket 镜像） | `README.md`、`manifest.json`、`ui/`、`content/`、`background/service-worker.js` |
-| `archive/legacy-extensions/` | 已归档：合并前旧扩展快照（勿加载，默认勿读）                      | `archive/README.md`                                                         |
-| `archive/inactive-projects/` | 已归档：停用的独立项目 `traffic-relay`、`chrome-capture-toolkit`（默认勿读） | `archive/README.md`                                                         |
-
+| 目录 | 说明 | 入口 |
+|------|------|------|
+| `x-suite/` | **推荐**：X GraphQL / WebSocket 流量镜像到本机 | `README.md`、`manifest.json`、`background/service-worker.js`、`mirror/`、`shared/`、`ui/popup/` |
+| `archive/legacy-extensions/` | 已归档：合并前旧扩展快照（勿加载，默认勿读） | `archive/README.md` |
+| `archive/inactive-projects/` | 已归档：停用的独立项目 `traffic-relay`、`chrome-capture-toolkit`（默认勿读） | `archive/README.md` |

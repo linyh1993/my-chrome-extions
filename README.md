@@ -6,7 +6,7 @@
 
 | 目录 | 说明 |
 |------|------|
-| [`x-suite/`](x-suite/) | **推荐安装**：X 评论过滤 + 可选 GraphQL / WebSocket 流量镜像 |
+| [`x-suite/`](x-suite/) | **推荐安装**：X GraphQL / WebSocket 流量镜像到本机 |
 | [`archive/legacy-extensions/`](archive/legacy-extensions/) | 已归档的旧版 `x-comment-filter`、`traffic-relay` 快照（保留对照，勿加载） |
 | [`archive/inactive-projects/`](archive/inactive-projects/) | 已停用的独立项目 `traffic-relay`、`chrome-capture-toolkit`（默认勿读） |
 

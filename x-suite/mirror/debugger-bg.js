@@ -4,6 +4,7 @@ const MirrorBg = (() => {
   const attachedTabs = new Set();
   const attachingTabs = new Map();
   const tabMirrorCtx = new Map();
+  const attachErrorByTab = new Map();
   const trackedRequests = new Map();
   const trackedWebSockets = new Map();
   const deliveryStateByTab = new Map();
@@ -142,6 +143,7 @@ const MirrorBg = (() => {
   function buildTabStatus(tabId, cfg, site = null) {
     return {
       tabId,
+      attachError: attachErrorByTab.get(tabId) || null,
       delivery: deliveryStateByTab.get(tabId) || null,
       isAttached: attachedTabs.has(tabId),
       isAttaching: attachingTabs.has(tabId),
@@ -149,6 +151,52 @@ const MirrorBg = (() => {
       site: tabMirrorCtx.get(tabId)?.site || site,
       siteLabel: site?.label ?? null
     };
+  }
+
+  function attachErrorResult(message) {
+    const error = String(message || 'attach_failed');
+    if (/another debugger|already attached|debugger.*use/i.test(error)) {
+      return {
+        ok: false,
+        isAttached: false,
+        debuggerBusy: true,
+        error: 'debugger_in_use',
+        message: error
+      };
+    }
+    return { ok: false, isAttached: false, error, message: error };
+  }
+
+  function rememberAttachError(tabId, result) {
+    attachErrorByTab.set(tabId, { at: Date.now(), ...result });
+  }
+
+  function attachChromeDebugger(tabId) {
+    return new Promise((resolve) => {
+      chrome.debugger.attach({ tabId }, debuggerVersion, () => {
+        if (chrome.runtime.lastError) {
+          resolve(attachErrorResult(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve({ ok: true });
+      });
+    });
+  }
+
+  function enableNetwork(tabId) {
+    return new Promise((resolve) => {
+      chrome.debugger.sendCommand({ tabId }, 'Network.enable', {}, () => {
+        if (chrome.runtime.lastError) {
+          resolve({
+            ok: false,
+            isAttached: false,
+            error: chrome.runtime.lastError.message || 'network_enable_failed'
+          });
+          return;
+        }
+        resolve({ ok: true });
+      });
+    });
   }
 
   function attachDebugger(tabId, cfg, resolvedSite = null) {
@@ -163,24 +211,20 @@ const MirrorBg = (() => {
         tabMirrorCtx.set(tabId, ctx);
         console.log(`[mirror Tab ${tabId}] attach debugger (${site.label})...`);
 
-        chrome.debugger.attach({ tabId }, debuggerVersion, () => {
-          if (chrome.runtime.lastError) {
-            console.error(`[mirror Tab ${tabId}] attach failed:`, chrome.runtime.lastError.message);
+        attachChromeDebugger(tabId).then((attachResult) => {
+          if (!attachResult.ok) {
+            console.error(`[mirror Tab ${tabId}] attach failed:`, attachResult.message || attachResult.error);
             tabMirrorCtx.delete(tabId);
-            resolve({
-              ok: false,
-              isAttached: false,
-              error: chrome.runtime.lastError.message || 'attach_failed'
-            });
+            rememberAttachError(tabId, attachResult);
+            resolve(attachResult);
             return;
           }
 
-          chrome.debugger.sendCommand({ tabId }, 'Network.enable', {}, () => {
-            if (chrome.runtime.lastError) {
-              const error = chrome.runtime.lastError.message || 'network_enable_failed';
-              console.error(`[mirror Tab ${tabId}] Network.enable failed:`, error);
+          enableNetwork(tabId).then((networkResult) => {
+            if (!networkResult.ok) {
+              console.error(`[mirror Tab ${tabId}] Network.enable failed:`, networkResult.error);
               detachDebugger(tabId);
-              resolve({ ok: false, isAttached: false, error });
+              resolve(networkResult);
               return;
             }
 
@@ -194,6 +238,7 @@ const MirrorBg = (() => {
                 }
                 ctx.mirrorUrl = nextCfg.mirrorUrl || ctx.mirrorUrl;
                 attachedTabs.add(tabId);
+                attachErrorByTab.delete(tabId);
                 resolve({ ok: true, isAttached: true, site });
               }
             );
@@ -215,6 +260,7 @@ const MirrorBg = (() => {
     attachedTabs.delete(tabId);
     attachingTabs.delete(tabId);
     tabMirrorCtx.delete(tabId);
+    attachErrorByTab.delete(tabId);
     deliveryStateByTab.delete(tabId);
 
     for (const [requestId, data] of trackedRequests.entries()) {
