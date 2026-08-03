@@ -1,5 +1,6 @@
 /** @file Mirror debugger + Network relay logic for the service worker. */
 const MirrorBg = (() => {
+  // Tab-level runtime state. Service worker may restart, so every map is cache only.
   const attachedTabs = new Set();
   const attachingTabs = new Map();
   const tabMirrorCtx = new Map();
@@ -67,6 +68,7 @@ const MirrorBg = (() => {
     }
     if (attachingTabs.has(tabId)) return attachingTabs.get(tabId);
 
+    // One attach attempt per tab. Concurrent callers share the same Promise.
     const attachTask = (async () => {
       const cfg = await MirrorSettings.load();
       if (!isMirrorEnabled(cfg)) return { ok: true, isAttached: false, mirrorEnabled: false };
@@ -86,6 +88,7 @@ const MirrorBg = (() => {
   }
 
   function restoreEnabledMirrors() {
+    // Reconcile after startup/config changes; already-attached tabs are skipped by ensureTabMirror.
     MirrorSettings.load().then((cfg) => {
       if (!isMirrorEnabled(cfg)) return;
       chrome.tabs.query(
@@ -181,6 +184,7 @@ const MirrorBg = (() => {
               return;
             }
 
+            // Attach completion is async; verify config and URL again before marking active.
             Promise.all([MirrorSettings.load(), resolveSiteForTab(tabId)]).then(
               ([nextCfg, currentSite]) => {
                 if (!isMirrorEnabled(nextCfg) || currentSite?.id !== site.id) {
@@ -207,6 +211,7 @@ const MirrorBg = (() => {
   }
 
   function clearTabState(tabId) {
+    // Detach, close, and navigation cleanup all converge here.
     attachedTabs.delete(tabId);
     attachingTabs.delete(tabId);
     tabMirrorCtx.delete(tabId);
@@ -268,6 +273,7 @@ const MirrorBg = (() => {
     const body = JSON.stringify(payload);
     let lastError = null;
 
+    // Keep delivery bounded: small retry, no unbounded queue inside the service worker.
     for (let attempt = 1; attempt <= postAttempts; attempt += 1) {
       try {
         const response = await fetchWithTimeout(mirrorUrl, {
@@ -322,6 +328,7 @@ const MirrorBg = (() => {
   }
 
   function ensureWebSocketData(tabId, requestId, url = null) {
+    // WebSocket follow-up events may omit URL; reuse the socket record created earlier.
     if (trackedWebSockets.has(requestId)) {
       const current = trackedWebSockets.get(requestId);
       if (url && !current.url) current.url = url;
@@ -410,6 +417,7 @@ const MirrorBg = (() => {
 
     switch (method) {
       case 'Network.requestWillBeSent': {
+        // Track only matching requests; response body is available later at loadingFinished.
         const { requestId, request } = params;
         if (!shouldTrackRequest(request.url, ctx.site)) break;
 
@@ -438,6 +446,7 @@ const MirrorBg = (() => {
       }
 
       case 'Network.loadingFinished': {
+        // CDP response bodies are pulled on demand, then immediately released from tracking.
         const { requestId } = params;
         if (!trackedRequests.has(requestId)) break;
 
@@ -557,6 +566,7 @@ const MirrorBg = (() => {
 
   chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.status !== 'complete' || !tab?.url) return;
+    // Navigating away from X should release the debugger attachment and cached traffic.
     if (!getSiteByUrl(tab.url)) {
       detachDebugger(tabId);
       return;
@@ -577,6 +587,7 @@ const MirrorBg = (() => {
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'sync' || !changes[MirrorSettings.STORAGE_KEY]) return;
     const nextCfg = MirrorSettings.normalize(changes[MirrorSettings.STORAGE_KEY].newValue);
+    // Mirror enabled is global; turning it off stops every active tab.
     if (!isMirrorEnabled(nextCfg)) {
       for (const tabId of [...attachedTabs]) detachDebugger(tabId);
       return;
@@ -611,6 +622,7 @@ const MirrorBg = (() => {
             /* ignore */
           }
           Promise.all([hasDebuggerPermission(), MirrorSettings.load()]).then(([hasDebugger, cfg]) => {
+            // Opening the popup doubles as a lightweight recovery path after worker wakeup.
             if (site && isMirrorEnabled(cfg)) ensureTabMirror(activeTab.id);
             sendResponse({
               ...buildTabStatus(activeTab.id, cfg, site),
