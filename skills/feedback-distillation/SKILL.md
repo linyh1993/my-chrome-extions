@@ -32,7 +32,10 @@ description: Use when the user explicitly asks Codex to remember, distill, refle
 
 4. 写入方式。
    - 使用当天日期命名文件：`memory/YYYY-MM-DD.md`。
-   - 如果文件已存在，追加一个新的二级标题。
+   - 只追加，不覆盖、不重写、不整理旧 entry。
+   - 如果文件不存在，创建文件并写入一级标题 `# YYYY-MM-DD`。
+   - 每次调用都追加一个新的二级标题，标题格式为 `## HH:mm - <短标题>`。
+   - 如果是同一会话或同一主题的后续纠偏，仍然追加新 entry，并在 `Relation` 字段写明关联对象，例如 `Follow-up to: HH:mm - <短标题>`。
    - 默认中文书写，保留必要英文术语、API 名、字段名和命令。
    - 写入前移除 secrets、token、Cookie、账号信息和敏感 payload。
 
@@ -43,7 +46,10 @@ description: Use when the user explicitly asks Codex to remember, distill, refle
 ## Memory Entry 模板
 
 ```markdown
-## <短标题>
+## HH:mm - <短标题>
+
+Relation:
+<New | Follow-up to: HH:mm - <短标题> | Supersedes: HH:mm - <短标题>>
 
 Signal:
 <用户给出的纠偏或沉淀信号。>
@@ -61,6 +67,14 @@ Applies:
 <适用范围。>
 ```
 
+## Append-Only 规则
+
+- 旧 entry 是审查证据，不要为了“更干净”而改写。
+- 新反馈修正了旧结论时，追加新 entry，并用 `Relation: Supersedes: ...` 标记。
+- 新反馈只是补充上下文时，追加新 entry，并用 `Relation: Follow-up to: ...` 标记。
+- 同一会话内多次调用也逐条追加，保留发生顺序。
+- 只有修正错别字、乱码、格式损坏或 secrets 泄漏时，才允许修改旧 entry；修改后必须在新 entry 说明原因。
+
 ## 不要记录
 
 - 普通过程总结。
@@ -77,3 +91,4 @@ Applies:
 | 只写“以后注意” | 写成可执行的默认行为 |
 | 记录所有聊天细节 | 只记录能改变后续行为的内容 |
 | 把项目决策和 agent 纠偏混在一起 | 项目决策进 spec/ADR；认知纠偏进 memory |
+| 回头改写旧 entry | 追加新 entry，用 `Relation` 表达修正或补充 |
