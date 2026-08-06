@@ -1,9 +1,9 @@
 ---
-name: capture-correction
+name: feedback-distillation
 description: Use when the user explicitly asks Codex to remember, distill, reflect, review, or record a correction; when the user points out a repeated mistake, wrong abstraction, high-friction misunderstanding, or reusable success pattern that should become future guardrail.
 ---
 
-# Capture Correction
+# Feedback Distillation
 
 ## 核心原则
 
