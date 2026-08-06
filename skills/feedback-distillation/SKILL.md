@@ -21,7 +21,8 @@ description: Use when the user explicitly asks Codex to remember, distill, refle
    - 可以提取成微小、可重复使用的 skill 或 checklist。
    - 如果只是普通背景、普通过程总结或一次性偏好，不写入 memory。
 
-2. Distill：把内容压缩成五个字段。
+2. Distill：把内容压缩成六个字段。
+   - `Background`：理解这条反馈所需的最小任务背景；说明正在做什么、为什么相关。
    - `Signal`：用户给出的触发信号。
    - `Observation`：发生了什么；可以是 mistake、friction、success pattern 或 skill opportunity。
    - `Correction`：更准确的抽象、边界或做法。
@@ -54,6 +55,9 @@ description: Use when the user explicitly asks Codex to remember, distill, refle
 Relation:
 <New | Follow-up to: HH:mm - <短标题> | Supersedes: HH:mm - <短标题>>
 
+Background:
+<理解这条反馈所需的最小背景。不要写完整 context brief。>
+
 Signal:
 <用户给出的纠偏或沉淀信号。>
 
@@ -82,7 +86,7 @@ Applies:
 
 - 普通过程总结。
 - 没有 `Guardrail` 的感想。
-- 事前 context brief、普通项目背景或需求梳理。
+- 完整事前 context brief、普通项目背景或需求梳理。
 - 已经由 commit message、spec 或 ADR 清楚表达的重复内容。
 - 只对当前一次对话有意义、不能复用的细节。
 - secrets、credential、Cookie、access token、private payload。
@@ -91,7 +95,8 @@ Applies:
 
 | 错误 | 修正 |
 | --- | --- |
-| 把用户反馈原样贴进 memory | 提炼成 `Signal -> Observation -> Correction -> Guardrail -> Applies` |
+| 省略背景导致别人看不懂 | 增加最小 `Background`，交代任务场景和反馈为何相关 |
+| 把用户反馈原样贴进 memory | 提炼成 `Background -> Signal -> Observation -> Correction -> Guardrail -> Applies` |
 | 只写“以后注意” | 写成可执行的默认行为 |
 | 记录所有聊天细节 | 只记录能改变后续行为的内容 |
 | 把项目决策和 agent 纠偏混在一起 | 项目决策进 spec/ADR；认知纠偏进 memory |
