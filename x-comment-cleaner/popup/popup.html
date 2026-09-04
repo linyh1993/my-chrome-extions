@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>X 垃圾评论拦截助手</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo-area">
+        <div class="logo-icon">🛡️</div>
+        <div>
+          <h1 class="title">X 垃圾评论拦截</h1>
+          <p class="subtitle">净化 X 评论区 · 拦截黄推与引流 Bot</p>
+        </div>
+      </div>
+      <label class="switch" title="主开关">
+        <input type="checkbox" id="masterToggle" checked>
+        <span class="slider round"></span>
+      </label>
+    </header>
+
+    <!-- Stat banner -->
+    <div class="stats-card">
+      <div class="stat-info">
+        <span class="stat-num" id="blockedCount">0</span>
+        <span class="stat-label">已拦截垃圾回复</span>
+      </div>
+      <button class="btn-text" id="resetCountBtn" title="重置计数">重置</button>
+    </div>
+
+    <!-- Mode selection -->
+    <div class="section">
+      <div class="section-title">拦截展示形式</div>
+      <div class="mode-options">
+        <label class="radio-label">
+          <input type="radio" name="hideMode" value="collapse" id="modeCollapse" checked>
+          <span class="radio-custom"></span>
+          <span>折叠占位（可展开查看）</span>
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="hideMode" value="hide" id="modeHide">
+          <span class="radio-custom"></span>
+          <span>完全隐藏（无痕清理）</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Smart filters -->
+    <div class="section">
+      <div class="section-title">智能识别规则</div>
+      <div class="filter-toggles">
+        <label class="checkbox-row">
+          <input type="checkbox" id="filterKeywords" checked>
+          <span class="checkbox-text">关键词黑名单匹配</span>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="filterMentionSpam" checked>
+          <span class="checkbox-text">Bot 引流特征模式识别 (@提及+随机后缀)</span>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="filterDuplicates" checked>
+          <span class="checkbox-text">同帖多账号重复刷屏检测 (Copypasta)</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Keywords Manager -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">关键词黑名单</span>
+        <button class="btn-text danger" id="resetKeywordsBtn">恢复默认</button>
+      </div>
+      <div class="input-row">
+        <input type="text" id="keywordInput" class="input" placeholder="输入关键词，回车或点添加..." maxlength="30">
+        <button id="addKeywordBtn" class="btn-primary">添加</button>
+      </div>
+      <div class="tags-container" id="keywordsList">
+        <!-- Keyword tags dynamically inserted here -->
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>已支持 X.com 与 Twitter.com</span>
+      <span class="version">v1.0.0</span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

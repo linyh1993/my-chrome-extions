@@ -6,6 +6,7 @@
 
 | 目录 | 说明 |
 |------|------|
+| [`x-comment-cleaner/`](x-comment-cleaner/) | **新**：X 垃圾评论与引流 Bot 拦截助手（独立扩展） |
 | [`x-suite/`](x-suite/) | **推荐安装**：X GraphQL / WebSocket 流量镜像到本机 |
 | [`archive/legacy-extensions/`](archive/legacy-extensions/) | 已归档的旧版 `x-comment-filter`、`traffic-relay` 快照（保留对照，勿加载） |
 | [`archive/inactive-projects/`](archive/inactive-projects/) | 已停用的独立项目 `traffic-relay`、`chrome-capture-toolkit`（默认勿读） |

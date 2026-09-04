@@ -32,6 +32,7 @@
 
 | 目录 | 说明 | 入口 |
 |------|------|------|
+| `x-comment-cleaner/` | **推荐**：X 垃圾评论与引流 Bot 拦截助手 | `README.md`、`manifest.json`、`content/`、`popup/`、`background/` |
 | `x-suite/` | **推荐**：X GraphQL / WebSocket 流量镜像到本机 | `README.md`、`manifest.json`、`background/service-worker.js`、`mirror/`、`shared/`、`ui/popup/` |
 | `archive/legacy-extensions/` | 已归档：合并前旧扩展快照（勿加载，默认勿读） | `archive/README.md` |
 | `archive/inactive-projects/` | 已归档：停用的独立项目 `traffic-relay`、`chrome-capture-toolkit`（默认勿读） | `archive/README.md` |
