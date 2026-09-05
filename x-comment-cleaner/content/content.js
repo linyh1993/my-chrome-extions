@@ -176,7 +176,7 @@
       .trim();
   }
 
-  function evaluateSpam(text, authorHandle) {
+  function evaluateTextContent(text) {
     if (!text || text.length < 2) return { isSpam: false };
 
     const lowerText = text.toLowerCase();
@@ -224,45 +224,73 @@
       }
     }
 
-    // 3. Mention Spam Pattern (短语 + @mention + 随机Emoji/数字)
-    if (currentSettings.filterMentionSpam) {
-      const mentionPattern = /@[\w_]{3,20}\s*[\p{Emoji}\u200d\uFE0F\d\s]{1,15}$/u;
-      if (mentionPattern.test(text)) {
-        return { isSpam: true, reason: 'Bot 引流艾特' };
+    return { isSpam: false };
+  }
+
+  function evaluateSpam(text, authorHandle, displayName = '') {
+    // 1. Check tweet text
+    if (text) {
+      const textCheck = evaluateTextContent(text);
+      if (textCheck.isSpam) {
+        return textCheck;
+      }
+
+      // Mention Spam Pattern (短语 + @mention + 随机Emoji/数字)
+      if (currentSettings.filterMentionSpam) {
+        const mentionPattern = /@[\w_]{3,20}\s*[\p{Emoji}\u200d\uFE0F\d\s]{1,15}$/u;
+        if (mentionPattern.test(text)) {
+          return { isSpam: true, reason: 'Bot 引流艾特' };
+        }
+      }
+
+      // Copypasta / duplicate reply check
+      if (currentSettings.filterDuplicates) {
+        const normalized = normalizeTextForComparison(text);
+        if (normalized.length >= 6) {
+          let authors = threadTextOccurrences.get(normalized);
+          if (!authors) {
+            authors = new Set();
+            threadTextOccurrences.set(normalized, authors);
+          }
+
+          if (authorHandle) {
+            authors.add(authorHandle);
+          }
+
+          if (authors.size >= 2) {
+            return { isSpam: true, reason: `重复刷屏 (${authors.size} 账号同发)` };
+          }
+        }
       }
     }
 
-    // 4. Copypasta / duplicate reply check
-    if (currentSettings.filterDuplicates) {
-      const normalized = normalizeTextForComparison(text);
-      if (normalized.length >= 6) {
-        let authors = threadTextOccurrences.get(normalized);
-        if (!authors) {
-          authors = new Set();
-          threadTextOccurrences.set(normalized, authors);
-        }
-
-        if (authorHandle) {
-          authors.add(authorHandle);
-        }
-
-        if (authors.size >= 2) {
-          return { isSpam: true, reason: `重复刷屏 (${authors.size} 账号同发)` };
-        }
+    // 2. Check author display name (catches spam solicitations in nickname, e.g. "急需一位固泡", "接主人任务")
+    if (displayName) {
+      const nameCheck = evaluateTextContent(displayName);
+      if (nameCheck.isSpam) {
+        return { isSpam: true, reason: nameCheck.reason };
       }
     }
 
     return { isSpam: false };
   }
 
-  function getAuthorHandle(tweetElement) {
-    const userLink = tweetElement.querySelector('div[data-testid="User-Name"] a[href^="/"]');
+  function getAuthorInfo(tweetElement) {
+    const userNameEl = tweetElement.querySelector('div[data-testid="User-Name"]');
+    if (!userNameEl) return { handle: '', displayName: '' };
+
+    let handle = '';
+    let displayName = '';
+
+    const userLink = userNameEl.querySelector('a[href^="/"]');
     if (userLink) {
       const href = userLink.getAttribute('href') || '';
       const match = href.match(/^\/([a-zA-Z0-9_]+)/);
-      if (match) return match[1];
+      if (match) handle = match[1];
+      displayName = userLink.textContent || '';
     }
-    return '';
+
+    return { handle, displayName };
   }
 
   function scanTimeline() {
@@ -292,7 +320,7 @@
 
       // 1. Evaluate each reply tweet
       for (const tweet of replyTweets) {
-        const authorHandle = getAuthorHandle(tweet);
+        const { handle: authorHandle, displayName: authorDisplayName } = getAuthorInfo(tweet);
 
         // OP Protection: OP's follow-up thread tweets are 100% exempt
         if (opHandle && authorHandle.toLowerCase() === opHandle) {
@@ -309,7 +337,7 @@
           const tweetTextEl = tweet.querySelector('[data-testid="tweetText"]');
           const text = tweetTextEl ? tweetTextEl.textContent.trim() : '';
 
-          const checkResult = evaluateSpam(text, authorHandle);
+          const checkResult = evaluateSpam(text, authorHandle, authorDisplayName);
 
           tweet.dataset.xSpamEvaluation = checkResult.isSpam ? 'true' : 'false';
           tweet.dataset.xSpamReason = checkResult.reason || '';
