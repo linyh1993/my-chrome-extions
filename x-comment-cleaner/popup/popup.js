@@ -5,6 +5,18 @@
 document.addEventListener('DOMContentLoaded', async () => {
   const defaultDict = typeof X_SPAM_DICTIONARY !== 'undefined' ? X_SPAM_DICTIONARY : [];
 
+  function mergeKeywords(storedKeywords) {
+    const set = new Set(defaultDict);
+    if (Array.isArray(storedKeywords)) {
+      for (const k of storedKeywords) {
+        if (typeof k === 'string' && k.trim().length >= 2) {
+          set.add(k.trim());
+        }
+      }
+    }
+    return Array.from(set);
+  }
+
   const masterToggle = document.getElementById('masterToggle');
   const blockedCountEl = document.getElementById('blockedCount');
   const resetCountBtn = document.getElementById('resetCountBtn');
@@ -49,10 +61,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   filterMentionSpam.checked = !!settings.filterMentionSpam;
   filterDuplicates.checked = !!settings.filterDuplicates;
 
-  currentKeywords = Array.isArray(settings.keywords) && settings.keywords.length > 0
-    ? [...settings.keywords]
-    : [...defaultDict];
-
+  currentKeywords = mergeKeywords(settings.keywords);
   renderKeywords();
 
   // Listeners
@@ -126,7 +135,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function handleAddKeyword() {
     const val = keywordInput.value.trim();
-    if (!val) return;
+    if (!val || val.length < 2) return;
     if (!currentKeywords.includes(val)) {
       currentKeywords.unshift(val);
       saveKeywords();
