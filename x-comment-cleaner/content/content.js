@@ -118,10 +118,16 @@
     });
   }
 
-  // Symbol, homophone and variant normalization
+  // Symbol, homophone, emoji-insertion and timestamp normalization
   function normalizeTextForMatching(text) {
     if (!text) return '';
     let s = text.toLowerCase();
+
+    // 1. Strip dates and timestamps (e.g. 2026-09-04 22:11:55)
+    s = s.replace(/\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}(?:\s+\d{1,2}:\d{1,2}(?::\d{1,2})?)?\b/g, '');
+
+    // 2. Strip emojis inserted in between text (e.g. "比 👆 我好看" -> "比我好看")
+    s = s.replace(/[\p{Emoji}\u200d\uFE0F\uE000-\uF8FF]/gu, '');
 
     if (currentSettings.filterHomophones) {
       s = s
@@ -134,7 +140,9 @@
         .replace(/門檻|门坎|门卡/g, '门槛')
         .replace(/看主頁/g, '看主页')
         .replace(/置頂/g, '置顶')
-        .replace(/[\s\-_,，。！？!?.~～`@#$%^&*()（）:：/\\|<>'"“”‘’]+/g, '');
+        .replace(/[\s\-_,，。！？!?.~～`@#$%^&*()（）:：/\\|<>'"“”‘’\d]+/g, '');
+    } else {
+      s = s.replace(/[\s\-_,，。！？!?.~～`@#$%^&*()（）:：/\\|<>'"“”‘’\d]+/g, '');
     }
 
     return s;
@@ -163,7 +171,7 @@
         const normKw = normalizeTextForMatching(trimmed);
         if (normKw.length < 2) continue;
 
-        if (lowerText.includes(trimmed.toLowerCase()) || normalizedText.includes(normKw)) {
+        if (lowerText.includes(trimmed.toLowerCase()) || (normKw && normalizedText.includes(normKw))) {
           return { isSpam: true, reason: trimmed };
         }
       }
