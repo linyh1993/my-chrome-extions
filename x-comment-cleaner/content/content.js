@@ -10,7 +10,6 @@
 
   function sanitizeKeywords(list) {
     if (!Array.isArray(list)) return [...defaultDict];
-    // Filter out invalid/unsafe single character entries
     const cleaned = list.filter(k => typeof k === 'string' && k.trim().length >= 2);
     return cleaned.length > 0 ? cleaned : [...defaultDict];
   }
@@ -31,8 +30,8 @@
   let isScanning = false;
   let scanDebounceTimer = null;
 
-  // Track cluster expand state across DOM re-renders
-  const clusterExpandedState = new Map(); // clusterKey -> boolean
+  // Track cluster expand state across DOM re-renders (leadTweetText -> boolean)
+  const clusterExpandedState = new Map();
 
   // Load stored settings with sanitation
   chrome.storage.sync.get(null, (stored) => {
@@ -43,7 +42,6 @@
       ...stored,
       keywords: kw
     };
-    // Sync sanitized keywords back if corrupted
     if (stored.keywords && stored.keywords.length !== kw.length) {
       chrome.storage.sync.set({ keywords: kw });
     }
@@ -97,26 +95,20 @@
   }
 
   function resetProcessedMarks() {
-    document.querySelectorAll('[data-x-spam-processed]').forEach((el) => {
+    document.querySelectorAll('article[data-testid="tweet"]').forEach((el) => {
       delete el.dataset.xSpamProcessed;
-    });
-    document.querySelectorAll('[data-x-spam]').forEach((el) => {
+      delete el.dataset.xSpamEvaluation;
       delete el.dataset.xSpam;
       delete el.dataset.xSpamReason;
       delete el.dataset.xSpamText;
-      el.classList.remove('x-spam-cell-hidden-by-cleaner');
-    });
-    document.querySelectorAll('.x-spam-cluster-bar').forEach((bar) => {
-      bar.remove();
+      el.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
     });
   }
 
   function restoreAll() {
-    document.querySelectorAll('.x-spam-cell-hidden-by-cleaner').forEach((el) => {
-      el.classList.remove('x-spam-cell-hidden-by-cleaner');
-    });
-    document.querySelectorAll('.x-spam-cluster-bar').forEach((bar) => {
-      bar.remove();
+    document.querySelectorAll('article[data-testid="tweet"]').forEach((el) => {
+      delete el.dataset.xSpam;
+      el.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
     });
   }
 
@@ -245,158 +237,128 @@
       const allTweets = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
       if (allTweets.length === 0) return;
 
-      // The first tweet is ALWAYS the focal main post (or if thread, part of OP)
+      // The FIRST tweet is ALWAYS the focal main post
       const mainTweet = allTweets[0];
       mainTweet.dataset.xSpamProcessed = 'true';
       delete mainTweet.dataset.xSpam;
+      delete mainTweet.dataset.xSpamEvaluation;
+      mainTweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
 
-      // Ensure main tweet cell is clean
-      const mainCell = mainTweet.closest('div[data-testid="cellInnerDiv"]') || mainTweet;
-      delete mainCell.dataset.xSpam;
-      mainCell.classList.remove('x-spam-cell-hidden-by-cleaner');
+      // If only 1 tweet exists, no replies yet
+      if (allTweets.length <= 1) return;
 
-      // Process subsequent reply tweets
       const replyTweets = allTweets.slice(1);
 
-      for (const tweetElement of replyTweets) {
-        if (tweetElement.dataset.xSpamProcessed === 'true') continue;
+      // 1. Evaluate each reply tweet
+      for (const tweet of replyTweets) {
+        const authorHandle = getAuthorHandle(tweet);
 
-        const authorHandle = getAuthorHandle(tweetElement);
-
-        // OP Thread Protection: OP's follow-up thread tweets are 100% NEVER spam
+        // OP Protection: OP's follow-up thread tweets are 100% exempt
         if (opHandle && authorHandle.toLowerCase() === opHandle) {
-          tweetElement.dataset.xSpamProcessed = 'true';
-          delete tweetElement.dataset.xSpam;
-          const cell = tweetElement.closest('div[data-testid="cellInnerDiv"]') || tweetElement;
-          delete cell.dataset.xSpam;
-          cell.classList.remove('x-spam-cell-hidden-by-cleaner');
+          tweet.dataset.xSpamProcessed = 'true';
+          tweet.dataset.xSpamEvaluation = 'false';
+          delete tweet.dataset.xSpam;
+          tweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
           continue;
         }
 
-        tweetElement.dataset.xSpamProcessed = 'true';
+        if (tweet.dataset.xSpamProcessed !== 'true') {
+          tweet.dataset.xSpamProcessed = 'true';
 
-        const tweetTextEl = tweetElement.querySelector('[data-testid="tweetText"]');
-        const text = tweetTextEl ? tweetTextEl.textContent.trim() : '';
+          const tweetTextEl = tweet.querySelector('[data-testid="tweetText"]');
+          const text = tweetTextEl ? tweetTextEl.textContent.trim() : '';
 
-        const checkResult = evaluateSpam(text, authorHandle);
+          const checkResult = evaluateSpam(text, authorHandle);
 
-        const cell = tweetElement.closest('div[data-testid="cellInnerDiv"]') || tweetElement;
+          tweet.dataset.xSpamEvaluation = checkResult.isSpam ? 'true' : 'false';
+          tweet.dataset.xSpamReason = checkResult.reason || '';
+          tweet.dataset.xSpamText = text;
 
-        if (checkResult.isSpam) {
-          cell.dataset.xSpam = 'true';
-          cell.dataset.xSpamReason = checkResult.reason;
-          cell.dataset.xSpamText = text;
-
-          chrome.runtime.sendMessage({ type: 'INCREMENT_BLOCKED_COUNT', delta: 1 }, () => {
-            if (chrome.runtime.lastError) { /* ignore */ }
-          });
-        } else {
-          delete cell.dataset.xSpam;
-          delete cell.dataset.xSpamReason;
-          delete cell.dataset.xSpamText;
-          cell.classList.remove('x-spam-cell-hidden-by-cleaner');
+          if (checkResult.isSpam) {
+            chrome.runtime.sendMessage({ type: 'INCREMENT_BLOCKED_COUNT', delta: 1 }, () => {
+              if (chrome.runtime.lastError) { /* ignore */ }
+            });
+          }
         }
       }
 
-      // Identify top-level cells in primary column for aggregation
-      const primaryColumn = document.querySelector('div[data-testid="primaryColumn"]') || document.querySelector('main');
-      if (!primaryColumn) return;
-
-      const topCells = Array.from(primaryColumn.querySelectorAll('div[data-testid="cellInnerDiv"]'))
-        .filter(cell => !cell.parentElement.closest('div[data-testid="cellInnerDiv"]'));
-
-      // Build consecutive clusters for spam cells (strictly excluding main tweet cell)
+      // 2. Build clusters of consecutive spam replies
       const clusters = [];
       let currentCluster = [];
 
-      for (const cell of topCells) {
-        // Double check: if cell contains main tweet or OP tweet, it cannot be in a spam cluster
-        if (cell === mainCell || cell.contains(mainTweet)) {
-          if (currentCluster.length > 0) {
-            clusters.push(currentCluster);
-            currentCluster = [];
-          }
-          continue;
-        }
-
-        if (cell.dataset.xSpam === 'true') {
-          currentCluster.push(cell);
+      for (const tweet of replyTweets) {
+        if (tweet.dataset.xSpamEvaluation === 'true') {
+          currentCluster.push(tweet);
         } else {
           if (currentCluster.length > 0) {
             clusters.push(currentCluster);
             currentCluster = [];
           }
+          // Clean tweet: remove any residual spam markings
+          delete tweet.dataset.xSpam;
+          tweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
         }
       }
       if (currentCluster.length > 0) {
         clusters.push(currentCluster);
       }
 
-      // Clean up previous cluster bars
-      document.querySelectorAll('.x-spam-cluster-bar').forEach(b => b.remove());
-
-      if (currentSettings.hideMode === 'hide') {
-        for (const cluster of clusters) {
-          for (const cell of cluster) {
-            cell.classList.add('x-spam-cell-hidden-by-cleaner');
-          }
-        }
-        return;
-      }
-
-      // Render EXACTLY ONE aggregate bar per consecutive cluster
+      // 3. Apply styles and in-tweet banners
       for (const cluster of clusters) {
-        const firstCell = cluster[0];
+        const leadTweet = cluster[0];
         const count = cluster.length;
-        const sampleReasons = Array.from(new Set(cluster.map(c => c.dataset.xSpamReason).filter(Boolean))).slice(0, 3).join(', ');
+        const followers = cluster.slice(1);
 
-        const clusterKey = cluster.map(c => c.dataset.xSpamText?.slice(0, 10) || '').join('|');
+        const sampleReasons = Array.from(new Set(cluster.map(t => t.dataset.xSpamReason).filter(Boolean))).slice(0, 3).join(', ');
+        const clusterKey = cluster.map(t => t.dataset.xSpamText?.slice(0, 10) || '').join('|');
         const isExpanded = clusterExpandedState.get(clusterKey) === true;
 
-        const bar = document.createElement('div');
-        bar.className = 'x-spam-cluster-bar' + (isExpanded ? ' is-expanded' : '');
+        if (currentSettings.hideMode === 'hide') {
+          // Hard hide: all tweets in cluster get 'hide'
+          for (const tweet of cluster) {
+            tweet.dataset.xSpam = 'hide';
+            tweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
+          }
+        } else {
+          // Collapse mode:
+          // Lead tweet gets 'lead' or 'expanded'
+          leadTweet.dataset.xSpam = isExpanded ? 'expanded' : 'lead';
 
-        const reasonDesc = sampleReasons ? ` · (${escapeHtml(sampleReasons)}${sampleReasons ? ' 等' : ''})` : '';
+          // Ensure in-tweet banner exists inside lead tweet
+          let banner = leadTweet.querySelector('.x-spam-inner-banner');
+          if (!banner) {
+            banner = document.createElement('div');
+            banner.className = 'x-spam-inner-banner';
+            leadTweet.insertBefore(banner, leadTweet.firstChild);
+          }
 
-        bar.innerHTML = `
-          <div class="x-spam-cluster-left">
-            <span class="x-spam-cluster-tag">🚫 已折叠 ${count} 条垃圾评论</span>
-            <span class="x-spam-cluster-info" title="${escapeHtml(sampleReasons)}">${reasonDesc}</span>
-          </div>
-          <button class="x-spam-cluster-btn" type="button">${isExpanded ? `重新收起 (${count})` : `展开全部 (${count})`}</button>
-        `;
+          banner.className = 'x-spam-inner-banner' + (isExpanded ? ' is-expanded' : '');
+          const reasonDesc = sampleReasons ? ` · (${escapeHtml(sampleReasons)}${sampleReasons ? ' 等' : ''})` : '';
 
-        for (const cell of cluster) {
-          if (isExpanded) {
-            cell.classList.remove('x-spam-cell-hidden-by-cleaner');
-          } else {
-            cell.classList.add('x-spam-cell-hidden-by-cleaner');
+          banner.innerHTML = `
+            <div class="x-spam-inner-left">
+              <span class="x-spam-inner-tag">🚫 已折叠 ${count} 条垃圾评论</span>
+              <span class="x-spam-inner-info" title="${escapeHtml(sampleReasons)}">${reasonDesc}</span>
+            </div>
+            <button class="x-spam-inner-btn" type="button">${isExpanded ? `重新收起 (${count})` : `展开全部 (${count})`}</button>
+          `;
+
+          // Button click handler
+          const btn = banner.querySelector('.x-spam-inner-btn');
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            const nextState = !isExpanded;
+            clusterExpandedState.set(clusterKey, nextState);
+            scheduleScan(10);
+          };
+
+          // Follower tweets get 'follower' or 'expanded'
+          for (const follower of followers) {
+            follower.dataset.xSpam = isExpanded ? 'expanded' : 'follower';
+            follower.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
           }
         }
-
-        const btn = bar.querySelector('.x-spam-cluster-btn');
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          const nextState = !bar.classList.contains('is-expanded');
-          clusterExpandedState.set(clusterKey, nextState);
-
-          if (nextState) {
-            bar.classList.add('is-expanded');
-            btn.textContent = `重新收起 (${count})`;
-            for (const cell of cluster) {
-              cell.classList.remove('x-spam-cell-hidden-by-cleaner');
-            }
-          } else {
-            bar.classList.remove('is-expanded');
-            btn.textContent = `展开全部 (${count})`;
-            for (const cell of cluster) {
-              cell.classList.add('x-spam-cell-hidden-by-cleaner');
-            }
-          }
-        });
-
-        firstCell.parentNode.insertBefore(bar, firstCell);
       }
 
     } finally {
