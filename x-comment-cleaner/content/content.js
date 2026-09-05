@@ -8,6 +8,13 @@
   const defaultDict = typeof X_SPAM_DICTIONARY !== 'undefined' ? X_SPAM_DICTIONARY : [];
   const defaultPatterns = typeof X_SPAM_PATTERNS !== 'undefined' ? X_SPAM_PATTERNS : [];
 
+  function sanitizeKeywords(list) {
+    if (!Array.isArray(list)) return [...defaultDict];
+    // Filter out invalid/unsafe single character entries
+    const cleaned = list.filter(k => typeof k === 'string' && k.trim().length >= 2);
+    return cleaned.length > 0 ? cleaned : [...defaultDict];
+  }
+
   let currentSettings = {
     enabled: true,
     hideMode: 'collapse', // 'collapse' or 'hide'
@@ -15,7 +22,7 @@
     filterHomophones: true,
     filterMentionSpam: true,
     filterDuplicates: true,
-    keywords: defaultDict,
+    keywords: sanitizeKeywords(defaultDict),
     blockedCount: 0
   };
 
@@ -27,14 +34,19 @@
   // Track cluster expand state across DOM re-renders
   const clusterExpandedState = new Map(); // clusterKey -> boolean
 
-  // Load stored settings
+  // Load stored settings with sanitation
   chrome.storage.sync.get(null, (stored) => {
     if (chrome.runtime.lastError) return;
+    const kw = sanitizeKeywords(stored.keywords);
     currentSettings = {
       ...currentSettings,
       ...stored,
-      keywords: Array.isArray(stored.keywords) && stored.keywords.length > 0 ? stored.keywords : defaultDict
+      keywords: kw
     };
+    // Sync sanitized keywords back if corrupted
+    if (stored.keywords && stored.keywords.length !== kw.length) {
+      chrome.storage.sync.set({ keywords: kw });
+    }
     scheduleScan(50);
   });
 
@@ -44,9 +56,14 @@
     let shouldRescan = false;
 
     for (const [key, change] of Object.entries(changes)) {
-      currentSettings[key] = change.newValue;
-      if (key !== 'blockedCount') {
+      if (key === 'keywords') {
+        currentSettings.keywords = sanitizeKeywords(change.newValue);
         shouldRescan = true;
+      } else {
+        currentSettings[key] = change.newValue;
+        if (key !== 'blockedCount') {
+          shouldRescan = true;
+        }
       }
     }
 
@@ -62,6 +79,11 @@
 
   function isStatusPage() {
     return /\/(?:twitter\.com|x\.com)\/[^/]+\/status\/\d+/i.test(window.location.href);
+  }
+
+  function getOpHandle() {
+    const match = window.location.href.match(/\/(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]+)\/status\/\d+/i);
+    return match ? match[1].toLowerCase() : '';
   }
 
   function checkUrlChange() {
@@ -135,11 +157,11 @@
     const lowerText = text.toLowerCase();
     const normalizedText = normalizeTextForMatching(text);
 
-    // 1. Curated / custom keywords check (must be at least 2 chars)
+    // 1. Curated / custom keywords check (must be >= 2 chars)
     if (currentSettings.filterKeywords && Array.isArray(currentSettings.keywords)) {
       for (const kw of currentSettings.keywords) {
         const trimmed = kw.trim();
-        if (trimmed.length < 2) continue; // Never match single character
+        if (trimmed.length < 2) continue;
         const normKw = normalizeTextForMatching(trimmed);
         if (normKw.length < 2) continue;
 
@@ -209,104 +231,94 @@
     return '';
   }
 
-  function getReplyCells() {
-    const primaryColumn = document.querySelector('div[data-testid="primaryColumn"]') || document.querySelector('main');
-    if (!primaryColumn) return [];
-
-    // Locate the reply composer element (Post your reply)
-    const composer = primaryColumn.querySelector('[data-testid="tweetTextarea_0"]') ||
-                     primaryColumn.querySelector('[data-testid="inline_reply_composer"]') ||
-                     primaryColumn.querySelector('[data-testid="tweetTextarea_0_label"]');
-
-    // Find all top-level cellInnerDiv elements
-    const allCells = Array.from(primaryColumn.querySelectorAll('div[data-testid="cellInnerDiv"]'))
-      .filter(cell => !cell.parentElement.closest('div[data-testid="cellInnerDiv"]'));
-
-    if (allCells.length === 0) return [];
-
-    let replyCells = [];
-
-    if (composer) {
-      // Strictly select cells that follow the composer
-      replyCells = allCells.filter(cell => {
-        const pos = composer.compareDocumentPosition(cell);
-        return (pos & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-      });
-    } else {
-      // Fallback: locate the status tweet matching current URL
-      const currentUrl = window.location.href;
-      const match = currentUrl.match(/\/status\/(\d+)/);
-      const statusId = match ? match[1] : null;
-
-      let foundMain = false;
-      for (const cell of allCells) {
-        if (!foundMain) {
-          const tweet = cell.querySelector('article[data-testid="tweet"]');
-          if (tweet && statusId && tweet.querySelector(`a[href*="/status/${statusId}"]`)) {
-            foundMain = true;
-          }
-          continue; // Skip main tweet and everything before it
-        }
-        replyCells.push(cell);
-      }
-
-      if (!foundMain && allCells.length > 1) {
-        // Safe default: skip the very first cell
-        replyCells = allCells.slice(1);
-      }
-    }
-
-    // Only keep cells that actually contain an article[data-testid="tweet"]
-    return replyCells.filter(cell => cell.querySelector('article[data-testid="tweet"]') !== null);
-  }
-
-  function scanAndGroupTimeline() {
+  function scanTimeline() {
     if (isScanning || !currentSettings.enabled) return;
-    if (!isStatusPage()) return; // Never touch non-post pages
+    if (!isStatusPage()) return; // Never touch non-post pages (Home, Profiles, etc.)
 
     isScanning = true;
 
     try {
       checkUrlChange();
-      const replyCells = getReplyCells();
-      if (replyCells.length === 0) return;
+      const opHandle = getOpHandle();
 
-      // Process reply cells only
-      for (const cell of replyCells) {
-        const tweetElement = cell.querySelector('article[data-testid="tweet"]');
-        if (!tweetElement) continue;
+      // Find all tweet articles on the page
+      const allTweets = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+      if (allTweets.length === 0) return;
 
-        if (tweetElement.dataset.xSpamProcessed !== 'true') {
+      // The first tweet is ALWAYS the focal main post (or if thread, part of OP)
+      const mainTweet = allTweets[0];
+      mainTweet.dataset.xSpamProcessed = 'true';
+      delete mainTweet.dataset.xSpam;
+
+      // Ensure main tweet cell is clean
+      const mainCell = mainTweet.closest('div[data-testid="cellInnerDiv"]') || mainTweet;
+      delete mainCell.dataset.xSpam;
+      mainCell.classList.remove('x-spam-cell-hidden-by-cleaner');
+
+      // Process subsequent reply tweets
+      const replyTweets = allTweets.slice(1);
+
+      for (const tweetElement of replyTweets) {
+        if (tweetElement.dataset.xSpamProcessed === 'true') continue;
+
+        const authorHandle = getAuthorHandle(tweetElement);
+
+        // OP Thread Protection: OP's follow-up thread tweets are 100% NEVER spam
+        if (opHandle && authorHandle.toLowerCase() === opHandle) {
           tweetElement.dataset.xSpamProcessed = 'true';
-          const tweetTextEl = tweetElement.querySelector('[data-testid="tweetText"]');
-          const text = tweetTextEl ? tweetTextEl.textContent.trim() : '';
-          const authorHandle = getAuthorHandle(tweetElement);
+          delete tweetElement.dataset.xSpam;
+          const cell = tweetElement.closest('div[data-testid="cellInnerDiv"]') || tweetElement;
+          delete cell.dataset.xSpam;
+          cell.classList.remove('x-spam-cell-hidden-by-cleaner');
+          continue;
+        }
 
-          const checkResult = evaluateSpam(text, authorHandle);
+        tweetElement.dataset.xSpamProcessed = 'true';
 
-          if (checkResult.isSpam) {
-            cell.dataset.xSpam = 'true';
-            cell.dataset.xSpamReason = checkResult.reason;
-            cell.dataset.xSpamText = text;
+        const tweetTextEl = tweetElement.querySelector('[data-testid="tweetText"]');
+        const text = tweetTextEl ? tweetTextEl.textContent.trim() : '';
 
-            chrome.runtime.sendMessage({ type: 'INCREMENT_BLOCKED_COUNT', delta: 1 }, () => {
-              if (chrome.runtime.lastError) { /* ignore */ }
-            });
-          } else {
-            delete cell.dataset.xSpam;
-            delete cell.dataset.xSpamReason;
-            delete cell.dataset.xSpamText;
-            cell.classList.remove('x-spam-cell-hidden-by-cleaner');
-          }
+        const checkResult = evaluateSpam(text, authorHandle);
+
+        const cell = tweetElement.closest('div[data-testid="cellInnerDiv"]') || tweetElement;
+
+        if (checkResult.isSpam) {
+          cell.dataset.xSpam = 'true';
+          cell.dataset.xSpamReason = checkResult.reason;
+          cell.dataset.xSpamText = text;
+
+          chrome.runtime.sendMessage({ type: 'INCREMENT_BLOCKED_COUNT', delta: 1 }, () => {
+            if (chrome.runtime.lastError) { /* ignore */ }
+          });
+        } else {
+          delete cell.dataset.xSpam;
+          delete cell.dataset.xSpamReason;
+          delete cell.dataset.xSpamText;
+          cell.classList.remove('x-spam-cell-hidden-by-cleaner');
         }
       }
 
-      // Build consecutive clusters for reply cells
+      // Identify top-level cells in primary column for aggregation
+      const primaryColumn = document.querySelector('div[data-testid="primaryColumn"]') || document.querySelector('main');
+      if (!primaryColumn) return;
+
+      const topCells = Array.from(primaryColumn.querySelectorAll('div[data-testid="cellInnerDiv"]'))
+        .filter(cell => !cell.parentElement.closest('div[data-testid="cellInnerDiv"]'));
+
+      // Build consecutive clusters for spam cells (strictly excluding main tweet cell)
       const clusters = [];
       let currentCluster = [];
 
-      for (let i = 0; i < replyCells.length; i++) {
-        const cell = replyCells[i];
+      for (const cell of topCells) {
+        // Double check: if cell contains main tweet or OP tweet, it cannot be in a spam cluster
+        if (cell === mainCell || cell.contains(mainTweet)) {
+          if (currentCluster.length > 0) {
+            clusters.push(currentCluster);
+            currentCluster = [];
+          }
+          continue;
+        }
+
         if (cell.dataset.xSpam === 'true') {
           currentCluster.push(cell);
         } else {
@@ -404,7 +416,7 @@
 
   function scheduleScan(delay = 100) {
     if (scanDebounceTimer) clearTimeout(scanDebounceTimer);
-    scanDebounceTimer = setTimeout(scanAndGroupTimeline, delay);
+    scanDebounceTimer = setTimeout(scanTimeline, delay);
   }
 
   const observer = new MutationObserver((mutations) => {
