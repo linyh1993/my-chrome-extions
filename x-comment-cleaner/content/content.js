@@ -77,12 +77,13 @@
   function resetProcessedMarks() {
     document.querySelectorAll('[data-x-spam-processed]').forEach((el) => {
       delete el.dataset.xSpamProcessed;
+    });
+    document.querySelectorAll('[data-x-spam]').forEach((el) => {
+      delete el.dataset.xSpam;
       delete el.dataset.xSpamReason;
       delete el.dataset.xSpamText;
-      delete el.dataset.xSpam;
       el.classList.remove('x-spam-cell-hidden-by-cleaner');
     });
-
     document.querySelectorAll('.x-spam-cluster-bar').forEach((bar) => {
       bar.remove();
     });
@@ -129,19 +130,20 @@
   }
 
   function evaluateSpam(text, authorHandle) {
-    if (!text) return { isSpam: false };
+    if (!text || text.length < 2) return { isSpam: false };
 
     const lowerText = text.toLowerCase();
     const normalizedText = normalizeTextForMatching(text);
 
-    // 1. Curated / custom keywords check
+    // 1. Curated / custom keywords check (must be at least 2 chars)
     if (currentSettings.filterKeywords && Array.isArray(currentSettings.keywords)) {
       for (const kw of currentSettings.keywords) {
         const trimmed = kw.trim();
-        if (!trimmed) continue;
+        if (trimmed.length < 2) continue; // Never match single character
         const normKw = normalizeTextForMatching(trimmed);
+        if (normKw.length < 2) continue;
 
-        if (lowerText.includes(trimmed.toLowerCase()) || (normKw && normalizedText.includes(normKw))) {
+        if (lowerText.includes(trimmed.toLowerCase()) || normalizedText.includes(normKw)) {
           return { isSpam: true, reason: trimmed };
         }
       }
@@ -207,79 +209,72 @@
     return '';
   }
 
-  function getTopLevelTimelineCells() {
+  function getReplyCells() {
     const primaryColumn = document.querySelector('div[data-testid="primaryColumn"]') || document.querySelector('main');
     if (!primaryColumn) return [];
 
-    const allCells = Array.from(primaryColumn.querySelectorAll('div[data-testid="cellInnerDiv"]'));
+    // Locate the reply composer element (Post your reply)
+    const composer = primaryColumn.querySelector('[data-testid="tweetTextarea_0"]') ||
+                     primaryColumn.querySelector('[data-testid="inline_reply_composer"]') ||
+                     primaryColumn.querySelector('[data-testid="tweetTextarea_0_label"]');
+
+    // Find all top-level cellInnerDiv elements
+    const allCells = Array.from(primaryColumn.querySelectorAll('div[data-testid="cellInnerDiv"]'))
+      .filter(cell => !cell.parentElement.closest('div[data-testid="cellInnerDiv"]'));
+
     if (allCells.length === 0) return [];
 
-    // Filter only top-level cells (never nested inside another cellInnerDiv)
-    return allCells.filter(cell => !cell.parentElement.closest('div[data-testid="cellInnerDiv"]'));
-  }
+    let replyCells = [];
 
-  function findRepliesStartIndex(topCells) {
-    // 1. Find composer cell (Post your reply)
-    for (let i = 0; i < topCells.length; i++) {
-      const cell = topCells[i];
-      if (cell.querySelector('[data-testid="tweetTextarea_0"]') ||
-          cell.querySelector('[data-testid="inline_reply_composer"]') ||
-          cell.querySelector('[data-testid="tweetTextarea_0_label"]') ||
-          cell.querySelector('div[role="progressbar"]')) {
-        return i + 1;
-      }
-    }
+    if (composer) {
+      // Strictly select cells that follow the composer
+      replyCells = allCells.filter(cell => {
+        const pos = composer.compareDocumentPosition(cell);
+        return (pos & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+      });
+    } else {
+      // Fallback: locate the status tweet matching current URL
+      const currentUrl = window.location.href;
+      const match = currentUrl.match(/\/status\/(\d+)/);
+      const statusId = match ? match[1] : null;
 
-    // 2. Fallback: find focal main tweet matching status ID
-    const currentUrl = window.location.href;
-    const statusMatch = currentUrl.match(/\/status\/(\d+)/);
-    const statusId = statusMatch ? statusMatch[1] : null;
-
-    if (statusId) {
-      for (let i = 0; i < topCells.length; i++) {
-        const cell = topCells[i];
-        const tweet = cell.querySelector('article[data-testid="tweet"]');
-        if (tweet && tweet.querySelector(`a[href*="/status/${statusId}"]`)) {
-          return i + 1;
+      let foundMain = false;
+      for (const cell of allCells) {
+        if (!foundMain) {
+          const tweet = cell.querySelector('article[data-testid="tweet"]');
+          if (tweet && statusId && tweet.querySelector(`a[href*="/status/${statusId}"]`)) {
+            foundMain = true;
+          }
+          continue; // Skip main tweet and everything before it
         }
+        replyCells.push(cell);
+      }
+
+      if (!foundMain && allCells.length > 1) {
+        // Safe default: skip the very first cell
+        replyCells = allCells.slice(1);
       }
     }
 
-    // Default: skip the first cell
-    return 1;
+    // Only keep cells that actually contain an article[data-testid="tweet"]
+    return replyCells.filter(cell => cell.querySelector('article[data-testid="tweet"]') !== null);
   }
 
   function scanAndGroupTimeline() {
     if (isScanning || !currentSettings.enabled) return;
-    if (!isStatusPage()) return; // Only operate on post threads
+    if (!isStatusPage()) return; // Never touch non-post pages
 
     isScanning = true;
 
     try {
       checkUrlChange();
-      const topCells = getTopLevelTimelineCells();
-      if (topCells.length === 0) return;
+      const replyCells = getReplyCells();
+      if (replyCells.length === 0) return;
 
-      const startIndex = findRepliesStartIndex(topCells);
-
-      // Ensure main post cells are never marked as spam or hidden
-      for (let i = 0; i < startIndex && i < topCells.length; i++) {
-        const mainCell = topCells[i];
-        delete mainCell.dataset.xSpam;
-        delete mainCell.dataset.xSpamReason;
-        delete mainCell.dataset.xSpamText;
-        mainCell.classList.remove('x-spam-cell-hidden-by-cleaner');
-      }
-
-      // Process reply cells
-      for (let i = startIndex; i < topCells.length; i++) {
-        const cell = topCells[i];
+      // Process reply cells only
+      for (const cell of replyCells) {
         const tweetElement = cell.querySelector('article[data-testid="tweet"]');
-
-        if (!tweetElement) {
-          // If no tweet (e.g. spacer / ad / loading), skip
-          continue;
-        }
+        if (!tweetElement) continue;
 
         if (tweetElement.dataset.xSpamProcessed !== 'true') {
           tweetElement.dataset.xSpamProcessed = 'true';
@@ -301,16 +296,17 @@
             delete cell.dataset.xSpam;
             delete cell.dataset.xSpamReason;
             delete cell.dataset.xSpamText;
+            cell.classList.remove('x-spam-cell-hidden-by-cleaner');
           }
         }
       }
 
-      // Build consecutive clusters for replies
+      // Build consecutive clusters for reply cells
       const clusters = [];
       let currentCluster = [];
 
-      for (let i = startIndex; i < topCells.length; i++) {
-        const cell = topCells[i];
+      for (let i = 0; i < replyCells.length; i++) {
+        const cell = replyCells[i];
         if (cell.dataset.xSpam === 'true') {
           currentCluster.push(cell);
         } else {
@@ -324,7 +320,7 @@
         clusters.push(currentCluster);
       }
 
-      // Clean up existing bars
+      // Clean up previous cluster bars
       document.querySelectorAll('.x-spam-cluster-bar').forEach(b => b.remove());
 
       if (currentSettings.hideMode === 'hide') {
@@ -336,7 +332,7 @@
         return;
       }
 
-      // Render single aggregate bar per cluster
+      // Render EXACTLY ONE aggregate bar per consecutive cluster
       for (const cluster of clusters) {
         const firstCell = cluster[0];
         const count = cluster.length;
