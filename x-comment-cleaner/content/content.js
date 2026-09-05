@@ -5,15 +5,17 @@
 (function () {
   'use strict';
 
+  const defaultDict = typeof X_SPAM_DICTIONARY !== 'undefined' ? X_SPAM_DICTIONARY : [];
+  const defaultPatterns = typeof X_SPAM_PATTERNS !== 'undefined' ? X_SPAM_PATTERNS : [];
+
   let currentSettings = {
     enabled: true,
     hideMode: 'collapse', // 'collapse' or 'hide'
-    groupConsecutive: true, // Group consecutive spam replies into a single aggregate card
     filterKeywords: true,
     filterHomophones: true,
     filterMentionSpam: true,
     filterDuplicates: true,
-    keywords: [],
+    keywords: defaultDict,
     blockedCount: 0
   };
 
@@ -22,10 +24,17 @@
   let isScanning = false;
   let scanDebounceTimer = null;
 
-  // Load settings
+  // Track cluster expand state across DOM re-renders
+  const clusterExpandedState = new Map(); // clusterKey -> boolean
+
+  // Load stored settings
   chrome.storage.sync.get(null, (stored) => {
     if (chrome.runtime.lastError) return;
-    currentSettings = { ...currentSettings, ...stored };
+    currentSettings = {
+      ...currentSettings,
+      ...stored,
+      keywords: Array.isArray(stored.keywords) && stored.keywords.length > 0 ? stored.keywords : defaultDict
+    };
     scheduleScan(50);
   });
 
@@ -60,6 +69,7 @@
     if (currentUrl !== currentThreadUrl) {
       currentThreadUrl = currentUrl;
       threadTextOccurrences.clear();
+      clusterExpandedState.clear();
       resetProcessedMarks();
     }
   }
@@ -68,24 +78,22 @@
     document.querySelectorAll('[data-x-spam-processed]').forEach((el) => {
       delete el.dataset.xSpamProcessed;
       delete el.dataset.xSpamReason;
-      delete el.dataset.xSpamClusterId;
-      el.classList.remove('x-spam-tweet-collapsed', 'x-spam-cell-hidden');
+      delete el.dataset.xSpamText;
+      delete el.dataset.xSpam;
+      el.classList.remove('x-spam-cell-hidden-by-cleaner');
     });
 
-    document.querySelectorAll('.x-spam-collapsed-card, .x-spam-cluster-card').forEach((card) => {
-      card.remove();
+    document.querySelectorAll('.x-spam-cluster-bar').forEach((bar) => {
+      bar.remove();
     });
   }
 
   function restoreAll() {
-    document.querySelectorAll('.x-spam-tweet-collapsed').forEach((el) => {
-      el.classList.remove('x-spam-tweet-collapsed');
+    document.querySelectorAll('.x-spam-cell-hidden-by-cleaner').forEach((el) => {
+      el.classList.remove('x-spam-cell-hidden-by-cleaner');
     });
-    document.querySelectorAll('.x-spam-cell-hidden').forEach((el) => {
-      el.classList.remove('x-spam-cell-hidden');
-    });
-    document.querySelectorAll('.x-spam-collapsed-card, .x-spam-cluster-card').forEach((card) => {
-      card.remove();
+    document.querySelectorAll('.x-spam-cluster-bar').forEach((bar) => {
+      bar.remove();
     });
   }
 
@@ -95,7 +103,6 @@
     let s = text.toLowerCase();
 
     if (currentSettings.filterHomophones) {
-      // Normalize common symbols & homophones
       s = s
         .replace(/[\u200B-\u200D\uFEFF]/g, '') // Remove zero-width spaces
         .replace(/➕|\＋|\+/g, '加')
@@ -127,7 +134,7 @@
     const lowerText = text.toLowerCase();
     const normalizedText = normalizeTextForMatching(text);
 
-    // 1. Keyword check
+    // 1. Curated / custom keywords check
     if (currentSettings.filterKeywords && Array.isArray(currentSettings.keywords)) {
       for (const kw of currentSettings.keywords) {
         const trimmed = kw.trim();
@@ -135,22 +142,27 @@
         const normKw = normalizeTextForMatching(trimmed);
 
         if (lowerText.includes(trimmed.toLowerCase()) || (normKw && normalizedText.includes(normKw))) {
-          return { isSpam: true, reason: `匹配关键词: "${trimmed}"` };
+          return { isSpam: true, reason: trimmed };
         }
       }
     }
 
-    // 2. Homophone & Bait sentence heuristics (通假字 / 诱导诱饵句)
+    // 2. Homophone & Bait sentence heuristics
     if (currentSettings.filterHomophones) {
-      // 诱导句式: "没人比我玩的开", "我福不黑不信你看", "不信你看", "玩得开"
       if (/(?:没人|谁)比我.*(?:玩|骚|放|浪)/i.test(normalizedText)) {
-        return { isSpam: true, reason: '特征匹配: 诱导话术' };
+        return { isSpam: true, reason: '诱导话术' };
       }
       if (/(?:不黑|水多|粉嫩|耐操|反差|大瓜).*不信/i.test(normalizedText)) {
-        return { isSpam: true, reason: '特征匹配: 诱导话术' };
+        return { isSpam: true, reason: '诱导话术' };
       }
-      if (/(?:看主页|看置顶|看相册|私信我|进群).*(?:福利|无门槛|吃瓜|资源)/i.test(normalizedText)) {
-        return { isSpam: true, reason: '特征匹配: 引流诱导' };
+      if (/(?:看主页|看置顶|看相册|私信我|进群).*(?:福利|无门槛|吃瓜|资源|相册)/i.test(normalizedText)) {
+        return { isSpam: true, reason: '引流诱导' };
+      }
+
+      for (const pattern of defaultPatterns) {
+        if (pattern.test(text) || pattern.test(normalizedText)) {
+          return { isSpam: true, reason: '特征匹配' };
+        }
       }
     }
 
@@ -158,16 +170,11 @@
     if (currentSettings.filterMentionSpam) {
       const mentionPattern = /@[\w_]{3,20}\s*[\p{Emoji}\u200d\uFE0F\d\s]{1,15}$/u;
       if (mentionPattern.test(text)) {
-        return { isSpam: true, reason: '特征匹配: Bot 引流艾特后缀' };
-      }
-
-      const shortTrafficPattern = /(?:比她|好看|骚|看主|置顶|资源|私聊|福利|主页|吃瓜).*@[\w_]{3,20}/i;
-      if (shortTrafficPattern.test(text)) {
-        return { isSpam: true, reason: '特征匹配: 引流诱导 + @账号' };
+        return { isSpam: true, reason: 'Bot 引流艾特' };
       }
     }
 
-    // 4. Copypasta check
+    // 4. Copypasta / duplicate reply check
     if (currentSettings.filterDuplicates) {
       const normalized = normalizeTextForComparison(text);
       if (normalized.length >= 6) {
@@ -182,7 +189,7 @@
         }
 
         if (authors.size >= 2) {
-          return { isSpam: true, reason: `重复刷屏评论 (${authors.size} 个账号发送相同内容)` };
+          return { isSpam: true, reason: `重复刷屏 (${authors.size} 账号同发)` };
         }
       }
     }
@@ -220,6 +227,7 @@
       return;
     }
 
+    const cell = tweetElement.closest('div[data-testid="cellInnerDiv"]') || tweetElement;
     const tweetTextEl = tweetElement.querySelector('[data-testid="tweetText"]');
     const text = tweetTextEl ? tweetTextEl.textContent.trim() : '';
     const authorHandle = getAuthorHandle(tweetElement);
@@ -228,119 +236,119 @@
     tweetElement.dataset.xSpamProcessed = 'true';
 
     if (checkResult.isSpam) {
-      tweetElement.dataset.xSpamReason = checkResult.reason;
-      tweetElement.dataset.xSpamRawText = text;
+      cell.dataset.xSpam = 'true';
+      cell.dataset.xSpamReason = checkResult.reason;
+      cell.dataset.xSpamText = text;
 
       chrome.runtime.sendMessage({ type: 'INCREMENT_BLOCKED_COUNT', delta: 1 }, () => {
         if (chrome.runtime.lastError) { /* ignore */ }
       });
 
-      if (currentSettings.hideMode === 'hide') {
-        const cell = tweetElement.closest('[data-testid="cellInnerDiv"]') || tweetElement;
-        cell.classList.add('x-spam-cell-hidden');
-      } else {
-        tweetElement.classList.add('x-spam-tweet-collapsed');
-      }
+      // Hide cell by default
+      cell.classList.add('x-spam-cell-hidden-by-cleaner');
     }
   }
 
-  // Group consecutive collapsed spam comments into clean single aggregate cards
-  function updateClusterCards() {
-    if (currentSettings.hideMode === 'hide' || !currentSettings.enabled) return;
+  // Group all consecutive spam cells into ONE SINGLE aggregate bar
+  function renderAggregateBars() {
+    if (!currentSettings.enabled) return;
 
     const primaryColumn = document.querySelector('div[data-testid="primaryColumn"]') || document.querySelector('main');
     if (!primaryColumn) return;
 
-    // Remove obsolete cards
-    document.querySelectorAll('.x-spam-collapsed-card, .x-spam-cluster-card').forEach(card => card.remove());
-
     const allCells = Array.from(primaryColumn.querySelectorAll('div[data-testid="cellInnerDiv"]'));
+    if (allCells.length === 0) return;
+
+    // Identify consecutive clusters
+    const clusters = [];
     let currentCluster = [];
 
-    function flushCluster() {
-      if (currentCluster.length === 0) return;
-
-      if (currentCluster.length === 1 || !currentSettings.groupConsecutive) {
-        // Render single cards
-        for (const { tweetEl, reason, text } of currentCluster) {
-          renderSingleCard(tweetEl, reason, text);
+    for (let i = 0; i < allCells.length; i++) {
+      const cell = allCells[i];
+      if (cell.dataset.xSpam === 'true') {
+        currentCluster.push(cell);
+      } else {
+        if (currentCluster.length > 0) {
+          clusters.push(currentCluster);
+          currentCluster = [];
         }
-      } else {
-        // Render aggregate cluster card
-        renderClusterCard(currentCluster);
-      }
-      currentCluster = [];
-    }
-
-    for (const cell of allCells) {
-      const tweetEl = cell.querySelector('article[data-testid="tweet"]');
-      if (tweetEl && tweetEl.dataset.xSpamReason) {
-        currentCluster.push({
-          cell,
-          tweetEl,
-          reason: tweetEl.dataset.xSpamReason,
-          text: tweetEl.dataset.xSpamRawText || ''
-        });
-      } else {
-        flushCluster();
       }
     }
-    flushCluster();
-  }
+    if (currentCluster.length > 0) {
+      clusters.push(currentCluster);
+    }
 
-  function renderSingleCard(tweetElement, reason, rawText) {
-    const card = document.createElement('div');
-    card.className = 'x-spam-collapsed-card';
+    // Clean up existing bars
+    document.querySelectorAll('.x-spam-cluster-bar').forEach(bar => bar.remove());
 
-    const snippet = rawText.length > 24 ? rawText.slice(0, 24) + '...' : rawText;
-
-    card.innerHTML = `
-      <div class="x-spam-left">
-        <span class="x-spam-tag">🚫 已折叠垃圾评论</span>
-        <span class="x-spam-reason" title="${escapeHtml(reason + (snippet ? ' · ' + snippet : ''))}">${escapeHtml(reason)} ${snippet ? '· ' + escapeHtml(snippet) : ''}</span>
-      </div>
-      <button class="x-spam-expand-btn" type="button">展开查看</button>
-    `;
-
-    card.querySelector('.x-spam-expand-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      tweetElement.classList.remove('x-spam-tweet-collapsed');
-      delete tweetElement.dataset.xSpamReason;
-      card.remove();
-    });
-
-    tweetElement.parentNode.insertBefore(card, tweetElement);
-  }
-
-  function renderClusterCard(clusterItems) {
-    const firstTweetEl = clusterItems[0].tweetEl;
-    const count = clusterItems.length;
-
-    const reasons = Array.from(new Set(clusterItems.map(item => item.reason.replace(/^匹配关键词:\s*"?|"?$/g, '')))).slice(0, 3).join(', ');
-
-    const card = document.createElement('div');
-    card.className = 'x-spam-cluster-card';
-
-    card.innerHTML = `
-      <div class="x-spam-left">
-        <span class="x-spam-tag x-spam-cluster-tag">🚫 已连续折叠 ${count} 条垃圾评论</span>
-        <span class="x-spam-reason" title="${escapeHtml(reasons)}">(${escapeHtml(reasons)}${reasons ? ' 等' : ''})</span>
-      </div>
-      <button class="x-spam-expand-btn" type="button">展开全部 (${count})</button>
-    `;
-
-    card.querySelector('.x-spam-expand-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      for (const item of clusterItems) {
-        item.tweetEl.classList.remove('x-spam-tweet-collapsed');
-        delete item.tweetEl.dataset.xSpamReason;
+    if (currentSettings.hideMode === 'hide') {
+      // In hard hide mode, ensure all spam cells remain hidden without bars
+      for (const cluster of clusters) {
+        for (const cell of cluster) {
+          cell.classList.add('x-spam-cell-hidden-by-cleaner');
+        }
       }
-      card.remove();
-    });
+      return;
+    }
 
-    firstTweetEl.parentNode.insertBefore(card, firstTweetEl);
+    // Render EXACTLY ONE aggregate bar for EACH cluster
+    for (const cluster of clusters) {
+      const firstCell = cluster[0];
+      const count = cluster.length;
+      const sampleReasons = Array.from(new Set(cluster.map(c => c.dataset.xSpamReason).filter(Boolean))).slice(0, 3).join(', ');
+
+      const clusterKey = cluster.map(c => c.dataset.xSpamText?.slice(0, 10) || '').join('|');
+      const isExpanded = clusterExpandedState.get(clusterKey) === true;
+
+      // Create aggregate bar
+      const bar = document.createElement('div');
+      bar.className = 'x-spam-cluster-bar' + (isExpanded ? ' is-expanded' : '');
+
+      const reasonDesc = sampleReasons ? ` · (${escapeHtml(sampleReasons)}${sampleReasons ? ' 等' : ''})` : '';
+
+      bar.innerHTML = `
+        <div class="x-spam-cluster-left">
+          <span class="x-spam-cluster-tag">🚫 已折叠 ${count} 条垃圾评论</span>
+          <span class="x-spam-cluster-info" title="${escapeHtml(sampleReasons)}">${reasonDesc}</span>
+        </div>
+        <button class="x-spam-cluster-btn" type="button">${isExpanded ? `重新收起 (${count})` : `展开全部 (${count})`}</button>
+      `;
+
+      // Apply initial expand/collapse visibility
+      for (const cell of cluster) {
+        if (isExpanded) {
+          cell.classList.remove('x-spam-cell-hidden-by-cleaner');
+        } else {
+          cell.classList.add('x-spam-cell-hidden-by-cleaner');
+        }
+      }
+
+      // Toggle listener
+      const btn = bar.querySelector('.x-spam-cluster-btn');
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const nextState = !bar.classList.contains('is-expanded');
+        clusterExpandedState.set(clusterKey, nextState);
+
+        if (nextState) {
+          bar.classList.add('is-expanded');
+          btn.textContent = `重新收起 (${count})`;
+          for (const cell of cluster) {
+            cell.classList.remove('x-spam-cell-hidden-by-cleaner');
+          }
+        } else {
+          bar.classList.remove('is-expanded');
+          btn.textContent = `展开全部 (${count})`;
+          for (const cell of cluster) {
+            cell.classList.add('x-spam-cell-hidden-by-cleaner');
+          }
+        }
+      });
+
+      // Insert bar right above first spam cell
+      firstCell.parentNode.insertBefore(bar, firstCell);
+    }
   }
 
   function escapeHtml(str) {
@@ -360,14 +368,12 @@
     try {
       checkUrlChange();
       const tweets = document.querySelectorAll('article[data-testid="tweet"]:not([data-x-spam-processed="true"])');
-      let foundNew = false;
       for (const tweet of tweets) {
         processTweet(tweet);
-        foundNew = true;
       }
 
-      // Update aggregate cards
-      updateClusterCards();
+      // Always perform cluster aggregation
+      renderAggregateBars();
     } finally {
       isScanning = false;
     }

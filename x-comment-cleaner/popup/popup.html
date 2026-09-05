@@ -14,7 +14,7 @@
         <div class="logo-icon">🛡️</div>
         <div>
           <h1 class="title">X 垃圾评论拦截</h1>
-          <p class="subtitle">净化 X 评论区 · 拦截黄推与引流 Bot</p>
+          <p class="subtitle">净化 X 评论区 · 智能多条连续聚合折叠</p>
         </div>
       </div>
       <label class="switch" title="主开关">
@@ -29,7 +29,7 @@
         <span class="stat-num" id="blockedCount">0</span>
         <span class="stat-label">已拦截垃圾回复</span>
       </div>
-      <button class="btn-text" id="resetCountBtn" title="重置计数">重置</button>
+      <button class="btn-text" id="resetCountBtn" title="重置计数">重置计数</button>
     </div>
 
     <!-- Mode selection -->
@@ -39,31 +39,27 @@
         <label class="radio-label">
           <input type="radio" name="hideMode" value="collapse" id="modeCollapse" checked>
           <span class="radio-custom"></span>
-          <span>折叠占位（可展开查看）</span>
+          <span><b>连续多条聚合折叠</b>（单行轻量条，可一键展开）</span>
         </label>
         <label class="radio-label">
           <input type="radio" name="hideMode" value="hide" id="modeHide">
           <span class="radio-custom"></span>
-          <span>完全隐藏（无痕清理）</span>
+          <span><b>完全隐藏</b>（无痕彻底清理）</span>
         </label>
       </div>
     </div>
 
     <!-- Smart filters -->
     <div class="section">
-      <div class="section-title">智能识别与折叠规则</div>
+      <div class="section-title">智能识别规则</div>
       <div class="filter-toggles">
         <label class="checkbox-row">
-          <input type="checkbox" id="groupConsecutive" checked>
-          <span class="checkbox-text"><b>连续多条聚合折叠</b>（合并为单行，告别刷屏）</span>
-        </label>
-        <label class="checkbox-row">
           <input type="checkbox" id="filterKeywords" checked>
-          <span class="checkbox-text">关键词黑名单匹配</span>
+          <span class="checkbox-text">高频词库黑名单匹配</span>
         </label>
         <label class="checkbox-row">
           <input type="checkbox" id="filterHomophones" checked>
-          <span class="checkbox-text">通假字 / 谐音变体与诱导话术识别</span>
+          <span class="checkbox-text">通假字 / 谐音变体 / 诱导诱饵识别</span>
         </label>
         <label class="checkbox-row">
           <input type="checkbox" id="filterMentionSpam" checked>
@@ -79,11 +75,11 @@
     <!-- Keywords Manager -->
     <div class="section">
       <div class="section-header">
-        <span class="section-title">关键词黑名单</span>
-        <button class="btn-text danger" id="resetKeywordsBtn">恢复默认</button>
+        <span class="section-title">内置与自定义词库 (<span id="kwCount">0</span>)</span>
+        <button class="btn-text danger" id="resetKeywordsBtn">恢复完整默认词库</button>
       </div>
       <div class="input-row">
-        <input type="text" id="keywordInput" class="input" placeholder="输入关键词，回车或点添加..." maxlength="30">
+        <input type="text" id="keywordInput" class="input" placeholder="输入自定义关键词..." maxlength="30">
         <button id="addKeywordBtn" class="btn-primary">添加</button>
       </div>
       <div class="tags-container" id="keywordsList">
@@ -94,10 +90,11 @@
     <!-- Footer -->
     <footer class="footer">
       <span>已支持 X.com 与 Twitter.com</span>
-      <span class="version">v1.1.0</span>
+      <span class="version">v1.2.0</span>
     </footer>
   </div>
 
+  <script src="../shared/dictionary.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
