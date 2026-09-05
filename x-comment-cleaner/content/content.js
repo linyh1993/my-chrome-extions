@@ -45,7 +45,7 @@
     if (stored.keywords && stored.keywords.length !== kw.length) {
       chrome.storage.sync.set({ keywords: kw });
     }
-    scheduleScan(50);
+    handleUrlChange();
   });
 
   // Listen for settings change
@@ -70,7 +70,7 @@
         restoreAll();
       } else {
         resetProcessedMarks();
-        scheduleScan(80);
+        scheduleScan(50);
       }
     }
   });
@@ -84,13 +84,19 @@
     return match ? match[1].toLowerCase() : '';
   }
 
-  function checkUrlChange() {
+  function handleUrlChange() {
     const currentUrl = window.location.href.split('?')[0];
     if (currentUrl !== currentThreadUrl) {
       currentThreadUrl = currentUrl;
       threadTextOccurrences.clear();
       clusterExpandedState.clear();
       resetProcessedMarks();
+
+      if (isStatusPage()) {
+        scheduleScan(50);
+        scheduleScan(300);
+        scheduleScan(800);
+      }
     }
   }
 
@@ -230,7 +236,6 @@
     isScanning = true;
 
     try {
-      checkUrlChange();
       const opHandle = getOpHandle();
 
       // Find all tweet articles on the page
@@ -244,7 +249,7 @@
       delete mainTweet.dataset.xSpamEvaluation;
       mainTweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
 
-      // If only 1 tweet exists, no replies yet
+      // If only 1 tweet exists, no replies loaded yet
       if (allTweets.length <= 1) return;
 
       const replyTweets = allTweets.slice(1);
@@ -314,14 +319,13 @@
         const isExpanded = clusterExpandedState.get(clusterKey) === true;
 
         if (currentSettings.hideMode === 'hide') {
-          // Hard hide: all tweets in cluster get 'hide'
+          // Hard hide
           for (const tweet of cluster) {
             tweet.dataset.xSpam = 'hide';
             tweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
           }
         } else {
           // Collapse mode:
-          // Lead tweet gets 'lead' or 'expanded'
           leadTweet.dataset.xSpam = isExpanded ? 'expanded' : 'lead';
 
           // Ensure in-tweet banner exists inside lead tweet
@@ -381,6 +385,32 @@
     scanDebounceTimer = setTimeout(scanTimeline, delay);
   }
 
+  // Hook SPA History API navigation
+  (function hookHistory() {
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
+
+    history.pushState = function (...args) {
+      const result = originalPushState.apply(this, args);
+      handleUrlChange();
+      return result;
+    };
+
+    history.replaceState = function (...args) {
+      const result = originalReplaceState.apply(this, args);
+      handleUrlChange();
+      return result;
+    };
+
+    window.addEventListener('popstate', () => {
+      handleUrlChange();
+    });
+  })();
+
+  // Periodic polling fallback for SPA URL changes
+  setInterval(handleUrlChange, 250);
+
+  // Observe DOM additions (tweets dynamically injected by SPA scroll/hydration)
   const observer = new MutationObserver((mutations) => {
     let hasRelevantNodes = false;
     for (const mutation of mutations) {
@@ -399,5 +429,5 @@
     subtree: true
   });
 
-  scheduleScan(150);
+  handleUrlChange();
 })();
