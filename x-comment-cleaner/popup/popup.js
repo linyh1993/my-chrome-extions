@@ -3,27 +3,15 @@
  */
 
 const DEFAULT_KEYWORDS = [
-  '比她好看',
-  '没她骚',
-  '看主页',
-  '看主頁',
-  '看置顶',
-  '私信',
-  '私聊',
-  '私我',
-  '进群',
-  '加v',
-  '加V',
-  '加VX',
-  '门槛',
-  '门槛群',
-  '福利',
-  '同城',
-  '约拍',
-  '资源群',
-  '群内看',
-  '微密圈',
-  '无圣光'
+  '比她好看', '没她骚', '比我玩的开', '比我玩得开', '玩的开', '玩得开', '玩的嗨', '玩得嗨', '放得开', '放的开',
+  '福不黑', '服不黑', '批不黑', '逼不黑', '鲍不黑', '粉嫩', '不信你看', '不信看', '信不信你看',
+  '看主页', '看主頁', '看置顶', '看置頂', '看头像', '点头像', '点主页', '看动态', '看相册', '私密相册',
+  '私信', '私聊', '私我', '斯我', '斯聊', '丝我', '丝聊', '私发', '私密',
+  '加v', '加V', '加vx', '加VX', '加微', '加🛰', '加卫星', '卫星：', '卫星号', '威信', '薇信', '唯心',
+  '＋v', '＋V', '➕v', '➕V', '➕vx', '➕微', '🛰️', '🛰',
+  '门槛', '门槛群', '門檻', '门卡', '门坎', '无门槛', '进群', '进裙', '入群', '入裙', '裙内', '群内看',
+  '福利', '福力', '资源群', '微密圈', '无圣光', '秀人', '麻豆', '反差', '反差婊', '反差女',
+  '吃瓜群', '黑料', '大瓜', '夸克网盘', '夸克', '度盘', '合集', '约拍', '同城'
 ];
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -32,7 +20,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const resetCountBtn = document.getElementById('resetCountBtn');
   const modeCollapse = document.getElementById('modeCollapse');
   const modeHide = document.getElementById('modeHide');
+  const groupConsecutive = document.getElementById('groupConsecutive');
   const filterKeywords = document.getElementById('filterKeywords');
+  const filterHomophones = document.getElementById('filterHomophones');
   const filterMentionSpam = document.getElementById('filterMentionSpam');
   const filterDuplicates = document.getElementById('filterDuplicates');
   const keywordInput = document.getElementById('keywordInput');
@@ -46,7 +36,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const settings = await chrome.storage.sync.get({
     enabled: true,
     hideMode: 'collapse',
+    groupConsecutive: true,
     filterKeywords: true,
+    filterHomophones: true,
     filterMentionSpam: true,
     filterDuplicates: true,
     keywords: DEFAULT_KEYWORDS,
@@ -63,7 +55,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     modeCollapse.checked = true;
   }
 
+  groupConsecutive.checked = settings.groupConsecutive !== false;
   filterKeywords.checked = !!settings.filterKeywords;
+  filterHomophones.checked = settings.filterHomophones !== false;
   filterMentionSpam.checked = !!settings.filterMentionSpam;
   filterDuplicates.checked = !!settings.filterDuplicates;
 
@@ -83,8 +77,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (modeHide.checked) chrome.storage.sync.set({ hideMode: 'hide' });
   });
 
+  groupConsecutive.addEventListener('change', () => {
+    chrome.storage.sync.set({ groupConsecutive: groupConsecutive.checked });
+  });
+
   filterKeywords.addEventListener('change', () => {
     chrome.storage.sync.set({ filterKeywords: filterKeywords.checked });
+  });
+
+  filterHomophones.addEventListener('change', () => {
+    chrome.storage.sync.set({ filterHomophones: filterHomophones.checked });
   });
 
   filterMentionSpam.addEventListener('change', () => {

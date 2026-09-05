@@ -51,11 +51,19 @@
 
     <!-- Smart filters -->
     <div class="section">
-      <div class="section-title">智能识别规则</div>
+      <div class="section-title">智能识别与折叠规则</div>
       <div class="filter-toggles">
+        <label class="checkbox-row">
+          <input type="checkbox" id="groupConsecutive" checked>
+          <span class="checkbox-text"><b>连续多条聚合折叠</b>（合并为单行，告别刷屏）</span>
+        </label>
         <label class="checkbox-row">
           <input type="checkbox" id="filterKeywords" checked>
           <span class="checkbox-text">关键词黑名单匹配</span>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="filterHomophones" checked>
+          <span class="checkbox-text">通假字 / 谐音变体与诱导话术识别</span>
         </label>
         <label class="checkbox-row">
           <input type="checkbox" id="filterMentionSpam" checked>
@@ -86,7 +94,7 @@
     <!-- Footer -->
     <footer class="footer">
       <span>已支持 X.com 与 Twitter.com</span>
-      <span class="version">v1.0.0</span>
+      <span class="version">v1.1.0</span>
     </footer>
   </div>
 
