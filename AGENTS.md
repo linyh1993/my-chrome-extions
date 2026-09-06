@@ -34,7 +34,5 @@
 |------|------|------|
 | `omni-relay/` | **推荐**：通用多平台（X, Reddit 等）数据与流量中继器 | `README.md`、`manifest.json`、`background/`、`core/`、`content/`、`ui/popup/` |
 | `x-comment-cleaner/` | **推荐**：X 垃圾评论与引流 Bot 拦截助手 | `README.md`、`manifest.json`、`content/`、`popup/`、`background/` |
-| `x-suite/` | **推荐**：X GraphQL / WebSocket 流量镜像到本机 | `README.md`、`manifest.json`、`background/service-worker.js`、`mirror/`、`shared/`、`ui/popup/` |
-| `reddit-scraper-extension/` | Reddit 流式采集与本地同步独立扩展 | `manifest.json`、`background.js`、`content.js`、`popup.html` |
-| `archive/legacy-extensions/` | 已归档：合并前旧扩展快照（勿加载，默认勿读） | `archive/README.md` |
-| `archive/inactive-projects/` | 已归档：停用的独立项目 `traffic-relay`、`chrome-capture-toolkit`（默认勿读） | `archive/README.md` |
+| `archive/legacy-extensions/` | 已归档：旧扩展快照（`x-suite`, `reddit-scraper-extension`, `x-comment-filter`, `traffic-relay`，勿加载，默认勿读） | `archive/README.md` |
+| `archive/inactive-projects/` | 已归档：停用的独立项目（`traffic-relay`, `chrome-capture-toolkit`，默认勿读） | `archive/README.md` |

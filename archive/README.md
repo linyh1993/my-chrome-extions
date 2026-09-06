@@ -12,13 +12,14 @@
 
 | 路径 | 说明 |
 |------|------|
-| [legacy-extensions/x-comment-filter/](legacy-extensions/x-comment-filter/) | 旧版「X 评论过滤」，已合并入 `x-suite/` |
-| [legacy-extensions/traffic-relay/](legacy-extensions/traffic-relay/) | 旧版「流量镜像」，已合并入 `x-suite/` |
+| [legacy-extensions/x-suite/](legacy-extensions/x-suite/) | 旧版「X 流量镜像」，已合并至 `omni-relay/` |
+| [legacy-extensions/reddit-scraper-extension/](legacy-extensions/reddit-scraper-extension/) | 旧版「Reddit 流式抓取器」，已合并至 `omni-relay/` |
+| [legacy-extensions/x-comment-filter/](legacy-extensions/x-comment-filter/) | 旧版「X 评论过滤」，已由 `x-comment-cleaner/` 替代 |
+| [legacy-extensions/traffic-relay/](legacy-extensions/traffic-relay/) | 旧版「流量镜像」，已由 `omni-relay/` 替代 |
 | [inactive-projects/traffic-relay/](inactive-projects/traffic-relay/) | 停用的通用流量复刻项目，不再作为活跃扩展使用 |
 | [inactive-projects/chrome-capture-toolkit/](inactive-projects/chrome-capture-toolkit/) | 停用的 Chrome CDP 抓包工具，不再作为活跃项目使用 |
 
 ## 使用说明
 
-- **日常开发与安装**：请使用仓库根目录的 [`x-suite/`](../x-suite/)，不要同时加载归档扩展（会重复注入）。
-- `inactive-projects/` 下的项目已停用，不再作为默认实现入口。
-- 归档副本不再跟随 `x-suite` 自动更新；以 `x-suite` 为准。
+- **日常开发与安装**：请使用仓库根目录的 [`omni-relay/`](../omni-relay/) 与 [`x-comment-cleaner/`](../x-comment-cleaner/)，不要加载归档扩展（避免冲突）。
+- `inactive-projects/` 和 `legacy-extensions/` 下的项目已停用，不再维护。
