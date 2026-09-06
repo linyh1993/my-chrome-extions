@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const modeHide = document.getElementById('modeHide');
   const filterKeywords = document.getElementById('filterKeywords');
   const filterHomophones = document.getElementById('filterHomophones');
+  const filterPureNumbers = document.getElementById('filterPureNumbers');
   const filterMentionSpam = document.getElementById('filterMentionSpam');
   const filterDuplicates = document.getElementById('filterDuplicates');
   const keywordInput = document.getElementById('keywordInput');
@@ -40,6 +41,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     hideMode: 'collapse',
     filterKeywords: true,
     filterHomophones: true,
+    filterPureNumbers: true,
     filterMentionSpam: true,
     filterDuplicates: true,
     keywords: defaultDict,
@@ -58,6 +60,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   filterKeywords.checked = !!settings.filterKeywords;
   filterHomophones.checked = settings.filterHomophones !== false;
+  if (filterPureNumbers) filterPureNumbers.checked = settings.filterPureNumbers !== false;
   filterMentionSpam.checked = !!settings.filterMentionSpam;
   filterDuplicates.checked = !!settings.filterDuplicates;
 
@@ -84,6 +87,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   filterHomophones.addEventListener('change', () => {
     chrome.storage.sync.set({ filterHomophones: filterHomophones.checked });
   });
+
+  if (filterPureNumbers) {
+    filterPureNumbers.addEventListener('change', () => {
+      chrome.storage.sync.set({ filterPureNumbers: filterPureNumbers.checked });
+    });
+  }
 
   filterMentionSpam.addEventListener('change', () => {
     chrome.storage.sync.set({ filterMentionSpam: filterMentionSpam.checked });

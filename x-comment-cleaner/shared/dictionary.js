@@ -47,7 +47,39 @@ const X_SPAM_PATTERNS = [
   /(?:比她|好看|骚|看主|置顶|资源|私聊|福利|主页|吃瓜).*@[\w_]{3,20}/i
 ];
 
+/**
+ * Check if a text is composed purely of digits (or digits + simple symbols/emojis/punctuation)
+ * e.g., "5", "3", "7", "8", "6", "1", "666", "111", "1.", "+1"
+ */
+function isPureNumberReply(text) {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+
+  // Must contain at least one digit (ASCII or fullwidth)
+  const hasDigit = /[\d\uff10-\uff19]/.test(trimmed);
+  if (!hasDigit) return false;
+
+  // Must NOT contain any language letters or CJK characters
+  const hasLettersOrHan = /[\p{L}\p{Script=Han}]/u.test(trimmed);
+  if (hasLettersOrHan) return false;
+
+  // Must only contain digits, whitespace, and common symbols/punctuation/emojis
+  return /^[0-9\uff10-\uff19\s.,，。！？!?~～#+_\-/\\:：@$￥¥€£%&^|*()（）[\]【】{}<>'"`"“”‘’\p{Emoji}\u200d\uFE0F]+$/u.test(trimmed);
+}
+
 if (typeof globalThis !== 'undefined') {
   globalThis.X_SPAM_DICTIONARY = X_SPAM_DICTIONARY;
   globalThis.X_SPAM_PATTERNS = X_SPAM_PATTERNS;
+  globalThis.isPureNumberReply = isPureNumberReply;
 }
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    X_SPAM_DICTIONARY,
+    X_SPAM_PATTERNS,
+    isPureNumberReply
+  };
+}
+
+

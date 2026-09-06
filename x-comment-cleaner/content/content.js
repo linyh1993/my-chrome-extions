@@ -7,6 +7,18 @@
 
   const defaultDict = typeof X_SPAM_DICTIONARY !== 'undefined' ? X_SPAM_DICTIONARY : [];
   const defaultPatterns = typeof X_SPAM_PATTERNS !== 'undefined' ? X_SPAM_PATTERNS : [];
+  const checkPureNumber = typeof isPureNumberReply === 'function'
+    ? isPureNumberReply
+    : (text) => {
+        if (!text) return false;
+        const trimmed = text.trim();
+        if (!trimmed) return false;
+        const hasDigit = /[\d\uff10-\uff19]/.test(trimmed);
+        if (!hasDigit) return false;
+        const hasLettersOrHan = /[\p{L}\p{Script=Han}]/u.test(trimmed);
+        if (hasLettersOrHan) return false;
+        return /^[0-9\uff10-\uff19\s.,，。！？!?~～#+_\-/\\:：@$￥¥€£%&^|*()（）[\]【】{}<>'"`"“”‘’\p{Emoji}\u200d\uFE0F]+$/u.test(trimmed);
+      };
 
   function mergeKeywords(storedKeywords) {
     const set = new Set(defaultDict);
@@ -25,6 +37,7 @@
     hideMode: 'collapse', // 'collapse' or 'hide'
     filterKeywords: true,
     filterHomophones: true,
+    filterPureNumbers: true,
     filterMentionSpam: true,
     filterDuplicates: true,
     keywords: [...defaultDict],
@@ -230,6 +243,11 @@
   function evaluateSpam(text, authorHandle, displayName = '') {
     // 1. Check tweet text
     if (text) {
+      // Pure number / single digit spam check (e.g. 5, 3, 7, 8, 6, 1, 666)
+      if (currentSettings.filterPureNumbers && checkPureNumber(text)) {
+        return { isSpam: true, reason: '纯数字刷屏' };
+      }
+
       const textCheck = evaluateTextContent(text);
       if (textCheck.isSpam) {
         return textCheck;

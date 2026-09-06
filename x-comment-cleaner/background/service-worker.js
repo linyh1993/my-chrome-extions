@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS = {
   hideMode: "collapse",
   filterKeywords: true,
   filterHomophones: true,
+  filterPureNumbers: true,
   filterMentionSpam: true,
   filterDuplicates: true,
   keywords: typeof X_SPAM_DICTIONARY !== 'undefined' ? X_SPAM_DICTIONARY : [],
