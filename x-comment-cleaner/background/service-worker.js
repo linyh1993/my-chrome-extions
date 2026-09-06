@@ -5,16 +5,19 @@
 importScripts('../shared/rules.js');
 
 const rulesEngine = globalThis.XCleanerRules || {};
-const defaultDict = rulesEngine.X_SPAM_DICTIONARY || globalThis.X_SPAM_DICTIONARY || [];
-const mergeKeywordsFn = rulesEngine.mergeKeywords || globalThis.mergeKeywords || ((kw, base) => Array.from(new Set([...(base || defaultDict), ...(kw || [])])));
-
-function sanitizeKeywords(list) {
-  return mergeKeywordsFn(list, defaultDict);
-}
-
-const DEFAULT_SETTINGS = {
-  ...(rulesEngine.DEFAULT_CLEANER_SETTINGS || {}),
-  keywords: [...defaultDict],
+const DEFAULT_SETTINGS = rulesEngine.DEFAULT_CLEANER_SETTINGS || {
+  enabled: true,
+  hideMode: 'collapse',
+  filterKeywords: true,
+  filterHomophones: true,
+  filterPureNumbers: true,
+  filterMentionSpam: true,
+  filterDuplicates: true,
+  filterSimhash: true,
+  filterHeuristics: true,
+  packSettings: {},
+  customKeywords: [],
+  whitelist: [],
   blockedCount: 0
 };
 
@@ -27,11 +30,6 @@ chrome.runtime.onInstalled.addListener(async () => {
       if (current[key] === undefined) {
         toSet[key] = value;
       }
-    }
-
-    // Sanitize any existing keywords
-    if (current.keywords) {
-      toSet.keywords = sanitizeKeywords(current.keywords);
     }
 
     if (Object.keys(toSet).length > 0) {
@@ -61,8 +59,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         success: true,
         settings: {
           ...DEFAULT_SETTINGS,
-          ...settings,
-          keywords: sanitizeKeywords(settings.keywords)
+          ...settings
         }
       });
     }).catch((err) => {
@@ -71,3 +68,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 });
+

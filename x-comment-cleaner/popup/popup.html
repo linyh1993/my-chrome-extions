@@ -13,8 +13,8 @@
       <div class="logo-area">
         <div class="logo-icon">🛡️</div>
         <div>
-          <h1 class="title">X 垃圾评论拦截</h1>
-          <p class="subtitle">净化 X 评论区 · 智能多条连续聚合折叠</p>
+          <h1 class="title">X 垃圾评论拦截助手</h1>
+          <p class="subtitle">净化评论区 · 原生拉黑 · 聚合折叠</p>
         </div>
       </div>
       <label class="switch" title="主开关">
@@ -39,7 +39,7 @@
         <label class="radio-label">
           <input type="radio" name="hideMode" value="collapse" id="modeCollapse" checked>
           <span class="radio-custom"></span>
-          <span><b>连续多条聚合折叠</b>（单行轻量条，可一键展开）</span>
+          <span><b>连续多条聚合折叠</b>（带原因与顺手拉黑）</span>
         </label>
         <label class="radio-label">
           <input type="radio" name="hideMode" value="hide" id="modeHide">
@@ -49,52 +49,89 @@
       </div>
     </div>
 
-    <!-- Smart filters -->
+    <!-- 8 Categorized Keyword Packs -->
     <div class="section">
-      <div class="section-title">智能识别规则</div>
+      <div class="section-header">
+        <span class="section-title">8 大行业分类词库</span>
+        <span class="section-desc">支持有序词距 (max_gap) 组合</span>
+      </div>
+      <div class="packs-grid" id="packsGrid">
+        <!-- Dynamically populated -->
+      </div>
+    </div>
+
+    <!-- Smart filters & Algorithms -->
+    <div class="section">
+      <div class="section-title">智能识别算法与启发式</div>
       <div class="filter-toggles">
         <label class="checkbox-row">
-          <input type="checkbox" id="filterKeywords" checked>
-          <span class="checkbox-text">高频词库黑名单匹配</span>
+          <input type="checkbox" id="filterSimhash" checked>
+          <div class="checkbox-info">
+            <span class="checkbox-text"><b>64 位 SimHash 模糊指纹</b></span>
+            <span class="checkbox-sub">自动识别换词、插符号的同款话术变体</span>
+          </div>
         </label>
         <label class="checkbox-row">
-          <input type="checkbox" id="filterHomophones" checked>
-          <span class="checkbox-text">通假字 / 谐音变体 / 诱导诱饵识别</span>
+          <input type="checkbox" id="filterHeuristics" checked>
+          <div class="checkbox-info">
+            <span class="checkbox-text"><b>账号与可疑外链启发式</b></span>
+            <span class="checkbox-sub">识别默认数字账号、空投/诈骗外链域名</span>
+          </div>
         </label>
         <label class="checkbox-row">
           <input type="checkbox" id="filterPureNumbers" checked>
-          <span class="checkbox-text">纯数字 / 随机单数字刷屏过滤 (如 1、5、666 等)</span>
+          <div class="checkbox-info">
+            <span class="checkbox-text">纯数字 / 随机单数字刷屏 (如 1、5、666 等)</span>
+          </div>
         </label>
         <label class="checkbox-row">
           <input type="checkbox" id="filterMentionSpam" checked>
-          <span class="checkbox-text">Bot 引流特征模式识别 (@提及+随机后缀)</span>
+          <div class="checkbox-info">
+            <span class="checkbox-text">Bot 引流艾特模式识别 (@提及+随机后缀)</span>
+          </div>
         </label>
         <label class="checkbox-row">
           <input type="checkbox" id="filterDuplicates" checked>
-          <span class="checkbox-text">同帖多账号重复刷屏检测 (Copypasta)</span>
+          <div class="checkbox-info">
+            <span class="checkbox-text">同帖多账号雷同刷屏 (Copypasta)</span>
+          </div>
         </label>
       </div>
     </div>
 
-    <!-- Keywords Manager -->
+    <!-- Whitelist Manager -->
     <div class="section">
       <div class="section-header">
-        <span class="section-title">内置与自定义词库 (<span id="kwCount">0</span>)</span>
-        <button class="btn-text danger" id="resetKeywordsBtn">恢复完整默认词库</button>
+        <span class="section-title">免杀白名单 (<span id="whiteCount">0</span>)</span>
+        <span class="section-desc">绝对不拦截、不拉黑</span>
+      </div>
+      <div class="input-row">
+        <input type="text" id="whitelistInput" class="input" placeholder="输入账号 handle (如 elonmusk)..." maxlength="30">
+        <button id="addWhitelistBtn" class="btn-primary">添加</button>
+      </div>
+      <div class="tags-container" id="whitelistList">
+        <!-- Whitelist tags dynamically inserted here -->
+      </div>
+    </div>
+
+    <!-- Custom Keywords Manager -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">自定义补充关键词 (<span id="customKwCount">0</span>)</span>
       </div>
       <div class="input-row">
         <input type="text" id="keywordInput" class="input" placeholder="输入自定义关键词..." maxlength="30">
         <button id="addKeywordBtn" class="btn-primary">添加</button>
       </div>
       <div class="tags-container" id="keywordsList">
-        <!-- Keyword tags dynamically inserted here -->
+        <!-- Custom keyword tags dynamically inserted here -->
       </div>
     </div>
 
     <!-- Footer -->
     <footer class="footer">
-      <span>已支持 X.com 与 Twitter.com</span>
-      <span class="version">v1.3.0</span>
+      <span>已支持 X.com 与 Twitter.com · 原生拉黑全端同步</span>
+      <span class="version">v2.0.0</span>
     </footer>
   </div>
 

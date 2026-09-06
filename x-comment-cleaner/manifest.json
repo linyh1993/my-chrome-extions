@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "X 垃圾评论拦截助手 (X Spam Reply Cleaner)",
-  "version": "1.3.0",
-  "description": "智能拦截和连续多条聚合折叠 X (Twitter) 帖子下方的黄推、引流号、Bot 刷屏等垃圾评论。",
+  "version": "2.0.0",
+  "description": "智能拦截、64位SimHash话术识别、8大分类词库与一键原生拉黑 X (Twitter) 帖子下方的黄推、引流号与诈骗 Bot。",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
