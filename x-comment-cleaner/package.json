@@ -1,0 +1,19 @@
+{
+  "name": "x-comment-cleaner",
+  "version": "2.0.0",
+  "description": "X Spam Reply Cleaner Chrome Extension (Manifest V3)",
+  "main": "shared/rules.js",
+  "scripts": {
+    "test": "node tests/engine.test.js"
+  },
+  "keywords": [
+    "chrome-extension",
+    "twitter",
+    "x",
+    "spam-filter",
+    "simhash",
+    "manifest-v3"
+  ],
+  "author": "",
+  "license": "MIT"
+}

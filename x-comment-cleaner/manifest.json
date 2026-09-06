@@ -34,7 +34,11 @@
         "https://twitter.com/*"
       ],
       "js": [
+        "shared/packs.js",
+        "shared/simhash.js",
+        "shared/heuristics.js",
         "shared/rules.js",
+        "content/x-adapter.js",
         "content/content.js"
       ],
       "css": [
