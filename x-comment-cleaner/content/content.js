@@ -155,6 +155,20 @@
     return links;
   }
 
+  function getTweetId(tweetElement) {
+    const timeLink = tweetElement.querySelector('time')?.closest('a');
+    if (timeLink) {
+      const match = (timeLink.getAttribute('href') || '').match(/\/status\/(\d+)/);
+      if (match) return match[1];
+    }
+    const anyStatusLink = tweetElement.querySelector('a[href*="/status/"]');
+    if (anyStatusLink) {
+      const match = (anyStatusLink.getAttribute('href') || '').match(/\/status\/(\d+)/);
+      if (match) return match[1];
+    }
+    return '';
+  }
+
   function addToWhitelist(handle) {
     const norm = normalizeHandleFn(handle);
     if (!norm) return;
@@ -270,7 +284,10 @@
         const followers = cluster.slice(1);
 
         const sampleReasons = Array.from(new Set(cluster.map(t => t.dataset.xSpamReason).filter(Boolean))).slice(0, 3).join(', ');
-        const clusterKey = cluster.map(t => (t.dataset.xSpamLastText || '').slice(0, 10)).join('|');
+        const leadTweetId = getTweetId(leadTweet);
+        const clusterKey = leadTweetId
+          ? `cluster_${leadTweetId}`
+          : `cluster_${(leadTweet.dataset.xSpamAuthor || '')}_${(leadTweet.dataset.xSpamLastText || '').slice(0, 20)}`;
         const isExpanded = clusterExpandedState.get(clusterKey) === true;
 
         const authors = Array.from(new Set(cluster.map(t => t.dataset.xSpamAuthor).filter(Boolean)));

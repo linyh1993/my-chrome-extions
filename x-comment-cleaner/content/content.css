@@ -2,6 +2,20 @@
    X Spam Reply Cleaner - In-Tweet Content Styles
    ========================================================================== */
 
+/* Force vertical column layout whenever a tweet is managed by cleaner */
+article[data-testid="tweet"][data-x-spam] {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Ensure the original tweet body inside lead/expanded tweet takes full width */
+article[data-testid="tweet"][data-x-spam] > div:not(.x-spam-inner-banner) {
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
 /* Lead tweet in a spam cluster: hide original contents, show banner */
 article[data-testid="tweet"][data-x-spam="lead"] > div:not(.x-spam-inner-banner) {
   display: none !important;
@@ -23,6 +37,12 @@ article[data-testid="tweet"][data-x-spam="hide"] {
 }
 div[data-testid="cellInnerDiv"]:has(> article[data-testid="tweet"][data-x-spam="hide"]) {
   display: none !important;
+}
+
+/* Expanded spam tweets styling (distinguish as spam while keeping readable) */
+article[data-testid="tweet"][data-x-spam="expanded"] {
+  border-left: 3px solid rgba(239, 68, 68, 0.35) !important;
+  background: rgba(239, 68, 68, 0.02) !important;
 }
 
 /* In-tweet Banner placed inside the lead tweet */
