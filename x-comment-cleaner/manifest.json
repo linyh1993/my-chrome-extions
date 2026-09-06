@@ -34,7 +34,7 @@
         "https://twitter.com/*"
       ],
       "js": [
-        "shared/dictionary.js",
+        "shared/rules.js",
         "content/content.js"
       ],
       "css": [

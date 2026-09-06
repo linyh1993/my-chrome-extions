@@ -5,32 +5,10 @@
 (function () {
   'use strict';
 
-  const defaultDict = typeof X_SPAM_DICTIONARY !== 'undefined' ? X_SPAM_DICTIONARY : [];
-  const defaultPatterns = typeof X_SPAM_PATTERNS !== 'undefined' ? X_SPAM_PATTERNS : [];
-  const checkPureNumber = typeof isPureNumberReply === 'function'
-    ? isPureNumberReply
-    : (text) => {
-        if (!text) return false;
-        const trimmed = text.trim();
-        if (!trimmed) return false;
-        const hasDigit = /[\d\uff10-\uff19]/.test(trimmed);
-        if (!hasDigit) return false;
-        const hasLettersOrHan = /[\p{L}\p{Script=Han}]/u.test(trimmed);
-        if (hasLettersOrHan) return false;
-        return /^[0-9\uff10-\uff19\s.,，。！？!?~～#+_\-/\\:：@$￥¥€£%&^|*()（）[\]【】{}<>'"`"“”‘’\p{Emoji}\u200d\uFE0F]+$/u.test(trimmed);
-      };
-
-  function mergeKeywords(storedKeywords) {
-    const set = new Set(defaultDict);
-    if (Array.isArray(storedKeywords)) {
-      for (const k of storedKeywords) {
-        if (typeof k === 'string' && k.trim().length >= 2) {
-          set.add(k.trim());
-        }
-      }
-    }
-    return Array.from(set);
-  }
+  const rulesEngine = globalThis.XCleanerRules || {};
+  const defaultDict = rulesEngine.X_SPAM_DICTIONARY || globalThis.X_SPAM_DICTIONARY || [];
+  const mergeKeywordsFn = rulesEngine.mergeKeywords || globalThis.mergeKeywords || ((kw) => kw || []);
+  const evaluateSpamFn = rulesEngine.evaluateReplySpam || globalThis.evaluateReplySpam || (() => ({ isSpam: false }));
 
   let currentSettings = {
     enabled: true,
@@ -55,7 +33,7 @@
   // Load stored settings and merge with built-in dictionary
   chrome.storage.sync.get(null, (stored) => {
     if (chrome.runtime.lastError) return;
-    const mergedKw = mergeKeywords(stored.keywords);
+    const mergedKw = mergeKeywordsFn(stored.keywords, defaultDict);
     currentSettings = {
       ...currentSettings,
       ...stored,
@@ -71,7 +49,7 @@
 
     for (const [key, change] of Object.entries(changes)) {
       if (key === 'keywords') {
-        currentSettings.keywords = mergeKeywords(change.newValue);
+        currentSettings.keywords = mergeKeywordsFn(change.newValue, defaultDict);
         shouldRescan = true;
       } else {
         currentSettings[key] = change.newValue;
@@ -134,165 +112,6 @@
     });
   }
 
-  // Extract consecutive Chinese characters while converting homophone symbols
-  function extractChineseText(text) {
-    if (!text) return '';
-    const s = text
-      .replace(/➕|\＋|\+/g, '加')
-      .replace(/👗/g, '群')
-      .replace(/🛰️|🛰/g, '微')
-      .replace(/威信|薇信|唯心|维信/g, '微信')
-      .replace(/裙内|进裙|入裙/g, '进群')
-      .replace(/門檻|门坎|门卡/g, '门槛')
-      .replace(/看主頁/g, '看主页')
-      .replace(/置頂/g, '置顶');
-    const matches = s.match(/[\u4e00-\u9fa5]+/g);
-    return matches ? matches.join('') : '';
-  }
-
-  function normalizeTextForMatching(text) {
-    if (!text) return '';
-    let s = text.toLowerCase();
-
-    // 1. Strip timestamps and dates
-    s = s.replace(/\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}(?:\s+\d{1,2}:\d{1,2}(?::\d{1,2})?)?\b/g, '');
-    s = s.replace(/\b17\d{10,11}\b/g, ''); // strip millisecond unix timestamps
-
-    // 2. Strip emojis
-    s = s.replace(/[\p{Emoji}\u200d\uFE0F\uE000-\uF8FF]/gu, '');
-
-    if (currentSettings.filterHomophones) {
-      s = s
-        .replace(/[\u200B-\u200D\uFEFF]/g, '')
-        .replace(/➕|\＋|\+/g, '加')
-        .replace(/👗/g, '群')
-        .replace(/🛰️|🛰/g, '微')
-        .replace(/威信|薇信|唯心|维信/g, '微信')
-        .replace(/裙内|进裙|入裙/g, '进群')
-        .replace(/門檻|门坎|门卡/g, '门槛')
-        .replace(/看主頁/g, '看主页')
-        .replace(/置頂/g, '置顶')
-        .replace(/[\s\-_,，。！？!?.~～`@#$%^&*()（）:：/\\|<>'"“”‘’\d]+/g, '');
-    } else {
-      s = s.replace(/[\s\-_,，。！？!?.~～`@#$%^&*()（）:：/\\|<>'"“”‘’\d]+/g, '');
-    }
-
-    return s;
-  }
-
-  function normalizeTextForComparison(text) {
-    if (!text) return '';
-    return text
-      .toLowerCase()
-      .replace(/@[\w_]+/g, '')
-      .replace(/[\s\p{Emoji}\u200d\uFE0F\d.,!?;:，。！？；：_~`@#$%^&*()+\-=[\]{}|\\/<>'"“”‘’]+/gu, '')
-      .trim();
-  }
-
-  function evaluateTextContent(text) {
-    if (!text || text.length < 2) return { isSpam: false };
-
-    const lowerText = text.toLowerCase();
-    const normalizedText = normalizeTextForMatching(text);
-    const chineseText = extractChineseText(text);
-
-    // 1. Curated / custom keywords check (must be >= 2 chars)
-    if (currentSettings.filterKeywords && Array.isArray(currentSettings.keywords)) {
-      for (const kw of currentSettings.keywords) {
-        const trimmed = kw.trim();
-        if (trimmed.length < 2) continue;
-
-        // Chinese-only substring matching
-        const kwCn = extractChineseText(trimmed);
-        if (kwCn && kwCn.length >= 2 && chineseText.includes(kwCn)) {
-          return { isSpam: true, reason: trimmed };
-        }
-
-        // Standard normalized matching
-        const normKw = normalizeTextForMatching(trimmed);
-        if (normKw && normKw.length >= 2) {
-          if (lowerText.includes(trimmed.toLowerCase()) || normalizedText.includes(normKw)) {
-            return { isSpam: true, reason: trimmed };
-          }
-        }
-      }
-    }
-
-    // 2. Homophone & Bait sentence heuristics
-    if (currentSettings.filterHomophones) {
-      if (/(?:没人|谁)比我.*(?:玩|骚|放|浪)/i.test(normalizedText) || /(?:没人|谁)比我.*(?:玩|骚|放|浪)/i.test(chineseText)) {
-        return { isSpam: true, reason: '诱导话术' };
-      }
-      if (/(?:不黑|水多|粉嫩|耐操|反差|大瓜).*不信/i.test(normalizedText) || /(?:不黑|水多|粉嫩|耐操|反差|大瓜).*不信/i.test(chineseText)) {
-        return { isSpam: true, reason: '诱导话术' };
-      }
-      if (/(?:看主页|看置顶|看相册|私信我|进群).*(?:福利|无门槛|吃瓜|资源|相册)/i.test(normalizedText)) {
-        return { isSpam: true, reason: '引流诱导' };
-      }
-
-      for (const pattern of defaultPatterns) {
-        if (pattern.test(text) || pattern.test(normalizedText)) {
-          return { isSpam: true, reason: '特征匹配' };
-        }
-      }
-    }
-
-    return { isSpam: false };
-  }
-
-  function evaluateSpam(text, authorHandle, displayName = '') {
-    // 1. Check tweet text
-    if (text) {
-      // Pure number / single digit spam check (e.g. 5, 3, 7, 8, 6, 1, 666)
-      if (currentSettings.filterPureNumbers && checkPureNumber(text)) {
-        return { isSpam: true, reason: '纯数字刷屏' };
-      }
-
-      const textCheck = evaluateTextContent(text);
-      if (textCheck.isSpam) {
-        return textCheck;
-      }
-
-      // Mention Spam Pattern (短语 + @mention + 随机Emoji/数字)
-      if (currentSettings.filterMentionSpam) {
-        const mentionPattern = /@[\w_]{3,20}\s*[\p{Emoji}\u200d\uFE0F\d\s]{1,15}$/u;
-        if (mentionPattern.test(text)) {
-          return { isSpam: true, reason: 'Bot 引流艾特' };
-        }
-      }
-
-      // Copypasta / duplicate reply check
-      if (currentSettings.filterDuplicates) {
-        const normalized = normalizeTextForComparison(text);
-        if (normalized.length >= 6) {
-          let authors = threadTextOccurrences.get(normalized);
-          if (!authors) {
-            authors = new Set();
-            threadTextOccurrences.set(normalized, authors);
-          }
-
-          if (authorHandle) {
-            authors.add(authorHandle);
-          }
-
-          if (authors.size >= 2) {
-            return { isSpam: true, reason: `重复刷屏 (${authors.size} 账号同发)` };
-          }
-        }
-      }
-    }
-
-    // 2. Check author display name (catches spam solicitations in nickname, e.g. "急需一位固泡", "接主人任务")
-    if (displayName) {
-      const nameCheck = evaluateTextContent(displayName);
-      if (nameCheck.isSpam) {
-        return { isSpam: true, reason: nameCheck.reason };
-      }
-    }
-
-    return { isSpam: false };
-  }
-
   function getAuthorInfo(tweetElement) {
     const userNameEl = tweetElement.querySelector('div[data-testid="User-Name"]');
     if (!userNameEl) return { handle: '', displayName: '' };
@@ -352,10 +171,13 @@
         if (tweet.dataset.xSpamProcessed !== 'true') {
           tweet.dataset.xSpamProcessed = 'true';
 
-          const tweetTextEl = tweet.querySelector('[data-testid="tweetText"]');
-          const text = tweetTextEl ? tweetTextEl.textContent.trim() : '';
-
-          const checkResult = evaluateSpam(text, authorHandle, authorDisplayName);
+          const checkResult = evaluateSpamFn({
+            text,
+            authorHandle,
+            displayName: authorDisplayName,
+            settings: currentSettings,
+            duplicateTracker: threadTextOccurrences
+          });
 
           tweet.dataset.xSpamEvaluation = checkResult.isSpam ? 'true' : 'false';
           tweet.dataset.xSpamReason = checkResult.reason || '';

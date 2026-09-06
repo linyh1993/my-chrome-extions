@@ -21,6 +21,26 @@
 
 ---
 
+## 🧩 模块解耦与独立复用
+
+本扩展将所有垃圾识别规则、正则模式、文本标准化与判定算法统一收敛在独立纯 JS 模块 [`shared/rules.js`](shared/rules.js) 中（零 DOM / 零 Chrome API 依赖）。
+
+可在任意 Node.js 服务、油猴脚本 (Userscript) 或其他爬虫/后端项目中直接引用：
+
+```javascript
+// Node.js / CommonJS
+const { evaluateReplySpam, isPureNumberReply } = require('./shared/rules.js');
+
+const result = evaluateReplySpam({
+  text: '5',
+  authorHandle: 'bot123',
+  displayName: 'Bot'
+});
+console.log(result); // { isSpam: true, reason: '纯数字刷屏' }
+```
+
+---
+
 ## 🚀 安装使用指南
 
 1. 打开 Chrome 浏览器，访问 `chrome://extensions`。
@@ -28,3 +48,4 @@
 3. 点击左上角的 **「加载已解压的扩展程序」** (Load unpacked)。
 4. 选择当前扩展目录：`x-comment-cleaner`。
 5. 打开任意 [X (Twitter)](https://x.com) 帖子详情页，即可自动生效！点击扩展图标可打开设置面板自定义黑名单与模式。
+

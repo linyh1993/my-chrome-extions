@@ -2,24 +2,19 @@
  * X Spam Reply Cleaner - Extension Service Worker (Manifest V3)
  */
 
-importScripts('../shared/dictionary.js');
+importScripts('../shared/rules.js');
+
+const rulesEngine = globalThis.XCleanerRules || {};
+const defaultDict = rulesEngine.X_SPAM_DICTIONARY || globalThis.X_SPAM_DICTIONARY || [];
+const mergeKeywordsFn = rulesEngine.mergeKeywords || globalThis.mergeKeywords || ((kw, base) => Array.from(new Set([...(base || defaultDict), ...(kw || [])])));
 
 function sanitizeKeywords(list) {
-  const defaultDict = typeof X_SPAM_DICTIONARY !== 'undefined' ? X_SPAM_DICTIONARY : [];
-  if (!Array.isArray(list)) return [...defaultDict];
-  const cleaned = list.filter(k => typeof k === 'string' && k.trim().length >= 2);
-  return cleaned.length > 0 ? cleaned : [...defaultDict];
+  return mergeKeywordsFn(list, defaultDict);
 }
 
 const DEFAULT_SETTINGS = {
-  enabled: true,
-  hideMode: "collapse",
-  filterKeywords: true,
-  filterHomophones: true,
-  filterPureNumbers: true,
-  filterMentionSpam: true,
-  filterDuplicates: true,
-  keywords: typeof X_SPAM_DICTIONARY !== 'undefined' ? X_SPAM_DICTIONARY : [],
+  ...(rulesEngine.DEFAULT_CLEANER_SETTINGS || {}),
+  keywords: [...defaultDict],
   blockedCount: 0
 };
 
