@@ -32,7 +32,7 @@
 
 | 目录 | 说明 | 入口 |
 |------|------|------|
-| `omni-relay/` | **推荐**：通用多平台（X, Reddit 等）数据与流量中继器 | `README.md`、`manifest.json`、`background/`、`core/`、`shared/`、`ui/popup/` |
+| `omni-relay/` | **推荐**：通用多平台（X, Reddit 等）数据与流量中继器 | `README.md`、`manifest.json`、`background/`、`core/`、`content/`、`ui/popup/` |
 | `x-comment-cleaner/` | **推荐**：X 垃圾评论与引流 Bot 拦截助手 | `README.md`、`manifest.json`、`content/`、`popup/`、`background/` |
 | `x-suite/` | **推荐**：X GraphQL / WebSocket 流量镜像到本机 | `README.md`、`manifest.json`、`background/service-worker.js`、`mirror/`、`shared/`、`ui/popup/` |
 | `reddit-scraper-extension/` | Reddit 流式采集与本地同步独立扩展 | `manifest.json`、`background.js`、`content.js`、`popup.html` |

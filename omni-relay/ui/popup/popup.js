@@ -1,214 +1,181 @@
 /**
- * @file Omni Relay 弹窗控制台逻辑 (Popup Controller)
+ * @file Omni Relay 弹窗控制器 (Popup Controller - ESM)
  */
+
 const $ = (id) => document.getElementById(id);
 
-let currentStatus = null;
-
-function sendBgMessage(action, payload = {}) {
+function send(action, payload = {}) {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage({ action, ...payload }, (response) => {
+    chrome.runtime.sendMessage({ action, ...payload }, (res) => {
       if (chrome.runtime.lastError) {
         resolve({ ok: false, error: chrome.runtime.lastError.message });
-        return;
+      } else {
+        resolve(res || { ok: false });
       }
-      resolve(response || { ok: false });
     });
   });
 }
 
-function setFooterMessage(text, tone = '') {
-  const el = $('footerMsg');
-  el.textContent = text || '就绪';
-  el.className = tone ? `footer-msg is-${tone}` : 'footer-msg';
+function setFooter(text, type = '') {
+  const ftr = $('footerMsg');
+  ftr.textContent = text || '就绪';
+  ftr.className = type ? `ftr ${type}` : 'ftr';
 }
 
-function renderSitesList(allSites, config) {
+function renderSites(sites, config) {
   const container = $('sitesList');
   container.innerHTML = '';
 
-  allSites.forEach((site) => {
-    const siteCfg = config.sites?.[site.id] || {
-      enabled: true,
-      networkMirror: site.network?.enabled || false,
-      domExtract: site.dom?.enabled || false
-    };
+  sites.forEach((site) => {
+    const siteCfg = config.sites?.[site.id] || { enabled: true, network: true, dom: false };
 
-    const item = document.createElement('div');
-    item.className = 'site-item';
+    const row = document.createElement('div');
+    row.className = 'site-row';
 
-    const header = document.createElement('div');
-    header.className = 'site-header';
+    const top = document.createElement('div');
+    top.className = 'site-top';
+    top.innerHTML = `<span>${site.label}</span>
+      <label class="opt-lbl">
+        <input type="checkbox" data-site="${site.id}" data-field="enabled" ${siteCfg.enabled !== false ? 'checked' : ''} />
+        启用
+      </label>`;
+    row.appendChild(top);
 
-    const title = document.createElement('span');
-    title.className = 'site-title';
-    title.textContent = site.label;
-
-    const siteToggleLabel = document.createElement('label');
-    siteToggleLabel.className = 'site-opt-label';
-    const siteToggle = document.createElement('input');
-    siteToggle.type = 'checkbox';
-    siteToggle.checked = siteCfg.enabled !== false;
-    siteToggle.dataset.siteId = site.id;
-    siteToggle.dataset.field = 'enabled';
-    siteToggleLabel.appendChild(siteToggle);
-    siteToggleLabel.appendChild(document.createTextNode('启用'));
-
-    header.appendChild(title);
-    header.appendChild(siteToggleLabel);
-    item.appendChild(header);
-
-    const options = document.createElement('div');
-    options.className = 'site-options';
+    const opts = document.createElement('div');
+    opts.className = 'site-opts';
 
     if (site.network?.enabled) {
-      const netLabel = document.createElement('label');
-      netLabel.className = 'site-opt-label';
-      const netCheck = document.createElement('input');
-      netCheck.type = 'checkbox';
-      netCheck.checked = siteCfg.networkMirror !== false;
-      netCheck.dataset.siteId = site.id;
-      netCheck.dataset.field = 'networkMirror';
-      netLabel.appendChild(netCheck);
-      netLabel.appendChild(document.createTextNode('CDP 流量镜像'));
-      options.appendChild(netLabel);
+      opts.innerHTML += `<label class="opt-lbl">
+        <input type="checkbox" data-site="${site.id}" data-field="network" ${siteCfg.network !== false ? 'checked' : ''} />
+        CDP 流量镜像
+      </label>`;
     }
 
     if (site.dom?.enabled) {
-      const domLabel = document.createElement('label');
-      domLabel.className = 'site-opt-label';
-      const domCheck = document.createElement('input');
-      domCheck.type = 'checkbox';
-      domCheck.checked = siteCfg.domExtract === true;
-      domCheck.dataset.siteId = site.id;
-      domCheck.dataset.field = 'domExtract';
-      domLabel.appendChild(domCheck);
-      domLabel.appendChild(document.createTextNode('DOM 语义提取'));
-      options.appendChild(domLabel);
+      opts.innerHTML += `<label class="opt-lbl">
+        <input type="checkbox" data-site="${site.id}" data-field="dom" ${siteCfg.dom === true ? 'checked' : ''} />
+        DOM 提取
+      </label>`;
     }
 
-    item.appendChild(options);
-    container.appendChild(item);
+    row.appendChild(opts);
+    container.appendChild(row);
   });
 }
 
-function updateTabCard(status) {
+function updateTabStatus(status) {
   const pill = $('tabStatusPill');
   const siteName = $('tabSiteName');
   const channels = $('tabChannels');
 
-  if (!status?.site) {
+  if (!status.site) {
     pill.textContent = '未监听';
-    pill.className = 'status-pill disabled';
-    siteName.textContent = status?.tabUrl ? new URL(status.tabUrl).hostname : '非目标网页';
+    pill.className = 'pill off';
+    siteName.textContent = status.tabUrl ? new URL(status.tabUrl).hostname : '非目标网页';
     channels.textContent = '无';
     return;
   }
 
   siteName.textContent = status.site.label;
+  const siteCfg = status.config?.sites?.[status.site.id];
 
   const activeChannels = [];
-  const siteCfg = status.config?.sites?.[status.site.id];
-  if (siteCfg?.networkMirror !== false && status.site.network?.enabled) activeChannels.push('CDP 网络');
-  if (siteCfg?.domExtract && status.site.dom?.enabled) activeChannels.push('DOM 提取');
+  if (siteCfg?.network !== false && status.site.network?.enabled) activeChannels.push('CDP 网络');
+  if (siteCfg?.dom === true && status.site.dom?.enabled) activeChannels.push('DOM 提取');
   channels.textContent = activeChannels.length > 0 ? activeChannels.join(' + ') : '无活跃通道';
 
   if (!status.config?.enabled || siteCfg?.enabled === false) {
     pill.textContent = '已停用';
-    pill.className = 'status-pill disabled';
-  } else if (status.attachError?.debuggerBusy) {
+    pill.className = 'pill off';
+  } else if (status.tabError?.debuggerBusy) {
     pill.textContent = '调试器被占用';
-    pill.className = 'status-pill busy';
-    setFooterMessage('提示: DevTools 已打开或被其他扩展占用', 'error');
+    pill.className = 'pill busy';
+    setFooter('提示: DevTools 已开启，请先关闭 DevTools', 'err');
   } else if (status.isAttached) {
     pill.textContent = '监听中 (Active)';
-    pill.className = 'status-pill active';
+    pill.className = 'pill active';
   } else if (status.isAttaching) {
     pill.textContent = '连接中...';
-    pill.className = 'status-pill busy';
+    pill.className = 'pill busy';
   } else {
     pill.textContent = '就绪 (DOM/Standby)';
-    pill.className = 'status-pill';
+    pill.className = 'pill';
   }
 }
 
 function updateMetrics(metrics) {
-  $('totalCountDisplay').textContent = Number(metrics?.totalRelayedCount || 0).toLocaleString();
-  $('xCountDisplay').textContent = Number(metrics?.bySite?.x || 0).toLocaleString();
-  $('redditCountDisplay').textContent = Number(metrics?.bySite?.reddit || 0).toLocaleString();
+  $('mTotal').textContent = Number(metrics?.totalCount || 0).toLocaleString();
+  $('mX').textContent = Number(metrics?.bySite?.x || 0).toLocaleString();
+  $('mReddit').textContent = Number(metrics?.bySite?.reddit || 0).toLocaleString();
 }
 
 async function refresh() {
-  const res = await sendBgMessage('GET_STATUS');
-  if (!res?.ok) {
-    setFooterMessage('Service Worker 未响应，请稍后或刷新', 'error');
+  const status = await send('GET_STATUS');
+  if (!status.ok) {
+    setFooter('后台 Service Worker 尚未就绪', 'err');
     return;
   }
 
-  currentStatus = res;
-  $('globalSwitch').checked = res.config?.enabled !== false;
-  $('endpointInput').value = res.config?.endpointUrl || '';
+  $('globalToggle').checked = status.config?.enabled !== false;
+  $('endpointUrl').value = status.config?.endpointUrl || '';
 
-  updateTabCard(res);
-  renderSitesList(res.allSites || [], res.config || {});
-  updateMetrics(res.metrics);
+  updateTabStatus(status);
+  renderSites(status.sites || [], status.config || {});
+  updateMetrics(status.metrics);
 }
 
-// 事件绑定
-$('globalSwitch').addEventListener('change', async (e) => {
+// 绑定操作
+$('globalToggle').addEventListener('change', async (e) => {
   const enabled = e.target.checked;
-  const cfg = await RelaySettings.loadSettings();
+  const status = await send('GET_STATUS');
+  const cfg = status.config || {};
   cfg.enabled = enabled;
-  await sendBgMessage('SAVE_SETTINGS', { settings: cfg });
-  setFooterMessage(enabled ? '中继系统已启动' : '中继系统已暂停', 'success');
+  await send('SAVE_SETTINGS', { settings: cfg });
+  setFooter(enabled ? '系统已启动' : '系统已暂停', 'ok');
   refresh();
 });
 
 $('saveBtn').addEventListener('click', async () => {
-  const endpointUrl = $('endpointInput').value.trim();
-  const cfg = await RelaySettings.loadSettings();
+  const endpointUrl = $('endpointUrl').value.trim();
+  const status = await send('GET_STATUS');
+  const cfg = status.config || { sites: {} };
   cfg.endpointUrl = endpointUrl;
 
-  // 收集站点复选框
-  const siteInputs = $('sitesList').querySelectorAll('input[type="checkbox"]');
-  siteInputs.forEach((input) => {
-    const siteId = input.dataset.siteId;
-    const field = input.dataset.field;
-    if (!cfg.sites[siteId]) cfg.sites[siteId] = {};
-    cfg.sites[siteId][field] = input.checked;
+  const checkboxes = $('sitesList').querySelectorAll('input[type="checkbox"]');
+  checkboxes.forEach((cb) => {
+    const site = cb.dataset.site;
+    const field = cb.dataset.field;
+    if (!cfg.sites[site]) cfg.sites[site] = {};
+    cfg.sites[site][field] = cb.checked;
   });
 
-  const res = await sendBgMessage('SAVE_SETTINGS', { settings: cfg });
-  if (res?.ok) {
-    setFooterMessage('配置已保存并生效', 'success');
-  } else {
-    setFooterMessage('保存失败', 'error');
-  }
+  await send('SAVE_SETTINGS', { settings: cfg });
+  setFooter('配置已保存', 'ok');
   refresh();
 });
 
 $('pingBtn').addEventListener('click', async () => {
-  const endpointUrl = $('endpointInput').value.trim();
-  const feedback = $('pingFeedback');
-  feedback.classList.remove('hidden', 'success', 'error');
-  feedback.textContent = '正在测试连接...';
+  const endpointUrl = $('endpointUrl').value.trim();
+  const box = $('pingStatus');
+  box.classList.remove('hidden', 'ok', 'err');
+  box.textContent = '正在测试连接...';
 
-  const res = await sendBgMessage('TEST_PING', { endpointUrl });
-  if (res?.ok) {
-    feedback.classList.add('success');
-    feedback.textContent = `✅ ${res.message}`;
+  const res = await send('PING_ENDPOINT', { endpointUrl });
+  if (res.ok) {
+    box.classList.add('ok');
+    box.textContent = `✅ ${res.message}`;
   } else {
-    feedback.classList.add('error');
-    feedback.textContent = `❌ ${res.message || '连接失败'}`;
+    box.classList.add('err');
+    box.textContent = `❌ ${res.message || '连接失败'}`;
   }
 });
 
-$('resetMetricsBtn').addEventListener('click', async () => {
+$('resetBtn').addEventListener('click', async () => {
   if (confirm('确认清零所有中继累计统计数据？')) {
-    const res = await sendBgMessage('RESET_METRICS');
-    if (res?.ok) {
+    const res = await send('RESET_METRICS');
+    if (res.ok) {
       updateMetrics(res.metrics);
-      setFooterMessage('统计数据已重置', 'success');
+      setFooter('统计已清零', 'ok');
     }
   }
 });
