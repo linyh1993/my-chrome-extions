@@ -2,12 +2,7 @@
  * X Spam Reply Cleaner - Extension Service Worker (Manifest V3)
  */
 
-importScripts(
-  '../shared/packs.js',
-  '../shared/simhash.js',
-  '../shared/heuristics.js',
-  '../shared/rules.js'
-);
+importScripts('../shared/rules.js');
 
 const rulesEngine = globalThis.XCleanerRules || {};
 const DEFAULT_SETTINGS = rulesEngine.DEFAULT_CLEANER_SETTINGS || {
@@ -73,4 +68,3 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 });
-

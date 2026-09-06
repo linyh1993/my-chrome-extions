@@ -1,11 +1,5 @@
 /**
  * X Spam Reply Cleaner - Content Script (DOM & UI Controller)
- * 
- * Responsibilities:
- * - SPA navigation & MutationObserver observation
- * - Tweet DOM extraction & metadata parsing
- * - Reply clustering & custom banner injection
- * - User interactions (Block/Unblock via XActionAdapter, Whitelist, Expand/Collapse)
  */
 
 (function () {
@@ -44,7 +38,8 @@
   chrome.storage.sync.get(null, (stored) => {
     if (chrome.runtime.lastError) return;
     currentSettings = { ...currentSettings, ...stored };
-    handleUrlChange();
+    scheduleScan(50);
+    scheduleScan(300);
   });
 
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -70,12 +65,12 @@
 
   // 2. SPA Route Detection
   function isStatusPage() {
-    return /\/(?:twitter\.com|x\.com)\/[^/]+\/status\/\d+/i.test(window.location.href);
+    return /\/(?:twitter\.com|x\.com)\/(?:[^/]+|i)\/status\/\d+/i.test(window.location.href);
   }
 
   function getOpHandle() {
     const match = window.location.href.match(/\/(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]+)\/status\/\d+/i);
-    return match ? match[1].toLowerCase() : '';
+    return (match && match[1] !== 'i') ? match[1].toLowerCase() : '';
   }
 
   function handleUrlChange() {
@@ -86,12 +81,13 @@
       threadSimhashTracker.clear();
       clusterExpandedState.clear();
       resetProcessedMarks();
+    }
 
-      if (isStatusPage()) {
-        scheduleScan(50);
-        scheduleScan(300);
-        scheduleScan(800);
-      }
+    if (isStatusPage()) {
+      scheduleScan(50);
+      scheduleScan(250);
+      scheduleScan(750);
+      scheduleScan(1500);
     }
   }
 
@@ -102,6 +98,7 @@
       delete el.dataset.xSpam;
       delete el.dataset.xSpamReason;
       delete el.dataset.xSpamText;
+      delete el.dataset.xSpamLastText;
       delete el.dataset.xSpamAuthor;
       el.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
     });
@@ -122,12 +119,21 @@
     let handle = '';
     let displayName = '';
 
-    const userLink = userNameEl.querySelector('a[href^="/"]');
-    if (userLink) {
-      const href = userLink.getAttribute('href') || '';
-      const match = href.match(/^\/([a-zA-Z0-9_]+)/);
+    const userLinks = Array.from(userNameEl.querySelectorAll('a[href^="/"]'));
+    for (const link of userLinks) {
+      const href = link.getAttribute('href') || '';
+      const match = href.match(/^\/([a-zA-Z0-9_]+)$/);
+      if (match && match[1] !== 'home' && match[1] !== 'explore') {
+        handle = match[1];
+        displayName = link.innerText || link.textContent || '';
+        break;
+      }
+    }
+
+    // Fallback if link not found
+    if (!handle && userLinks.length > 0) {
+      const match = (userLinks[0].getAttribute('href') || '').match(/^\/([a-zA-Z0-9_]+)/);
       if (match) handle = match[1];
-      displayName = userLink.textContent || '';
     }
 
     return { handle, displayName };
@@ -168,7 +174,7 @@
   // 4. Timeline Evaluation & Clustering
   function scanTimeline() {
     if (isScanning || !currentSettings.enabled) return;
-    if (!isStatusPage()) return; // Never alter non-post pages (Home, Explore, Profiles)
+    if (!isStatusPage()) return; // Only process reply sections in tweet status threads
 
     isScanning = true;
 
@@ -177,7 +183,7 @@
       const allTweets = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
       if (allTweets.length === 0) return;
 
-      // The FIRST tweet is ALWAYS the focal main post
+      // The FIRST tweet in a thread view is the focal OP post
       const mainTweet = allTweets[0];
       mainTweet.dataset.xSpamProcessed = 'true';
       delete mainTweet.dataset.xSpam;
@@ -191,7 +197,7 @@
       for (const tweet of replyTweets) {
         const { handle: authorHandle, displayName: authorDisplayName } = getAuthorInfo(tweet);
 
-        // OP Protection
+        // OP Protection (Thread author is exempt)
         if (opHandle && authorHandle.toLowerCase() === opHandle) {
           tweet.dataset.xSpamProcessed = 'true';
           tweet.dataset.xSpamEvaluation = 'false';
@@ -200,11 +206,17 @@
           continue;
         }
 
-        if (tweet.dataset.xSpamProcessed !== 'true') {
-          tweet.dataset.xSpamProcessed = 'true';
+        const tweetTextEl = tweet.querySelector('div[data-testid="tweetText"]');
+        const text = tweetTextEl ? (tweetTextEl.innerText || tweetTextEl.textContent || '').trim() : '';
 
-          const tweetTextEl = tweet.querySelector('div[data-testid="tweetText"]');
-          const text = tweetTextEl ? (tweetTextEl.innerText || tweetTextEl.textContent || '') : '';
+        // Only evaluate if text has rendered or if we haven't processed with this text yet
+        const lastEvaluatedText = tweet.dataset.xSpamLastText;
+        if (tweet.dataset.xSpamProcessed !== 'true' || lastEvaluatedText !== text) {
+          if (!text && !authorHandle) {
+            // Still loading/hydrating DOM, don't mark permanently processed yet
+            continue;
+          }
+
           const links = getTweetLinks(tweet);
 
           const checkResult = evaluateSpamFn({
@@ -217,12 +229,13 @@
             simhashTracker: threadSimhashTracker
           });
 
+          tweet.dataset.xSpamProcessed = 'true';
+          tweet.dataset.xSpamLastText = text;
           tweet.dataset.xSpamEvaluation = checkResult.isSpam ? 'true' : 'false';
           tweet.dataset.xSpamReason = checkResult.reason || '';
-          tweet.dataset.xSpamText = text;
           tweet.dataset.xSpamAuthor = authorHandle;
 
-          if (checkResult.isSpam) {
+          if (checkResult.isSpam && !lastEvaluatedText) {
             chrome.runtime.sendMessage({ type: 'INCREMENT_BLOCKED_COUNT', delta: 1 }, () => {
               if (chrome.runtime.lastError) { /* ignore */ }
             });
@@ -257,13 +270,13 @@
         const followers = cluster.slice(1);
 
         const sampleReasons = Array.from(new Set(cluster.map(t => t.dataset.xSpamReason).filter(Boolean))).slice(0, 3).join(', ');
-        const clusterKey = cluster.map(t => t.dataset.xSpamText?.slice(0, 10) || '').join('|');
+        const clusterKey = cluster.map(t => (t.dataset.xSpamLastText || '').slice(0, 10)).join('|');
         const isExpanded = clusterExpandedState.get(clusterKey) === true;
 
         const authors = Array.from(new Set(cluster.map(t => t.dataset.xSpamAuthor).filter(Boolean)));
         const primaryAuthor = authors[0] || '';
         const isSingleAuthor = authors.length === 1;
-        const isBlocked = authors.every(a => blockedHandlesState.has(normalizeHandleFn(a)));
+        const isBlocked = authors.length > 0 && authors.every(a => blockedHandlesState.has(normalizeHandleFn(a)));
 
         if (currentSettings.hideMode === 'hide') {
           for (const tweet of cluster) {
@@ -299,7 +312,7 @@
             </div>
           `;
 
-          // Actions
+          // Button Actions
           const expandBtn = banner.querySelector('.x-spam-btn-expand');
           if (expandBtn) {
             expandBtn.onclick = (e) => {
@@ -369,7 +382,7 @@
     scanDebounceTimer = setTimeout(scanTimeline, delay);
   }
 
-  // 6. SPA Hooks & MutationObserver
+  // 6. SPA Navigation Hooks & MutationObserver
   (function hookHistory() {
     const originalPushState = history.pushState;
     const originalReplaceState = history.replaceState;
@@ -392,15 +405,15 @@
   setInterval(handleUrlChange, 250);
 
   const observer = new MutationObserver((mutations) => {
-    let hasRelevantNodes = false;
+    let hasAddedNodes = false;
     for (const mutation of mutations) {
       if (mutation.addedNodes.length > 0) {
-        hasRelevantNodes = true;
+        hasAddedNodes = true;
         break;
       }
     }
-    if (hasRelevantNodes) {
-      scheduleScan(120);
+    if (hasAddedNodes) {
+      scheduleScan(100);
     }
   });
 
