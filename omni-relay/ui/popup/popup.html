@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Omni Relay 控制台</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="app-container">
+    <!-- 头部区域 -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-badge">⚡</div>
+        <div>
+          <h1 class="title">Omni Relay</h1>
+          <p class="subtitle">通用多平台数据与流量中继器</p>
+        </div>
+      </div>
+      <label class="switch-container" title="全局主开关">
+        <input type="checkbox" id="globalSwitch" />
+        <span class="switch-slider"></span>
+      </label>
+    </header>
+
+    <!-- 当前活动标签页状态卡片 -->
+    <section class="card current-tab-card">
+      <div class="card-header">
+        <span class="card-title">当前标签页</span>
+        <span class="status-pill" id="tabStatusPill">检测中...</span>
+      </div>
+      <div class="tab-detail-row">
+        <span class="detail-label">平台识别:</span>
+        <span class="detail-val" id="tabSiteName">-</span>
+      </div>
+      <div class="tab-detail-row">
+        <span class="detail-label">监听通道:</span>
+        <span class="detail-val" id="tabChannels">-</span>
+      </div>
+    </section>
+
+    <!-- 本地接收端配置 -->
+    <section class="card">
+      <div class="card-header">
+        <span class="card-title">本地接收端 (Endpoint)</span>
+      </div>
+      <div class="endpoint-input-group">
+        <input type="url" id="endpointInput" spellcheck="false" placeholder="http://127.0.0.1:9090/relay" />
+      </div>
+      <div class="btn-group">
+        <button type="button" id="pingBtn" class="btn btn-secondary">⚡ 测试连接 (Ping)</button>
+        <button type="button" id="saveBtn" class="btn btn-primary">保存配置</button>
+      </div>
+      <div id="pingFeedback" class="feedback-text hidden"></div>
+    </section>
+
+    <!-- 平台管理列表 -->
+    <section class="card">
+      <div class="card-header">
+        <span class="card-title">受支持平台与采集策略</span>
+      </div>
+      <div class="sites-list" id="sitesList">
+        <!-- 动态渲染各站点配置 -->
+      </div>
+    </section>
+
+    <!-- 运行指标与统计 -->
+    <section class="card metrics-card">
+      <div class="card-header">
+        <span class="card-title">中继统计指标</span>
+        <button type="button" id="resetMetricsBtn" class="btn-link">重置</button>
+      </div>
+      <div class="metrics-grid">
+        <div class="metric-box">
+          <span class="metric-num" id="totalCountDisplay">0</span>
+          <span class="metric-lbl">总中继条数</span>
+        </div>
+        <div class="metric-box">
+          <span class="metric-num" id="xCountDisplay">0</span>
+          <span class="metric-lbl">X (Twitter)</span>
+        </div>
+        <div class="metric-box">
+          <span class="metric-num" id="redditCountDisplay">0</span>
+          <span class="metric-lbl">Reddit</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 底部诊断与状态栏 -->
+    <footer class="app-footer">
+      <span id="footerMsg" class="footer-msg">就绪</span>
+    </footer>
+  </div>
+
+  <script src="../../shared/protocol.js"></script>
+  <script src="../../shared/settings.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

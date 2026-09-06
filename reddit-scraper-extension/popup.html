@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reddit Stream Scraper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <div class="logo-dot"></div>
+      <h1 class="title">Reddit Stream Scraper</h1>
+    </div>
+    <span class="badge" id="versionTag">v1.2</span>
+  </header>
+
+  <main class="container">
+    <!-- 状态指示面板 -->
+    <section class="status-panel">
+      <div class="status-meta">
+        <label class="status-label">工作引擎状态</label>
+        <span class="status-text text-muted" id="statusIndicator">检查中...</span>
+      </div>
+      
+      <!-- 原生体验高动态开关 -->
+      <label class="switch-container" for="engineSwitch" title="启用/停用自动化后台抓取">
+        <input type="checkbox" id="engineSwitch" role="switch" aria-checked="false" disabled>
+        <span class="switch-slider"></span>
+      </label>
+    </section>
+
+    <!-- 骨架屏占位（防首帧数据闪烁） -->
+    <div class="skeleton" id="uiSkeleton"></div>
+
+    <!-- 数据分析卡片 -->
+    <section class="metrics-panel hidden" id="metricsContent">
+      <div class="metric-card">
+        <span class="metric-title">累计上报数据条数</span>
+        <span class="metric-value" id="countDisplay">0</span>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <span class="footer-note">环境要求: 本地后端监听 http://localhost:5000</span>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

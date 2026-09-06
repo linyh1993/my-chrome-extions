@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "Omni Relay",
+  "version": "1.0.0",
+  "description": "通用多平台网络流量与 DOM 数据中继器，支持 X、Reddit 及自定义平台数据弹性投递到本地服务。",
+  "permissions": [
+    "storage",
+    "debugger",
+    "tabs"
+  ],
+  "host_permissions": [
+    "*://x.com/*",
+    "*://*.x.com/*",
+    "*://twitter.com/*",
+    "*://*.twitter.com/*",
+    "*://reddit.com/*",
+    "*://*.reddit.com/*",
+    "http://127.0.0.1:*/*",
+    "http://localhost:*/*"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Omni Relay 控制台",
+    "default_popup": "ui/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://reddit.com/*",
+        "*://*.reddit.com/*"
+      ],
+      "js": [
+        "content/extractors/reddit-extractor.js",
+        "content/content-entry.js"
+      ],
+      "run_at": "document_end"
+    }
+  ]
+}
