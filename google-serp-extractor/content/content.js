@@ -133,12 +133,16 @@
             // Check if added node belongs to our floating UI; ignore if so
             if (added.id === 'gse-root' || added.closest?.('#gse-root')) continue;
 
-            // Check if added node is from AITDK or Keywords Everywhere
+            const txt = added.textContent || '';
             const cls = added.className || '';
             const id = added.id || '';
             if (
-              (typeof cls === 'string' && (cls.includes('xt-') || cls.includes('aitdk') || cls.includes('g '))) ||
-              (typeof id === 'string' && (id.includes('xt-') || id.includes('aitdk')))
+              txt.includes('AITDK') ||
+              txt.includes('Monthly Visits') ||
+              txt.includes('MOZ DA') ||
+              (typeof cls === 'string' && (cls.includes('xt-') || cls.includes('aitdk') || cls.includes('g ') || cls.includes('MjjYud'))) ||
+              (typeof id === 'string' && (id.includes('xt-') || id.includes('aitdk') || id.includes('rso'))) ||
+              added.querySelector?.('[class*="aitdk"], [class*="xt-"], .g, .MjjYud')
             ) {
               shouldRescan = true;
               break;
@@ -149,13 +153,14 @@
       }
 
       if (shouldRescan) {
-        scheduleScan(800);
+        scheduleScan(500);
       }
     });
 
     observer.observe(targetNode, {
       childList: true,
-      subtree: true
+      subtree: true,
+      characterData: true
     });
   }
 
@@ -243,8 +248,10 @@
     doScan();
 
     // Secondary scans to catch async AITDK and KE renders
+    setTimeout(doScan, 600);
     setTimeout(doScan, 1500);
-    setTimeout(doScan, 3500);
+    setTimeout(doScan, 2800);
+    setTimeout(doScan, 4500);
 
     initObserver();
   }

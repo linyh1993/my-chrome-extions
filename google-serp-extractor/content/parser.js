@@ -164,11 +164,11 @@
   }
 
   function findContainerForHeading(h3, doc) {
-    const g = h3.closest('.g');
-    if (g) return g;
-
-    const mjj = h3.closest('.MjjYud');
+    const mjj = typeof h3.closest === 'function' ? h3.closest('.MjjYud') : null;
     if (mjj) return mjj;
+
+    const g = typeof h3.closest === 'function' ? h3.closest('.g') : null;
+    if (g) return g;
 
     let cur = h3.parentElement;
     let depth = 0;
@@ -350,7 +350,7 @@
   }
 
   /**
-   * Extract AITDK metrics from container or adjacent siblings
+   * Extract AITDK metrics from container, card scope (.MjjYud) or adjacent siblings
    */
   function extractAitdkMetrics(container) {
     const res = {
@@ -361,28 +361,81 @@
       aitdkLoading: false
     };
 
-    const aitdkEl = container.querySelector('.aitdk-site-metrics, .aitdk-site-metrics-container') ||
-                    container.parentElement?.querySelector('.aitdk-site-metrics, .aitdk-site-metrics-container');
+    if (!container) return res;
 
-    const text = aitdkEl ? aitdkEl.textContent : (container.textContent || '');
+    // Card scope: check container, .MjjYud, .g, or parentElement
+    const cardScope = (typeof container.closest === 'function' ? container.closest('.MjjYud') : null) ||
+                      (typeof container.closest === 'function' ? container.closest('#rso > div') : null) ||
+                      container.parentElement ||
+                      container;
 
-    if (aitdkEl && (aitdkEl.querySelector('.aitdk-dots-loading, .loading') || aitdkEl.classList.contains('loading'))) {
+    // 1. Selector-based lookup for AITDK elements
+    let aitdkEl = container.querySelector?.('.aitdk-site-metrics, .aitdk-site-metrics-container, [class*="aitdk"], [id*="aitdk"]') ||
+                  cardScope.querySelector?.('.aitdk-site-metrics, .aitdk-site-metrics-container, [class*="aitdk"], [id*="aitdk"]');
+
+    // 2. Sibling inspection (in case AITDK was inserted right after container)
+    if (!aitdkEl && container.nextElementSibling) {
+      let sib = container.nextElementSibling;
+      for (let i = 0; i < 3 && sib; i++) {
+        const sibText = sib.textContent || '';
+        if (sib.matches?.('[class*="aitdk"], [id*="aitdk"]') || sibText.includes('AITDK') || sibText.includes('Monthly Visits:')) {
+          aitdkEl = sib;
+          break;
+        }
+        sib = sib.nextElementSibling;
+      }
+    }
+
+    // 3. Fallback: inspect any elements inside cardScope containing "AITDK" or "Monthly Visits"
+    if (!aitdkEl && cardScope.querySelectorAll) {
+      const candidates = cardScope.querySelectorAll('div, span, p, section');
+      for (const el of candidates) {
+        const t = el.textContent || '';
+        if (t.includes('AITDK') || (t.includes('Monthly Visits:') && t.includes('Domain Created:'))) {
+          aitdkEl = el;
+          break;
+        }
+      }
+    }
+
+    // 4. Gather text
+    let text = aitdkEl ? aitdkEl.textContent : '';
+    if (!text && cardScope) {
+      const full = cardScope.textContent || '';
+      if (full.includes('AITDK') || full.includes('Monthly Visits:')) {
+        text = full;
+      }
+    }
+    if (!text && container.textContent) {
+      text = container.textContent;
+    }
+
+    // Check loading indicator
+    if (aitdkEl && (aitdkEl.querySelector?.('.aitdk-dots-loading, .loading, [class*="loading"]') ||
+        aitdkEl.classList?.contains?.('loading') ||
+        aitdkEl.classList?.contains?.('aitdk-dots-loading'))) {
       res.aitdkLoading = true;
     }
 
-    const visitsMatch = text.match(/Monthly\s*Visits:\s*([0-9\.\w\-]+)/i);
+    // Clean text (convert non-breaking spaces & tabs to normal spaces)
+    const cleanText = text.replace(/[\u00a0\t\r\n]+/g, ' ').trim();
+
+    // 1. Monthly Visits (matches "Monthly Visits: 7.27M", "Monthly Visits: <5K", "Monthly Visits: 1,200", etc.)
+    const visitsMatch = cleanText.match(/Monthly\s*Visits\s*:\s*([0-9\.\,\w\-\<\>\/]+)/i);
     if (visitsMatch) {
       res.monthlyVisits = visitsMatch[1].trim();
       res.aitdkReady = true;
     }
 
-    const durationMatch = text.match(/Avg\.?\s*Visit\s*Duration:\s*([0-9\:\w\-]+)/i);
+    // 2. Avg Visit Duration (matches "Avg. Visit Duration: 00:04:03", "Avg Visit Duration: ...", "Avg. Duration: ...")
+    const durationMatch = cleanText.match(/Avg\.?\s*(?:Visit\s*)?Duration\s*:\s*([0-9\:\w\-]+)/i);
     if (durationMatch) {
       res.avgDuration = durationMatch[1].trim();
       res.aitdkReady = true;
     }
 
-    const createdMatch = text.match(/Domain\s*Created:\s*([0-9\-\w\/]+)/i);
+    // 3. Domain Created (matches "Domain Created: 2023-04-06")
+    const createdMatch = cleanText.match(/Domain\s*Created\s*:\s*([0-9\-\w\/]+)/i);
     if (createdMatch) {
       res.domainCreated = createdMatch[1].trim();
       res.aitdkReady = true;
@@ -578,12 +631,12 @@
     const totalItems = items.length;
 
     // AITDK detection & loading state
-    const aitdkMarkers = doc.querySelectorAll('.aitdk-site-metrics-container, .aitdk-site-metrics, .aitdk-metric-brand');
-    const hasAitdk = aitdkMarkers.length > 0;
+    const aitdkMarkers = doc.querySelectorAll?.('.aitdk-site-metrics-container, .aitdk-site-metrics, .aitdk-metric-brand, [class*="aitdk"], [id*="aitdk"]') || [];
     let aitdkLoadedCount = 0;
     for (const item of items) {
       if (item.aitdkReady) aitdkLoadedCount++;
     }
+    const hasAitdk = aitdkMarkers.length > 0 || aitdkLoadedCount > 0;
     const aitdkLoadingSpinners = doc.querySelectorAll('.aitdk-dots-loading, .loading.aitdk-metric-item');
     const aitdkLoadingCount = aitdkLoadingSpinners.length;
 
@@ -945,7 +998,35 @@
       itemMap.set(item.url, item);
     }
     for (const item of newData.items) {
-      itemMap.set(item.url, item);
+      if (itemMap.has(item.url)) {
+        const existing = itemMap.get(item.url);
+        itemMap.set(item.url, {
+          ...existing,
+          ...item,
+          // Retain rank/page if existing has valid values
+          rank: item.rank || existing.rank,
+          page: item.page || existing.page,
+          pageRank: item.pageRank || existing.pageRank,
+          // AITDK metrics: use whichever has values
+          monthlyVisits: item.monthlyVisits || existing.monthlyVisits || '',
+          avgDuration: item.avgDuration || existing.avgDuration || '',
+          domainCreated: item.domainCreated || existing.domainCreated || '',
+          aitdkReady: item.aitdkReady || existing.aitdkReady || false,
+          // Keywords Everywhere metrics: use whichever has values
+          mozDa: item.mozDa || existing.mozDa || '',
+          mozDaTrend: item.mozDaTrend || existing.mozDaTrend || '',
+          refDom: item.refDom || existing.refDom || '',
+          refLinks: item.refLinks || existing.refLinks || '',
+          spamScore: item.spamScore || existing.spamScore || '',
+          pageTraffic: item.pageTraffic || existing.pageTraffic || '',
+          siteTraffic: item.siteTraffic || existing.siteTraffic || '',
+          pageKeywords: item.pageKeywords || existing.pageKeywords || '',
+          siteKeywords: item.siteKeywords || existing.siteKeywords || '',
+          keReady: item.keReady || existing.keReady || false
+        });
+      } else {
+        itemMap.set(item.url, item);
+      }
     }
 
     const mergedItems = Array.from(itemMap.values()).sort((a, b) => (a.rank || 0) - (b.rank || 0));

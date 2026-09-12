@@ -259,6 +259,26 @@ describe('2. Keywords Everywhere & AITDK Metrics Extraction', () => {
     assert.strictEqual(metrics.domainCreated, '2023-01-05');
     assert.strictEqual(metrics.aitdkReady, true);
   });
+
+  it('should extract AITDK with emojis matching user screenshot exactly', () => {
+    // Exact text from user screenshot: media_1789223815539.png
+    const card = new MockElement('div', { class: 'MjjYud' }, '', [
+      new MockElement('div', { class: 'g' }, '', [
+        new MockElement('a', { href: 'https://example.com' }, '', [
+          new MockElement('h3', {}, 'Example Title')
+        ])
+      ]),
+      new MockElement('div', { class: 'aitdk-card-wrapper' },
+        'AITDK | 🌐 Monthly Visits: 7.27M 🕒 Avg. Visit Duration: 00:04:03 📅 Domain Created: 2023-04-06'
+      )
+    ]);
+
+    const metrics = extractAitdkMetrics(card);
+    assert.strictEqual(metrics.monthlyVisits, '7.27M');
+    assert.strictEqual(metrics.avgDuration, '00:04:03');
+    assert.strictEqual(metrics.domainCreated, '2023-04-06');
+    assert.strictEqual(metrics.aitdkReady, true);
+  });
 });
 
 describe('3. Related Keywords (People also search for & KE)', () => {
@@ -561,6 +581,41 @@ describe('10. Pagination Recognition, Global Ranking & Multi-Page Session Accumu
     const tsv = itemsToTsv(sampleItems);
     assert(tsv.includes('全局排名 (Rank)\t所属页码 (Page)\t页内名次 (Page Rank)'));
     assert(tsv.includes('11\t2\t1\ttest\tP2 Title'));
+  });
+
+  it('should preserve AITDK metrics on re-scan and merge incoming metrics without data loss', () => {
+    // Existing data had AITDK
+    const existing = {
+      query: 'ai detector',
+      items: [
+        { rank: 1, url: 'https://example.com', title: 'Ex', monthlyVisits: '7.27M', avgDuration: '00:04:03', domainCreated: '2023-04-06', aitdkReady: true }
+      ]
+    };
+
+    // New scan occurs before AITDK finishes loading (AITDK is empty)
+    const newScanLoading = {
+      query: 'ai detector',
+      items: [
+        { rank: 1, url: 'https://example.com', title: 'Ex', monthlyVisits: '', avgDuration: '', domainCreated: '', aitdkReady: false }
+      ]
+    };
+
+    const mergedWhileLoading = mergeMultiPageData(existing, newScanLoading);
+    assert.strictEqual(mergedWhileLoading.items[0].monthlyVisits, '7.27M');
+    assert.strictEqual(mergedWhileLoading.items[0].avgDuration, '00:04:03');
+    assert.strictEqual(mergedWhileLoading.items[0].domainCreated, '2023-04-06');
+
+    // New scan arrives with updated metrics
+    const newScanLoaded = {
+      query: 'ai detector',
+      items: [
+        { rank: 1, url: 'https://example.com', title: 'Ex', monthlyVisits: '8.10M', avgDuration: '00:04:15', domainCreated: '2023-04-06', aitdkReady: true }
+      ]
+    };
+
+    const mergedAfterLoad = mergeMultiPageData(existing, newScanLoaded);
+    assert.strictEqual(mergedAfterLoad.items[0].monthlyVisits, '8.10M');
+    assert.strictEqual(mergedAfterLoad.items[0].avgDuration, '00:04:15');
   });
 });
 
