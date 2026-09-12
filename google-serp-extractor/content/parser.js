@@ -433,6 +433,44 @@
           url: a ? normalizeGoogleUrl(a.href) : `https://www.google.com/search?q=${encodeURIComponent(kw)}`
         });
       }
+
+      // Fallback: If widget doesn't use standard tr/li, extract from anchor tags or text lines
+      if (rows.length === 0) {
+        const anchors = widget.querySelectorAll('a[href*="search?q="], a[href*="google."]');
+        for (const a of anchors) {
+          const kw = a.textContent.replace(/\s+/g, ' ').trim();
+          if (!kw || kw.length < 2 || seen.has(kw.toLowerCase())) continue;
+          seen.add(kw.toLowerCase());
+          list.push({
+            keyword: kw,
+            source,
+            volume: '-',
+            cpc: '-',
+            url: normalizeGoogleUrl(a.href)
+          });
+        }
+
+        // Also check plain lines if no anchors found
+        if (anchors.length === 0) {
+          const rawLines = (widget.textContent || '').split(/[\r\n]+/);
+          for (let line of rawLines) {
+            line = line.trim();
+            if (!line || line.length < 3 || seen.has(line.toLowerCase())) continue;
+            // Ignore widget UI buttons / labels
+            if (/^(Keywords?|Copy|Export|Load Metrics|Per page|All|Free Keyword|Track rankings|Uses \d+)/i.test(line)) continue;
+            if (/^\d+-\d+ of \d+$/i.test(line)) continue;
+
+            seen.add(line.toLowerCase());
+            list.push({
+              keyword: line,
+              source,
+              volume: '-',
+              cpc: '-',
+              url: `https://www.google.com/search?q=${encodeURIComponent(line)}`
+            });
+          }
+        }
+      }
     }
 
     // B. Google Native "People also search for" & "Related searches"
@@ -486,6 +524,122 @@
     }
 
     return list;
+  }
+
+  /**
+   * Extract Keywords Everywhere SEO Difficulty & Trend Cards
+   */
+  function extractSeoDifficulty(doc = document) {
+    const res = {
+      hasDifficulty: false,
+      seoDifficulty: '',
+      brandQuery: '',
+      offPageDifficulty: '',
+      onPageDifficulty: '',
+      trendTitle: ''
+    };
+
+    const diffEl = doc.querySelector('#xt-difficulty-root') ||
+                   Array.from(doc.querySelectorAll('div, [role="region"]')).find(el => /SEO\s*Difficulty/i.test(el.textContent));
+
+    if (diffEl) {
+      const text = diffEl.textContent || '';
+      res.hasDifficulty = true;
+
+      const diffMatch = text.match(/SEO\s*Difficulty\s*([0-9\.\/]+)/i);
+      if (diffMatch) res.seoDifficulty = diffMatch[1].trim();
+
+      const brandMatch = text.match(/Brand\s*Query\s*(Yes|No)/i);
+      if (brandMatch) res.brandQuery = brandMatch[1].trim();
+
+      const offMatch = text.match(/Off-Page\s*Difficulty\s*([0-9\.\/]+)/i);
+      if (offMatch) res.offPageDifficulty = offMatch[1].trim();
+
+      const onMatch = text.match(/On-Page\s*Difficulty\s*([0-9\.\/]+)/i);
+      if (onMatch) res.onPageDifficulty = onMatch[1].trim();
+    }
+
+    const trendEl = doc.querySelector('#xt-trend-chart-root') ||
+                    Array.from(doc.querySelectorAll('div, [role="region"]')).find(el => /Trend Data For/i.test(el.textContent));
+    if (trendEl) {
+      const t = trendEl.textContent.match(/Trend Data For [^\n\r]+/i);
+      if (t) res.trendTitle = t[0].replace(/\s+/g, ' ').trim();
+    }
+
+    return res;
+  }
+
+  /**
+   * Assess readiness of third-party plugins (AITDK, Keywords Everywhere).
+   * Ensures extraction is decoupled: if plugins aren't installed or take time,
+   * the core SERP items are always available immediately.
+   */
+  function assessPluginReadiness(doc = document, items = []) {
+    const totalItems = items.length;
+
+    // AITDK detection & loading state
+    const aitdkMarkers = doc.querySelectorAll('.aitdk-site-metrics-container, .aitdk-site-metrics, .aitdk-metric-brand');
+    const hasAitdk = aitdkMarkers.length > 0;
+    let aitdkLoadedCount = 0;
+    for (const item of items) {
+      if (item.aitdkReady) aitdkLoadedCount++;
+    }
+    const aitdkLoadingSpinners = doc.querySelectorAll('.aitdk-dots-loading, .loading.aitdk-metric-item');
+    const aitdkLoadingCount = aitdkLoadingSpinners.length;
+
+    // Keywords Everywhere detection & loading state
+    const keMarkers = doc.querySelectorAll('.xt-google-domain-link-metrics, .xt-google-url-metrics, #xt-google-query, #xt-google-ltkwid, #xt-google-trenkw, #xt-difficulty-root, [id*="xt-"]');
+    const hasKe = keMarkers.length > 0;
+    let keLoadedCount = 0;
+    for (const item of items) {
+      if (item.keReady) keLoadedCount++;
+    }
+    const keWidgetCount = doc.querySelectorAll('#xt-google-ltkwid, #xt-google-trenkw, #xt-related-search, #xt-difficulty-root').length;
+
+    // Determine status
+    let state = 'READY';
+    let statusText = '数据已就绪';
+
+    if (!hasAitdk && !hasKe) {
+      state = 'NO_PLUGINS';
+      statusText = '已就绪 (未安装/未启用 AITDK 或 Keywords Everywhere)';
+    } else {
+      const isAitdkStillLoading = aitdkLoadingCount > 0 || (hasAitdk && totalItems > 0 && aitdkLoadedCount === 0);
+      const isKeStillLoading = hasKe && totalItems > 0 && keLoadedCount === 0;
+
+      if (isAitdkStillLoading || isKeStillLoading) {
+        state = 'LOADING';
+        const parts = [];
+        if (hasAitdk) parts.push(`AITDK: ${aitdkLoadedCount}/${totalItems}`);
+        if (hasKe) parts.push(`KE: ${keLoadedCount}/${totalItems}`);
+        statusText = `插件指标异步加载中 (${parts.join(', ')})...`;
+      } else {
+        state = 'READY';
+        const parts = [];
+        if (hasAitdk) parts.push(`AITDK: ${aitdkLoadedCount}/${totalItems}`);
+        if (hasKe) parts.push(`KE: ${keLoadedCount}/${totalItems}`);
+        if (keWidgetCount > 0) parts.push(`侧栏组件: ${keWidgetCount}`);
+        statusText = `插件指标已全部就绪 (${parts.join(', ')})`;
+      }
+    }
+
+    return {
+      state,
+      isSettled: state !== 'LOADING',
+      statusText,
+      aitdk: {
+        detected: hasAitdk,
+        loadedCount: aitdkLoadedCount,
+        loadingCount: aitdkLoadingCount,
+        isReady: !hasAitdk || (aitdkLoadedCount > 0 && aitdkLoadingCount === 0)
+      },
+      ke: {
+        detected: hasKe,
+        loadedCount: keLoadedCount,
+        widgetsCount: keWidgetCount,
+        isReady: !hasKe || keLoadedCount > 0 || keWidgetCount > 0
+      }
+    };
   }
 
   /**
@@ -788,12 +942,16 @@
     }
 
     // Extended modules
-    const relatedKeywords = extractRelatedKeywords(doc);
+    const allKeywords = extractRelatedKeywords(doc);
+    const seoDifficulty = extractSeoDifficulty(doc);
     const relatedProducts = extractRelatedProducts(doc);
     const peopleAlsoAsk = extractPeopleAlsoAsk(doc);
     const sponsoredAds = extractSponsoredAds(doc);
     const aiOverview = extractAiOverview(doc);
     const discussions = extractDiscussions(doc);
+
+    // Assess plugin readiness (AITDK, Keywords Everywhere)
+    const readiness = assessPluginReadiness(doc, items);
 
     return {
       query,
@@ -802,10 +960,14 @@
       totalFound: items.length,
       aitdkReadyCount,
       keReadyCount,
-      isFullyReady: items.length > 0 && (aitdkReadyCount >= items.length || keReadyCount >= items.length),
+      isFullyReady: readiness.isSettled,
+      readiness,
       items,
       // Extended modules
-      relatedKeywords,
+      relatedKeywords: allKeywords,
+      longTailKeywords: allKeywords.filter(k => k.source.includes('Long-Tail')),
+      trendingKeywords: allKeywords.filter(k => k.source.includes('Trending')),
+      seoDifficulty,
       relatedProducts,
       peopleAlsoAsk,
       sponsoredAds,
@@ -825,6 +987,8 @@
     extractKeywordsEverywhereMetrics,
     extractAitdkMetrics,
     extractRelatedKeywords,
+    extractSeoDifficulty,
+    assessPluginReadiness,
     extractRelatedProducts,
     extractPeopleAlsoAsk,
     extractSponsoredAds,

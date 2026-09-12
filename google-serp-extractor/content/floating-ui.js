@@ -51,10 +51,46 @@
     const paaCount = (currentSerpData.peopleAlsoAsk || []).length;
     const adCount = (currentSerpData.sponsoredAds || []).length;
 
-    const isReady = totalFound > 0 && (aitdkCount >= totalFound || keCount >= totalFound);
+    const readiness = currentSerpData.readiness || {};
+    const isReady = readiness.isSettled;
     const statsStr = currentSerpData.resultStats?.totalResults
       ? `${Number(currentSerpData.resultStats.totalResults).toLocaleString()} 结果`
       : `${totalFound} 项`;
+
+    let badgeClass = 'pending';
+    let badgeText = '';
+
+    if (readiness.state === 'NO_PLUGINS') {
+      badgeClass = 'ready';
+      badgeText = `<span>${statsStr}</span> <span style="font-size:10px; opacity:0.7;">(纯净SERP)</span>`;
+    } else if (readiness.state === 'READY') {
+      badgeClass = 'ready';
+      badgeText = `
+        <span style="color: #059669; font-weight: bold;">🟢 已就绪</span>
+        <span style="margin: 0 3px; opacity: 0.5;">|</span>
+        <span>${statsStr}</span>
+        <span style="margin: 0 3px; opacity: 0.5;">|</span>
+        <span title="AITDK 数据加载数">A:${aitdkCount}</span>
+        <span style="margin: 0 3px; opacity: 0.5;">|</span>
+        <span title="Keywords Everywhere 数据加载数">K:${keCount}</span>
+      `;
+    } else {
+      badgeClass = 'pending';
+      badgeText = `
+        <span style="color: #d97706; font-weight: bold;">⏳ 插件加载中</span>
+        <span style="margin: 0 3px; opacity: 0.5;">|</span>
+        <span title="AITDK 加载进度">A:${aitdkCount}/${totalFound}</span>
+        <span style="margin: 0 3px; opacity: 0.5;">|</span>
+        <span title="KE 加载进度">K:${keCount}/${totalFound}</span>
+      `;
+    }
+
+    if (kwCount > 0) {
+      badgeText += `<span style="margin: 0 3px; opacity: 0.5;">|</span><span title="关键词库总数">词:${kwCount}</span>`;
+    }
+    if (prodCount > 0) {
+      badgeText += `<span style="margin: 0 3px; opacity: 0.5;">|</span><span title="竞品产品数">品:${prodCount}</span>`;
+    }
 
     rootEl.innerHTML = `
       <div class="gse-toast" id="gse-toast"></div>
@@ -65,14 +101,8 @@
         </div>
 
         ${!isMinimized ? `
-          <div class="gse-badge ${isReady ? 'ready' : 'pending'}" title="${currentSerpData.resultStats?.raw || '搜索项与就绪统计'}">
-            <span>${statsStr}</span>
-            <span style="opacity: 0.6; margin: 0 3px;">|</span>
-            <span title="AITDK 数据加载数">A:${aitdkCount}</span>
-            <span style="opacity: 0.6; margin: 0 3px;">|</span>
-            <span title="Keywords Everywhere 数据加载数">K:${keCount}</span>
-            ${kwCount > 0 ? `<span style="opacity: 0.6; margin: 0 3px;">|</span><span title="相关搜索词数">词:${kwCount}</span>` : ''}
-            ${prodCount > 0 ? `<span style="opacity: 0.6; margin: 0 3px;">|</span><span title="相关产品数">品:${prodCount}</span>` : ''}
+          <div class="gse-badge ${badgeClass}" title="${escapeHtml(readiness.statusText || currentSerpData.resultStats?.raw || '搜索项与就绪统计')}">
+            ${badgeText}
           </div>
 
           <div class="gse-divider"></div>
@@ -97,7 +127,7 @@
             <span>${isAccumulateMode ? '➕ 追加中 (' + accumulatedItems.length + ')' : '➕ 追加模式'}</span>
           </button>
         ` : `
-          <div class="gse-badge ${isReady ? 'ready' : 'pending'}">${statsStr}</div>
+          <div class="gse-badge ${badgeClass}">${statsStr}</div>
         `}
 
         <button class="gse-btn gse-btn-icon" id="gse-btn-toggle-min" title="${isMinimized ? '展开' : '折叠'}">
@@ -288,6 +318,11 @@
           <button class="gse-tab-btn ${currentTab === 'paa' ? 'active' : ''}" data-tab="paa">
             ❓ 意图问答 (PAA) <span class="gse-tab-count">${paaCount}</span>
           </button>
+          ${currentSerpData.seoDifficulty?.hasDifficulty ? `
+            <button class="gse-tab-btn ${currentTab === 'difficulty' ? 'active' : ''}" data-tab="difficulty">
+              📊 SEO 难度与趋势
+            </button>
+          ` : ''}
           ${hasAi ? `
             <button class="gse-tab-btn ${currentTab === 'ai' ? 'active' : ''}" data-tab="ai">
               🤖 AI 概览 (SGE)
@@ -300,7 +335,7 @@
         </div>
 
         <div class="gse-modal-footer">
-          <div>💡 提示：点击「复制当前 Tab」后可直接在 Excel、Google Sheets 按 Ctrl+V 完整粘贴；支持切换 Tab 查看词库与竞品产品。</div>
+          <div>💡 提示：点击「复制当前 Tab」后可直接在 Excel、Google Sheets 按 Ctrl+V 完整粘贴；支持切换 Tab 查看词库、竞品与 SEO 指标。</div>
           <div>Keywords Everywhere + AITDK 全景提取</div>
         </div>
       </div>
@@ -318,6 +353,8 @@
       renderSerpTable(container);
     } else if (currentTab === 'keywords') {
       renderKeywordsTable(container);
+    } else if (currentTab === 'difficulty') {
+      renderDifficultyTab(container);
     } else if (currentTab === 'products') {
       renderProductsTable(container);
     } else if (currentTab === 'ads') {
@@ -327,6 +364,40 @@
     } else if (currentTab === 'ai') {
       renderAiOverviewTab(container);
     }
+  }
+
+  function renderDifficultyTab(container) {
+    const d = currentSerpData.seoDifficulty || {};
+    container.innerHTML = `
+      <div style="padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+        <h3 style="font-size: 15px; font-weight: 700; color: #0f172a;">📊 Keywords Everywhere SEO 难度评估指标</h3>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; text-align: center;">
+            <div style="font-size: 20px; font-weight: 800; color: #2563eb;">${escapeHtml(d.seoDifficulty || '-')}</div>
+            <div style="font-size: 12px; color: #64748b; margin-top: 4px;">SEO 整体难度 (SEO Difficulty)</div>
+          </div>
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; text-align: center;">
+            <div style="font-size: 20px; font-weight: 800; color: #059669;">${escapeHtml(d.brandQuery || '-')}</div>
+            <div style="font-size: 12px; color: #64748b; margin-top: 4px;">是否品牌词 (Brand Query)</div>
+          </div>
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; text-align: center;">
+            <div style="font-size: 20px; font-weight: 800; color: #d97706;">${escapeHtml(d.offPageDifficulty || '-')}</div>
+            <div style="font-size: 12px; color: #64748b; margin-top: 4px;">站外难度 (Off-Page Difficulty)</div>
+          </div>
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; text-align: center;">
+            <div style="font-size: 20px; font-weight: 800; color: #7c3aed;">${escapeHtml(d.onPageDifficulty || '-')}</div>
+            <div style="font-size: 12px; color: #64748b; margin-top: 4px;">站内难度 (On-Page Difficulty)</div>
+          </div>
+        </div>
+
+        ${d.trendTitle ? `
+          <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 16px;">
+            <h4 style="font-size: 13px; font-weight: 700; color: #1e40af; margin-bottom: 6px;">📈 全球搜索趋势 (Trend Data)</h4>
+            <div style="font-size: 13px; color: #1e3a8a;">${escapeHtml(d.trendTitle)}</div>
+          </div>
+        ` : ''}
+      </div>
+    `;
   }
 
   function renderSerpTable(container) {

@@ -141,9 +141,11 @@ function renderData(data) {
     const adCount = (data.sponsoredAds || []).length;
     const paaCount = (data.peopleAlsoAsk || []).length;
     const hasAi = Boolean(data.aiOverview?.hasAiOverview);
+    const hasDiff = Boolean(data.seoDifficulty?.hasDifficulty);
 
     let chipsHtml = '';
     if (kwCount > 0) chipsHtml += `<span class="status-indicator">词库: ${kwCount}</span>`;
+    if (hasDiff) chipsHtml += `<span class="status-indicator">SEO难度: ${data.seoDifficulty.seoDifficulty}</span>`;
     if (prodCount > 0) chipsHtml += `<span class="status-indicator">产品: ${prodCount}</span>`;
     if (adCount > 0) chipsHtml += `<span class="status-indicator">广告: ${adCount}</span>`;
     if (paaCount > 0) chipsHtml += `<span class="status-indicator">PAA: ${paaCount}</span>`;

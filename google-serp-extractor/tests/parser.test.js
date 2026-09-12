@@ -20,6 +20,8 @@ const {
   extractSponsoredAds,
   extractAiOverview,
   extractDiscussions,
+  extractSeoDifficulty,
+  assessPluginReadiness,
   parseCurrentPage
 } = require('../content/parser.js');
 
@@ -101,12 +103,24 @@ class MockElement {
       if (tagPart && tagPart !== '*' && this.tagName.toLowerCase() !== tagPart.toLowerCase()) {
         return false;
       }
-      if (attrPart.includes('=')) {
-        const [k, v] = attrPart.replace(/[\[\]"]/g, '').split('=');
+      const raw = attrPart.replace(/[\[\]"]/g, '');
+      if (raw.includes('*=')) {
+        const [k, v] = raw.split('*=');
+        return Boolean(this.attributes[k] && this.attributes[k].includes(v));
+      }
+      if (raw.includes('^=')) {
+        const [k, v] = raw.split('^=');
+        return Boolean(this.attributes[k] && this.attributes[k].startsWith(v));
+      }
+      if (raw.includes('$=')) {
+        const [k, v] = raw.split('$=');
+        return Boolean(this.attributes[k] && this.attributes[k].endsWith(v));
+      }
+      if (raw.includes('=')) {
+        const [k, v] = raw.split('=');
         return this.attributes[k] === v;
       }
-      const attrName = attrPart.replace(/[\[\]]/g, '');
-      return Boolean(this.attributes[attrName]);
+      return Boolean(this.attributes[raw]);
     }
     if (sel.startsWith('.')) {
       const cls = sel.slice(1);
@@ -362,6 +376,99 @@ describe('7. Multi-Module Exporter (CSV & TSV)', () => {
     const tsv = keywordsToTsv(kws);
     assert.strictEqual(tsv.includes('ai detector free\t'), true);
     assert.strictEqual(tsv.includes('推荐关键词 (Keyword)'), true);
+  });
+});
+
+describe('8. Keywords Everywhere Widgets & SEO Difficulty (User Uploaded Images)', () => {
+  it('should extract SEO Difficulty card matching screenshot metrics', () => {
+    const doc = new MockDocument(
+      new MockElement('div', {}, '', [
+        new MockElement('div', { id: 'xt-difficulty-root' },
+          'SEO Difficulty 56/100 Brand Query No Off-Page Difficulty 56/100 On-Page Difficulty 55/100'
+        ),
+        new MockElement('div', { id: 'xt-trend-chart-root' },
+          'Trend Data For ai photo detector (Global)'
+        )
+      ])
+    );
+
+    const diff = extractSeoDifficulty(doc);
+    assert.strictEqual(diff.hasDifficulty, true);
+    assert.strictEqual(diff.seoDifficulty, '56/100');
+    assert.strictEqual(diff.brandQuery, 'No');
+    assert.strictEqual(diff.offPageDifficulty, '56/100');
+    assert.strictEqual(diff.onPageDifficulty, '55/100');
+    assert.strictEqual(diff.trendTitle, 'Trend Data For ai photo detector (Global)');
+  });
+
+  it('should extract Long-Tail & Trending keywords from KE widgets', () => {
+    const doc = new MockDocument(
+      new MockElement('div', {}, '', [
+        new MockElement('div', { id: 'xt-google-ltkwid' }, '', [
+          new MockElement('a', { href: 'https://www.google.com/search?q=ai+photo+detector+free' }, 'ai photo detector free'),
+          new MockElement('a', { href: 'https://www.google.com/search?q=ai+photo+detector+remover' }, 'ai photo detector remover'),
+          new MockElement('a', { href: 'https://www.google.com/search?q=ai+photo+detector+bypass' }, 'ai photo detector bypass')
+        ]),
+        new MockElement('div', { id: 'xt-google-trenkw' }, '', [
+          new MockElement('a', { href: 'https://www.google.com/search?q=ai+image+humanizer' }, 'ai image humanizer'),
+          new MockElement('a', { href: 'https://www.google.com/search?q=humanizer' }, 'humanizer')
+        ])
+      ])
+    );
+
+    const kws = extractRelatedKeywords(doc);
+    const lt = kws.filter(k => k.source.includes('Long-Tail'));
+    const tren = kws.filter(k => k.source.includes('Trending'));
+
+    assert.strictEqual(lt.length, 3);
+    assert.strictEqual(lt[0].keyword, 'ai photo detector free');
+    assert.strictEqual(tren.length, 2);
+    assert.strictEqual(tren[0].keyword, 'ai image humanizer');
+  });
+});
+
+describe('9. Plugin Readiness and Decoupled Safety', () => {
+  it('should identify NO_PLUGINS state when neither AITDK nor KE is installed', () => {
+    const doc = new MockDocument(new MockElement('div', {}, ''));
+    const items = [{ rank: 1, aitdkReady: false, keReady: false }];
+    const readiness = assessPluginReadiness(doc, items);
+
+    assert.strictEqual(readiness.state, 'NO_PLUGINS');
+    assert.strictEqual(readiness.isSettled, true);
+    assert.strictEqual(readiness.aitdk.detected, false);
+    assert.strictEqual(readiness.ke.detected, false);
+  });
+
+  it('should identify LOADING state when AITDK shows loading spinners', () => {
+    const doc = new MockDocument(
+      new MockElement('div', {}, '', [
+        new MockElement('div', { class: 'aitdk-site-metrics-container' }, '', [
+          new MockElement('span', { class: 'aitdk-dots-loading' }, '...')
+        ])
+      ])
+    );
+    const items = [{ rank: 1, aitdkReady: false, keReady: false }];
+    const readiness = assessPluginReadiness(doc, items);
+
+    assert.strictEqual(readiness.state, 'LOADING');
+    assert.strictEqual(readiness.isSettled, false);
+    assert.strictEqual(readiness.aitdk.detected, true);
+  });
+
+  it('should identify READY state when metrics have loaded', () => {
+    const doc = new MockDocument(
+      new MockElement('div', {}, '', [
+        new MockElement('div', { class: 'aitdk-site-metrics' }, 'Monthly Visits: 20M'),
+        new MockElement('div', { class: 'xt-google-domain-link-metrics' }, 'MOZ DA: 50')
+      ])
+    );
+    const items = [{ rank: 1, aitdkReady: true, keReady: true }];
+    const readiness = assessPluginReadiness(doc, items);
+
+    assert.strictEqual(readiness.state, 'READY');
+    assert.strictEqual(readiness.isSettled, true);
+    assert.strictEqual(readiness.aitdk.loadedCount, 1);
+    assert.strictEqual(readiness.ke.loadedCount, 1);
   });
 });
 
