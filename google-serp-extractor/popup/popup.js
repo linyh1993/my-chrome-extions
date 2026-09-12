@@ -62,11 +62,11 @@ async function initPopup() {
       showToast('暂无可导出的数据');
       return;
     }
-    const json = globalThis.GseExporter.itemsToJson(currentData.items);
+    const json = globalThis.GseExporter.itemsToJson(currentData);
     const q = (currentData.query || 'google_serp').replace(/[^\w\u4e00-\u9fa5\-]/g, '_');
-    const filename = `SERP_${q}_${new Date().toISOString().slice(0,10)}.json`;
+    const filename = `SERP_Full_${q}_${new Date().toISOString().slice(0,10)}.json`;
     globalThis.GseExporter.downloadFile(json, filename, 'application/json;charset=utf-8;');
-    showToast(`✅ 已导出 ${filename}`);
+    showToast(`✅ 已导出全量 JSON 数据！`);
   });
 
   document.getElementById('btn-open-modal').addEventListener('click', async () => {
@@ -111,8 +111,19 @@ function renderData(data) {
   statusTag.className = 'status-indicator ready';
 
   queryText.textContent = data.query || '(未命名查询)';
+
+  const statsMetaText = document.getElementById('stats-meta-text');
+  if (statsMetaText) {
+    if (data.resultStats && data.resultStats.raw) {
+      statsMetaText.textContent = `📊 ${data.resultStats.raw}`;
+      statsMetaText.style.display = 'block';
+    } else {
+      statsMetaText.style.display = 'none';
+    }
+  }
+
   if (data.pageVolumeInfo) {
-    volumeText.textContent = `📊 ${data.pageVolumeInfo}`;
+    volumeText.textContent = `📈 ${data.pageVolumeInfo}`;
     volumeText.style.display = 'block';
   } else {
     volumeText.style.display = 'none';
@@ -121,6 +132,24 @@ function renderData(data) {
   statTotal.textContent = data.totalFound || 0;
   statAitdk.textContent = data.aitdkReadyCount || 0;
   statKe.textContent = data.keReadyCount || 0;
+
+  // Render module count chips
+  const chipsContainer = document.getElementById('modules-chips');
+  if (chipsContainer) {
+    const kwCount = (data.relatedKeywords || []).length;
+    const prodCount = (data.relatedProducts || []).length;
+    const adCount = (data.sponsoredAds || []).length;
+    const paaCount = (data.peopleAlsoAsk || []).length;
+    const hasAi = Boolean(data.aiOverview?.hasAiOverview);
+
+    let chipsHtml = '';
+    if (kwCount > 0) chipsHtml += `<span class="status-indicator">词库: ${kwCount}</span>`;
+    if (prodCount > 0) chipsHtml += `<span class="status-indicator">产品: ${prodCount}</span>`;
+    if (adCount > 0) chipsHtml += `<span class="status-indicator">广告: ${adCount}</span>`;
+    if (paaCount > 0) chipsHtml += `<span class="status-indicator">PAA: ${paaCount}</span>`;
+    if (hasAi) chipsHtml += `<span class="status-indicator ready">AI 概览</span>`;
+    chipsContainer.innerHTML = chipsHtml;
+  }
 
   const items = data.items || [];
   previewCount.textContent = `${items.length} 项`;

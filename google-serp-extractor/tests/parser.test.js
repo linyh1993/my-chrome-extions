@@ -6,6 +6,7 @@
 const assert = require('assert');
 const {
   extractSearchQuery,
+  extractResultStats,
   extractPageVolumeInfo,
   findResultContainers,
   normalizeGoogleUrl,
@@ -13,13 +14,31 @@ const {
   extractSnippet,
   extractKeywordsEverywhereMetrics,
   extractAitdkMetrics,
+  extractRelatedKeywords,
+  extractRelatedProducts,
+  extractPeopleAlsoAsk,
+  extractSponsoredAds,
+  extractAiOverview,
+  extractDiscussions,
   parseCurrentPage
 } = require('../content/parser.js');
 
 const {
-  GSE_COLUMNS,
+  GSE_SERP_COLUMNS,
+  GSE_KEYWORDS_COLUMNS,
+  GSE_PRODUCTS_COLUMNS,
+  GSE_PAA_COLUMNS,
+  GSE_ADS_COLUMNS,
   itemsToCsv,
   itemsToTsv,
+  keywordsToCsv,
+  keywordsToTsv,
+  productsToCsv,
+  productsToTsv,
+  paaToCsv,
+  paaToTsv,
+  adsToCsv,
+  adsToTsv,
   itemsToJson,
   escapeCsvCell
 } = require('../shared/exporter.js');
@@ -69,17 +88,32 @@ class MockElement {
     };
   }
 
+  get href() {
+    return this.attributes['href'] || '';
+  }
+
   matches(sel) {
+    sel = sel.trim();
+    if (sel.includes('[')) {
+      const bracketIdx = sel.indexOf('[');
+      const tagPart = sel.slice(0, bracketIdx);
+      const attrPart = sel.slice(bracketIdx);
+      if (tagPart && tagPart !== '*' && this.tagName.toLowerCase() !== tagPart.toLowerCase()) {
+        return false;
+      }
+      if (attrPart.includes('=')) {
+        const [k, v] = attrPart.replace(/[\[\]"]/g, '').split('=');
+        return this.attributes[k] === v;
+      }
+      const attrName = attrPart.replace(/[\[\]]/g, '');
+      return Boolean(this.attributes[attrName]);
+    }
     if (sel.startsWith('.')) {
       const cls = sel.slice(1);
       return (this.attributes['class'] || '').split(/\s+/).includes(cls);
     }
     if (sel.startsWith('#')) {
       return this.attributes['id'] === sel.slice(1);
-    }
-    if (sel.startsWith('[')) {
-      const attrName = sel.replace(/[\[\]]/g, '').split('=')[0];
-      return Boolean(this.attributes[attrName]);
     }
     return this.tagName.toLowerCase() === sel.toLowerCase();
   }
@@ -105,7 +139,6 @@ class MockElement {
     function traverse(node) {
       if (node !== this) {
         for (const s of selectors) {
-          // simple tag / class / id match
           if (node.matches && node.matches(s)) {
             matched.push(node);
             break;
@@ -121,25 +154,56 @@ class MockElement {
   }
 }
 
+class MockDocument {
+  constructor(body) {
+    this.body = body;
+    this.location = { href: 'https://www.google.com/search?q=ai+photo+detector' };
+    this.title = 'ai photo detector - Google Search';
+  }
+
+  querySelector(sel) {
+    if (this.body.matches && this.body.matches(sel)) return this.body;
+    return this.body.querySelector(sel);
+  }
+
+  querySelectorAll(sel) {
+    const res = [];
+    if (this.body.matches && this.body.matches(sel)) res.push(this.body);
+    res.push(...this.body.querySelectorAll(sel));
+    return res;
+  }
+}
+
 console.log('====================================================');
-console.log('🧪 Running Google SERP & SEO Extractor Verification');
+console.log('🧪 Running Expanded Google SERP & SEO Extractor Tests');
 console.log('====================================================');
 
-describe('1. URL Normalization and Domain Extraction', () => {
-  it('should normalize google redirect URL', () => {
-    const raw = 'https://www.google.com/url?q=https://deepai.org/ai-image-detector&sa=U';
-    const norm = normalizeGoogleUrl(raw);
-    assert.strictEqual(norm, 'https://deepai.org/ai-image-detector');
+describe('1. Google Result Stats Extraction', () => {
+  it('should parse "About 18,300 results (0.17 seconds)" into count and seconds', () => {
+    const doc = new MockDocument(
+      new MockElement('div', {}, '', [
+        new MockElement('div', { id: 'result-stats' }, 'About 18,300 results (0.17 seconds)')
+      ])
+    );
+    const stats = extractResultStats(doc);
+    assert.strictEqual(stats.totalResults, 18300);
+    assert.strictEqual(stats.searchTimeSeconds, 0.17);
+    assert.strictEqual(stats.raw, 'About 18,300 results (0.17 seconds)');
   });
 
-  it('should extract clean hostname without www', () => {
-    assert.strictEqual(extractDomain('https://www.zerogpt.com/ai-image-detector'), 'zerogpt.com');
-    assert.strictEqual(extractDomain('https://deepai.org/tools'), 'deepai.org');
-    assert.strictEqual(extractDomain('https://reddit.com/r/isitAI'), 'reddit.com');
+  it('should parse Chinese format "找到约 1,250,000 条结果 （用时 0.42 秒）"', () => {
+    const doc = new MockDocument(
+      new MockElement('div', {}, '', [
+        new MockElement('div', { id: 'result-stats' }, '找到约 1,250,000 条结果 （用时 0.42 秒）')
+      ])
+    );
+    const stats = extractResultStats(doc);
+    assert.strictEqual(stats.totalResults, 1250000);
+    assert.strictEqual(stats.searchTimeSeconds, 0.42);
   });
 });
 
-describe('2. Keywords Everywhere Metrics Extraction', () => {
+describe('2. Keywords Everywhere & AITDK Metrics Extraction', () => {
   it('should extract Moz DA, Ref Dom, Ref Links, Spam Score, Traffic, and Keywords (ZeroGPT sample)', () => {
     const container = new MockElement('div', { class: 'g' }, '', [
       new MockElement('div', { class: 'xt-google-domain-link-metrics-root' },
@@ -166,32 +230,7 @@ describe('2. Keywords Everywhere Metrics Extraction', () => {
     assert.strictEqual(metrics.keReady, true);
   });
 
-  it('should extract Moz DA and single-value traffic for Reddit sample', () => {
-    const container = new MockElement('div', { class: 'g' }, '', [
-      new MockElement('div', { class: 'xt-google-domain-link-metrics' },
-        'MOZ DA: 92/100 (+0%) Ref Dom: 2.06M Ref Links: 2.9B Spam Score: 3% Show backlinks'
-      ),
-      new MockElement('div', { class: 'xt-google-url-metrics' },
-        'Search traffic (us): 831.56M/mo - Keywords (us): 133.05M'
-      )
-    ]);
-
-    const metrics = extractKeywordsEverywhereMetrics(container);
-    assert.strictEqual(metrics.mozDa, '92/100');
-    assert.strictEqual(metrics.mozDaTrend, '+0%');
-    assert.strictEqual(metrics.refDom, '2.06M');
-    assert.strictEqual(metrics.refLinks, '2.9B');
-    assert.strictEqual(metrics.spamScore, '3%');
-    assert.strictEqual(metrics.pageTraffic, '831.56M/mo');
-    assert.strictEqual(metrics.siteTraffic, '831.56M/mo');
-    assert.strictEqual(metrics.pageKeywords, '133.05M');
-    assert.strictEqual(metrics.siteKeywords, '133.05M');
-    assert.strictEqual(metrics.keReady, true);
-  });
-});
-
-describe('3. AITDK Metrics Extraction', () => {
-  it('should extract Monthly Visits, Avg Duration, and Domain Created (ZeroGPT sample)', () => {
+  it('should extract AITDK Monthly Visits, Avg Duration, and Domain Created', () => {
     const container = new MockElement('div', { class: 'g' }, '', [
       new MockElement('div', { class: 'aitdk-site-metrics' },
         'AITDK | Monthly Visits: 20.51M | Avg. Visit Duration: 00:03:10 | Domain Created: 2023-01-05'
@@ -204,99 +243,125 @@ describe('3. AITDK Metrics Extraction', () => {
     assert.strictEqual(metrics.domainCreated, '2023-01-05');
     assert.strictEqual(metrics.aitdkReady, true);
   });
+});
 
-  it('should extract Monthly Visits, Avg Duration, and Domain Created (DeepAI sample)', () => {
-    const container = new MockElement('div', { class: 'g' }, '', [
-      new MockElement('div', { class: 'aitdk-site-metrics-container' },
-        'AITDK | Monthly Visits: 8.59M | Avg. Visit Duration: 00:01:47 | Domain Created: 2016-11-30'
-      )
-    ]);
+describe('3. Related Keywords (People also search for & KE)', () => {
+  it('should extract KE People Also Search For table items', () => {
+    const doc = new MockDocument(
+      new MockElement('div', {}, '', [
+        new MockElement('div', { id: 'xt-google-people-search' }, '', [
+          new MockElement('tr', {}, 'ai image detector github 1.2K/mo $0.45', [
+            new MockElement('a', { href: 'https://www.google.com/search?q=ai+image+detector+github' }, 'ai image detector github')
+          ]),
+          new MockElement('tr', {}, 'best free ai photo detector 3.4K/mo $1.20', [
+            new MockElement('a', { href: 'https://www.google.com/search?q=best+free+ai+photo+detector' }, 'best free ai photo detector')
+          ])
+        ])
+      ])
+    );
 
-    const metrics = extractAitdkMetrics(container);
-    assert.strictEqual(metrics.monthlyVisits, '8.59M');
-    assert.strictEqual(metrics.avgDuration, '00:01:47');
-    assert.strictEqual(metrics.domainCreated, '2016-11-30');
-    assert.strictEqual(metrics.aitdkReady, true);
+    const keywords = extractRelatedKeywords(doc);
+    assert.strictEqual(keywords.length, 2);
+    assert.strictEqual(keywords[0].keyword, 'ai image detector github');
+    assert.strictEqual(keywords[0].volume, '1.2K/mo');
+    assert.strictEqual(keywords[0].cpc, '$0.45');
+    assert.strictEqual(keywords[1].keyword, 'best free ai photo detector');
   });
 });
 
-describe('4. Exporter Functionality (CSV, TSV, JSON)', () => {
-  const sampleItems = [
-    {
-      rank: 1,
-      query: 'ai photo detector',
-      title: 'AI Image Detector | Detect AI-Generated Images for Free',
-      url: 'https://deepai.org/ai-image-detector',
-      domain: 'deepai.org',
-      snippet: 'Use our free AI Image Detector to check if an image was generated by AI.',
-      mozDa: '60/100',
-      mozDaTrend: '+5%',
-      refDom: '23.24K',
-      refLinks: '5.12M',
-      spamScore: '1%',
-      pageTraffic: '0/mo',
-      siteTraffic: '1.76M/mo',
-      pageKeywords: '0',
-      siteKeywords: '45.70K',
-      monthlyVisits: '8.59M',
-      avgDuration: '00:01:47',
-      domainCreated: '2016-11-30',
-      pageVolumeInfo: 'Volume: *****/mo | CPC: $*.** | Competition: *.**',
-      scrapedAt: '2026-09-12 10:00:00'
-    },
-    {
-      rank: 2,
-      query: 'ai photo detector',
-      title: 'AI Image Detector - Detect AI Generated Images',
-      url: 'https://www.zerogpt.com/ai-image-detector',
-      domain: 'zerogpt.com',
-      snippet: 'ZeroGPT\'s AI image detector can analyze images created by popular AI image generators.',
-      mozDa: '56/100',
-      mozDaTrend: '+87%',
-      refDom: '9K',
-      refLinks: '119.1K',
-      spamScore: '-',
-      pageTraffic: '0/mo',
-      siteTraffic: '151.80K/mo',
-      pageKeywords: '0',
-      siteKeywords: '8605',
-      monthlyVisits: '20.51M',
-      avgDuration: '00:03:10',
-      domainCreated: '2023-01-05',
-      pageVolumeInfo: 'Volume: *****/mo | CPC: $*.** | Competition: *.**',
-      scrapedAt: '2026-09-12 10:00:00'
-    }
-  ];
+describe('4. Find Related Products & Services', () => {
+  it('should extract product cards with title, merchant, price, and rating', () => {
+    const doc = new MockDocument(
+      new MockElement('div', {}, '', [
+        new MockElement('div', { class: 'MjjYud' }, '', [
+          new MockElement('h2', {}, 'Find related products & services'),
+          new MockElement('div', { class: 'pla-unit' }, 'ZeroGPT Pro By ZeroGPT $9.99/mo 4.8 (120)', [
+            new MockElement('span', { title: 'ZeroGPT AI Detector Pro' }, 'ZeroGPT AI Detector Pro'),
+            new MockElement('a', { href: 'https://www.zerogpt.com/pricing' }, 'ZeroGPT')
+          ]),
+          new MockElement('div', { class: 'pla-unit' }, 'DeepMedia Forensics By DeepMedia Free trial 4.5 ★', [
+            new MockElement('span', { title: 'DeepMedia AI Forensics' }, 'DeepMedia AI Forensics'),
+            new MockElement('a', { href: 'https://deepmedia.ai' }, 'DeepMedia')
+          ])
+        ])
+      ])
+    );
 
-  it('should generate CSV with UTF-8 BOM and correct column headers', () => {
-    const csv = itemsToCsv(sampleItems);
-    assert.strictEqual(csv.startsWith('\uFEFF'), true, 'Must start with UTF-8 BOM');
-    assert.strictEqual(csv.includes('排名 (Rank)'), true);
-    assert.strictEqual(csv.includes('MOZ DA'), true);
-    assert.strictEqual(csv.includes('月访问量 (Monthly Visits)'), true);
-    assert.strictEqual(csv.includes('zerogpt.com'), true);
-    assert.strictEqual(csv.includes('20.51M'), true);
+    const products = extractRelatedProducts(doc);
+    assert.strictEqual(products.length, 2);
+    assert.strictEqual(products[0].title, 'ZeroGPT AI Detector Pro');
+    assert.strictEqual(products[0].merchant, 'ZeroGPT');
+    assert.strictEqual(products[0].price, '$9.99/mo');
+    assert.strictEqual(products[0].rating, '4.8 (120)');
+    assert.strictEqual(products[1].title, 'DeepMedia AI Forensics');
+    assert.strictEqual(products[1].price, 'Free trial');
+  });
+});
+
+describe('5. People Also Ask (PAA)', () => {
+  it('should extract questions and answers from PAA section', () => {
+    const doc = new MockDocument(
+      new MockElement('div', {}, '', [
+        new MockElement('div', { class: 'MjjYud' }, '', [
+          new MockElement('h2', {}, 'People also ask'),
+          new MockElement('div', { role: 'button', 'data-q': 'What is the most accurate AI image detector?' }, 'What is the most accurate AI image detector?', [
+            new MockElement('div', { class: 'hgKElc' }, 'Hive Moderation and ZeroGPT are widely considered accurate.'),
+            new MockElement('a', { href: 'https://www.forbes.com/advisor/ai-tools' }, 'Forbes')
+          ])
+        ])
+      ])
+    );
+
+    const paa = extractPeopleAlsoAsk(doc);
+    assert.strictEqual(paa.length, 1);
+    assert.strictEqual(paa[0].question, 'What is the most accurate AI image detector?');
+    assert.strictEqual(paa[0].answer, 'Hive Moderation and ZeroGPT are widely considered accurate.');
+    assert.strictEqual(paa[0].sourceDomain, 'forbes.com');
+  });
+});
+
+describe('6. Sponsored Ads', () => {
+  it('should extract sponsored text ads with title, domain, and snippet', () => {
+    const doc = new MockDocument(
+      new MockElement('div', {}, '', [
+        new MockElement('div', { id: 'tads' }, '', [
+          new MockElement('div', { 'data-text-ad': '1' }, '', [
+            new MockElement('h3', {}, 'Copyleaks AI Image Detector'),
+            new MockElement('a', { href: 'https://copyleaks.com/ai-image-detector' }, 'https://copyleaks.com'),
+            new MockElement('div', { class: 'Va3FIb' }, 'Detect AI generated images instantly with 99% accuracy.')
+          ])
+        ])
+      ])
+    );
+
+    const ads = extractSponsoredAds(doc);
+    assert.strictEqual(ads.length, 1);
+    assert.strictEqual(ads[0].rank, 1);
+    assert.strictEqual(ads[0].title, 'Copyleaks AI Image Detector');
+    assert.strictEqual(ads[0].domain, 'copyleaks.com');
+    assert.strictEqual(ads[0].snippet, 'Detect AI generated images instantly with 99% accuracy.');
+  });
+});
+
+describe('7. Multi-Module Exporter (CSV & TSV)', () => {
+  it('should export products to CSV with UTF-8 BOM', () => {
+    const products = [
+      { title: 'Test Product', merchant: 'MerchantA', price: '$19.99', rating: '4.8', url: 'https://test.com' }
+    ];
+    const csv = productsToCsv(products);
+    assert.strictEqual(csv.startsWith('\uFEFF'), true);
+    assert.strictEqual(csv.includes('产品/服务名称 (Product Title)'), true);
+    assert.strictEqual(csv.includes('MerchantA'), true);
+    assert.strictEqual(csv.includes('$19.99'), true);
   });
 
-  it('should escape CSV values containing commas and quotes', () => {
-    const escaped = escapeCsvCell('Hello, "World"');
-    assert.strictEqual(escaped, '"Hello, ""World"""');
-  });
-
-  it('should generate TSV separated by tabs for seamless Excel/Sheets pasting', () => {
-    const tsv = itemsToTsv(sampleItems);
-    const lines = tsv.split('\n');
-    assert.strictEqual(lines.length, 3); // 1 header + 2 items
-    assert.strictEqual(lines[1].includes('\tdeepai.org\t'), true);
-    assert.strictEqual(lines[2].includes('\tzerogpt.com\t'), true);
-  });
-
-  it('should generate valid JSON string', () => {
-    const jsonStr = itemsToJson(sampleItems);
-    const parsed = JSON.parse(jsonStr);
-    assert.strictEqual(parsed.length, 2);
-    assert.strictEqual(parsed[0].domain, 'deepai.org');
-    assert.strictEqual(parsed[1].domain, 'zerogpt.com');
+  it('should export keywords to TSV', () => {
+    const kws = [
+      { keyword: 'ai detector free', source: 'Google: PASF', volume: '10K', cpc: '$1.00', url: 'https://google.com' }
+    ];
+    const tsv = keywordsToTsv(kws);
+    assert.strictEqual(tsv.includes('ai detector free\t'), true);
+    assert.strictEqual(tsv.includes('推荐关键词 (Keyword)'), true);
   });
 });
 

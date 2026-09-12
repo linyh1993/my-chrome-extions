@@ -24,6 +24,7 @@
     <div class="query-card" id="query-card">
       <div class="query-label">当前搜索词：</div>
       <div class="query-text" id="query-text">正在识别...</div>
+      <div class="stats-meta" id="stats-meta-text" style="font-size: 11px; color: #64748b; margin-top: 3px;"></div>
       <div class="volume-text" id="volume-text"></div>
     </div>
 
@@ -31,7 +32,7 @@
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-num" id="stat-total">0</div>
-        <div class="stat-title">搜索结果项</div>
+        <div class="stat-title">自然结果</div>
       </div>
       <div class="stat-card">
         <div class="stat-num stat-aitdk" id="stat-aitdk">0</div>
@@ -41,6 +42,11 @@
         <div class="stat-num stat-ke" id="stat-ke">0</div>
         <div class="stat-title">KE 关键词数据</div>
       </div>
+    </div>
+
+    <!-- Modules Chips -->
+    <div id="modules-chips" style="display: flex; gap: 4px; flex-wrap: wrap; font-size: 11px;">
+      <!-- populated dynamically -->
     </div>
 
     <!-- Actions -->
