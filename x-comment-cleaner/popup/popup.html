@@ -51,15 +51,19 @@
 
     <!-- Auto-block Settings -->
     <div class="section">
-      <div class="section-title">拉黑策略</div>
+      <div class="section-title">拉黑策略与防封流控</div>
       <div class="filter-toggles">
         <label class="checkbox-row">
           <input type="checkbox" id="autoBlockToggle" checked>
           <div class="checkbox-info">
             <span class="checkbox-text"><b>自动开启原生拉黑</b></span>
-            <span class="checkbox-sub">识别出垃圾评论后自动调用 X 原生接口拉黑该账号（全端生效）</span>
+            <span class="checkbox-sub">识别垃圾评论后通过 X 官方接口真实拉黑（全端同步生效）</span>
           </div>
         </label>
+        <div class="rate-limit-badge">
+          <span class="badge-icon">🛡️</span>
+          <span><b>防封流控机制已开启</b>：单次请求安全间隔 2.5s~4.5s 随机浮动，遇到 429 自动冷却退避，杜绝被风控封号</span>
+        </div>
       </div>
     </div>
 

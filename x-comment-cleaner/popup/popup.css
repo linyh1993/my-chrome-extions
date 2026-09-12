@@ -413,3 +413,26 @@ input:checked + .slider:before {
 .version {
   color: #536471;
 }
+
+.rate-limit-badge {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  background-color: rgba(29, 155, 240, 0.08);
+  border: 1px solid rgba(29, 155, 240, 0.2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #71767b;
+  font-size: 11px;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
+.rate-limit-badge b {
+  color: #1d9bf0;
+}
+
+.badge-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}

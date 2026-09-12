@@ -63,14 +63,22 @@
     }
   }
 
-  async function runNativeAction(type, userId) {
+  async function runNativeAction(type, target, isScreenName = false) {
     const csrf = readCsrfToken();
-    if (!csrf) return { ok: false, error: '未读取到 ct0 会话，请确认已登录 X' };
+    if (!csrf) {
+      console.warn('[X Cleaner] 未检测到登录会话 cookie (ct0)，请确保已登录 X/Twitter 账号');
+      return { ok: false, error: '未读取到 ct0 会话，请确认已登录 X' };
+    }
     const endpoint = type === 'block'
       ? 'https://x.com/i/api/1.1/blocks/create.json'
       : 'https://x.com/i/api/1.1/blocks/destroy.json';
 
+    const body = isScreenName
+      ? `screen_name=${encodeURIComponent(target)}`
+      : `user_id=${encodeURIComponent(target)}`;
+
     try {
+      console.log(`[X Cleaner] 发起官方 ${type === 'block' ? '拉黑' : '解封'} API 请求 -> ${endpoint} (${body})`);
       const res = await fetch(endpoint, {
         method: 'POST',
         credentials: 'include',
@@ -81,26 +89,61 @@
           'X-Twitter-Active-User': 'yes',
           'X-Csrf-Token': csrf
         },
-        body: `user_id=${encodeURIComponent(userId)}`
+        body
       });
-      if (res.ok) return { ok: true };
-      if (res.status === 429) return { ok: false, error: '操作过快限流 (429)' };
-      return { ok: false, error: `HTTP ${res.status}` };
+
+      if (res.ok) {
+        console.log(`[X Cleaner] 接口请求成功: ${type === 'block' ? '拉黑' : '解封'} ${target} (HTTP ${res.status})`);
+        return { ok: true, status: res.status };
+      }
+      if (res.status === 429) {
+        console.warn(`[X Cleaner] 触发 X 官方频率限制 (HTTP 429): ${target}`);
+        return { ok: false, status: 429, error: '操作过快限流 (429)' };
+      }
+
+      const errText = await res.text().catch(() => '');
+      console.warn(`[X Cleaner] X 接口返回异常 HTTP ${res.status}:`, errText);
+      return { ok: false, status: res.status, error: `HTTP ${res.status}: ${errText}` };
     } catch (e) {
+      console.error(`[X Cleaner] 接口网络请求异常:`, e);
       return { ok: false, error: e.message || '网络请求异常' };
     }
   }
 
   async function blockUser(handle) {
-    const userId = await resolveUserIdByHandle(handle);
-    if (!userId) return { ok: false, error: '无法解析账号 ID' };
-    return runNativeAction('block', userId);
+    const norm = (handle || '').trim().replace(/^@+/, '').toLowerCase();
+    if (!norm) return { ok: false, error: '账号为空' };
+
+    // 优先尝试 UserByScreenName 解析 rest_id
+    let userId = userIdCache.get(norm);
+    if (!userId) {
+      userId = await resolveUserIdByHandle(norm);
+    }
+
+    if (userId) {
+      const res = await runNativeAction('block', userId, false);
+      if (res.ok || res.status === 429) return res;
+    }
+
+    // 若 GraphQL 解析未命中或失败，降级直接使用 screen_name 提交拉黑
+    return runNativeAction('block', norm, true);
   }
 
   async function unblockUser(handle) {
-    const userId = await resolveUserIdByHandle(handle);
-    if (!userId) return { ok: false, error: '无法解析账号 ID' };
-    return runNativeAction('unblock', userId);
+    const norm = (handle || '').trim().replace(/^@+/, '').toLowerCase();
+    if (!norm) return { ok: false, error: '账号为空' };
+
+    let userId = userIdCache.get(norm);
+    if (!userId) {
+      userId = await resolveUserIdByHandle(norm);
+    }
+
+    if (userId) {
+      const res = await runNativeAction('unblock', userId, false);
+      if (res.ok || res.status === 429) return res;
+    }
+
+    return runNativeAction('unblock', norm, true);
   }
 
   const XActionAdapter = {

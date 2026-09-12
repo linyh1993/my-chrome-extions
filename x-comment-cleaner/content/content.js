@@ -14,6 +14,7 @@
     enabled: true,
     hideMode: 'collapse',
     autoBlock: true,
+    autoBlockInterval: 3000,
     filterKeywords: true,
     filterHomophones: true,
     filterPureNumbers: true,
@@ -31,11 +32,35 @@
   const threadTextOccurrences = new Map(); // normalizedText -> Set of author handles
   const threadSimhashTracker = new Map();  // BigInt hash -> Set of author handles
   const blockedHandlesState = new Set();   // handles blocked in current session
-  const pendingBlockHandles = new Set();   // handles currently being blocked
   const manuallyUnblockedHandles = new Set(); // handles unblocked by user in current session
+  const autoBlockQueue = [];               // Anti-ban rate-limited auto-block FIFO queue
+  let isProcessingAutoBlockQueue = false;
+  let queueCooldownUntil = 0;              // 429 Rate-limit cooldown timestamp
   const clusterExpandedState = new Map();  // clusterKey -> boolean
   let isScanning = false;
   let scanDebounceTimer = null;
+
+  // Load cached blocked accounts from local storage to sync across tabs
+  chrome.storage.local.get(['blockedAccountsCache'], (data) => {
+    if (chrome.runtime.lastError) return;
+    const list = Array.isArray(data.blockedAccountsCache) ? data.blockedAccountsCache : [];
+    for (const item of list) {
+      const h = typeof item === 'string' ? item : item.handle;
+      if (h) blockedHandlesState.add(normalizeHandleFn(h));
+    }
+  });
+
+  // Listen for cross-tab blocked accounts cache updates
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.blockedAccountsCache) {
+      const list = Array.isArray(changes.blockedAccountsCache.newValue) ? changes.blockedAccountsCache.newValue : [];
+      for (const item of list) {
+        const h = typeof item === 'string' ? item : item.handle;
+        if (h) blockedHandlesState.add(normalizeHandleFn(h));
+      }
+      scheduleScan(50);
+    }
+  });
 
   // 1. Storage & Settings Sync
   chrome.storage.sync.get(null, (stored) => {
@@ -188,28 +213,99 @@
     });
   }
 
-  function triggerAutoBlock(handle) {
+  function recordBlockedAccount(handle, reason = '') {
+    const norm = normalizeHandleFn(handle);
+    if (!norm) return;
+    chrome.storage.local.get(['blockedAccountsCache'], (data) => {
+      const list = Array.isArray(data.blockedAccountsCache) ? data.blockedAccountsCache : [];
+      if (!list.some(item => (typeof item === 'string' ? item : item.handle) === norm)) {
+        list.unshift({ handle: norm, reason, time: Date.now() });
+        if (list.length > 500) list.length = 500;
+        chrome.storage.local.set({ blockedAccountsCache: list });
+      }
+    });
+  }
+
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function triggerAutoBlock(handle, reason = '') {
     if (!currentSettings.autoBlock) return;
     const norm = normalizeHandleFn(handle);
     if (!norm) return;
-    if (blockedHandlesState.has(norm) || pendingBlockHandles.has(norm) || manuallyUnblockedHandles.has(norm)) return;
 
-    pendingBlockHandles.add(norm);
-    (async () => {
-      try {
-        if (typeof xAdapter.blockUser === 'function') {
-          const res = await xAdapter.blockUser(norm);
-          if (res && res.ok) {
-            blockedHandlesState.add(norm);
-            scheduleScan(50);
-          }
+    if (blockedHandlesState.has(norm) || manuallyUnblockedHandles.has(norm)) return;
+    if (currentSettings.whitelist && currentSettings.whitelist.includes(norm)) return;
+    if (autoBlockQueue.some(task => task.handle === norm)) return;
+
+    autoBlockQueue.push({ handle: norm, reason });
+    console.log(`[X Cleaner] 发现垃圾 Bot @${norm}，已推入防封拉黑队列 (待处理: ${autoBlockQueue.length})`);
+
+    processAutoBlockQueue();
+  }
+
+  async function processAutoBlockQueue() {
+    if (isProcessingAutoBlockQueue) return;
+    isProcessingAutoBlockQueue = true;
+
+    try {
+      while (autoBlockQueue.length > 0) {
+        if (!currentSettings.autoBlock) {
+          autoBlockQueue.length = 0;
+          break;
         }
-      } catch (err) {
-        console.warn('[X Cleaner] 自动拉黑执行异常:', norm, err);
-      } finally {
-        pendingBlockHandles.delete(norm);
+
+        // 检查 429 限流冷却
+        if (Date.now() < queueCooldownUntil) {
+          const waitMs = queueCooldownUntil - Date.now();
+          console.warn(`[X Cleaner] 正在频率限流冷却退避中，等待 ${Math.ceil(waitMs / 1000)} 秒后恢复自动拉黑...`);
+          await sleep(Math.min(waitMs, 5000));
+          continue;
+        }
+
+        const task = autoBlockQueue.shift();
+        if (!task) break;
+
+        const norm = task.handle;
+        if (blockedHandlesState.has(norm) || manuallyUnblockedHandles.has(norm)) {
+          continue;
+        }
+
+        console.log(`[X Cleaner] 防封流控：正在向 X 官方接口发送真实拉黑请求: @${norm}...`);
+        const res = await xAdapter.blockUser(norm);
+
+        if (res && res.ok) {
+          blockedHandlesState.add(norm);
+          console.log(`[X Cleaner] ✓ 已成功通过接口拉黑账号 @${norm}`);
+          recordBlockedAccount(norm, task.reason);
+          scheduleScan(20);
+        } else if (res && res.status === 429) {
+          console.warn(`[X Cleaner] ⚠️ 触发 X 官方频率限制 (HTTP 429)！为保护账号避免被封，进入 60 秒冷却期，稍后自动重试`);
+          queueCooldownUntil = Date.now() + 60000;
+          autoBlockQueue.unshift(task); // 放回队列头部重试
+          await sleep(5000);
+          continue;
+        } else {
+          console.warn(`[X Cleaner] 接口拉黑 @${norm} 失败:`, res?.error || '未知错误');
+        }
+
+        // 防封核心：严格请求频率保护
+        // 基础安全间隔（默认 3000ms），加上 500ms~2000ms 随机扰动，模拟人类节奏，避免被 Twitter 风控判定为脚本
+        const baseInterval = typeof currentSettings.autoBlockInterval === 'number'
+          ? Math.max(currentSettings.autoBlockInterval, 2000)
+          : 3000;
+        const jitter = Math.floor(Math.random() * 1500) + 500;
+        const delay = baseInterval + jitter;
+
+        console.log(`[X Cleaner] 防封流控：安全等待 ${(delay / 1000).toFixed(1)} 秒后再执行下一个拉黑... (剩余队列: ${autoBlockQueue.length})`);
+        await sleep(delay);
       }
-    })();
+    } catch (err) {
+      console.error('[X Cleaner] 自动拉黑队列处理异常:', err);
+    } finally {
+      isProcessingAutoBlockQueue = false;
+    }
   }
 
   // 4. Timeline Evaluation & Clustering
@@ -283,7 +379,7 @@
           }
 
           if (checkResult.isSpam && authorHandle) {
-            triggerAutoBlock(authorHandle);
+            triggerAutoBlock(authorHandle, checkResult.reason || '');
           }
         }
       }
@@ -323,7 +419,8 @@
 
         const authors = Array.from(new Set(cluster.map(t => t.dataset.xSpamAuthor).filter(Boolean)));
         for (const a of authors) {
-          triggerAutoBlock(a);
+          const matchingTweet = cluster.find(t => t.dataset.xSpamAuthor === a);
+          triggerAutoBlock(a, matchingTweet?.dataset.xSpamReason || '');
         }
         const primaryAuthor = authors[0] || '';
         const isSingleAuthor = authors.length === 1;
@@ -389,6 +486,9 @@
                     const normA = normalizeHandleFn(a);
                     blockedHandlesState.delete(normA);
                     manuallyUnblockedHandles.add(normA);
+                    // 从待拉黑队列中移除
+                    const idx = autoBlockQueue.findIndex(t => t.handle === normA);
+                    if (idx !== -1) autoBlockQueue.splice(idx, 1);
                   }
                 }
               } else {
@@ -398,6 +498,7 @@
                     const normA = normalizeHandleFn(a);
                     blockedHandlesState.add(normA);
                     manuallyUnblockedHandles.delete(normA);
+                    recordBlockedAccount(normA, '手动点击拉黑');
                   }
                 }
               }

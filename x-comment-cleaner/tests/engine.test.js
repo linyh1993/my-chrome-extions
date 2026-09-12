@@ -183,6 +183,7 @@ describe('5. Protection Layers & Whitelist', () => {
 describe('6. Edge Cases & Robustness', () => {
   it('should have autoBlock enabled by default in settings', () => {
     assert.strictEqual(DEFAULT_CLEANER_SETTINGS.autoBlock, true);
+    assert.strictEqual(DEFAULT_CLEANER_SETTINGS.autoBlockInterval, 3000);
   });
 
   it('should safely handle empty or null parameters without throwing', () => {

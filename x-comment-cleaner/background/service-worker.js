@@ -9,6 +9,7 @@ const DEFAULT_SETTINGS = rulesEngine.DEFAULT_CLEANER_SETTINGS || {
   enabled: true,
   hideMode: 'collapse',
   autoBlock: true,
+  autoBlockInterval: 3000,
   filterKeywords: true,
   filterHomophones: true,
   filterPureNumbers: true,
