@@ -353,3 +353,177 @@
 .gse-hidden {
   display: none !important;
 }
+
+/* Capsule Tag */
+.gse-capsule-page-tag {
+  background: #2563eb;
+  color: #ffffff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.gse-badge-sep {
+  margin: 0 3px;
+  opacity: 0.5;
+}
+
+/* Table Cells & Typography */
+.gse-cell-rank {
+  font-weight: 800;
+  text-align: center;
+  color: #1e293b;
+}
+
+.gse-cell-pagerank {
+  text-align: center;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.gse-page-pill {
+  background: #e0f2fe;
+  color: #0369a1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.gse-cell-snippet {
+  max-width: 200px;
+}
+
+.gse-cell-wide {
+  max-width: 380px;
+}
+
+.gse-cell-price {
+  color: #059669;
+  font-weight: 600;
+}
+
+.gse-cell-rating {
+  color: #eab308;
+  font-weight: 600;
+}
+
+.gse-cell-volume {
+  font-weight: 600;
+  color: #0284c7;
+}
+
+.gse-cell-cpc {
+  color: #059669;
+}
+
+.gse-empty-view {
+  padding: 40px;
+  text-align: center;
+  color: #64748b;
+}
+
+/* Difficulty & Trend Card Components */
+.gse-difficulty-container {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.gse-difficulty-heading {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.gse-difficulty-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.gse-diff-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px;
+  text-align: center;
+}
+
+.gse-diff-val {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.gse-diff-val.blue { color: #2563eb; }
+.gse-diff-val.green { color: #059669; }
+.gse-diff-val.amber { color: #d97706; }
+.gse-diff-val.purple { color: #7c3aed; }
+
+.gse-diff-label {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.gse-trend-box {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.gse-trend-heading {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e40af;
+  margin-bottom: 6px;
+}
+
+.gse-trend-desc {
+  font-size: 13px;
+  color: #1e3a8a;
+}
+
+/* AI Overview Components */
+.gse-ai-container {
+  padding: 20px;
+  line-height: 1.6;
+}
+
+.gse-ai-heading {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: #1e3a8a;
+}
+
+.gse-ai-summary-box {
+  background: #f8fafc;
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 16px;
+}
+
+.gse-ai-sources-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.gse-ai-sources-list {
+  padding-left: 20px;
+}
+
+.gse-ai-source-item {
+  margin-bottom: 6px;
+}
+
+.gse-ai-source-domain {
+  color: #64748b;
+  font-size: 11px;
+}
+

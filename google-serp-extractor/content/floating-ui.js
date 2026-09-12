@@ -61,89 +61,60 @@
     let badgeClass = 'pending';
     let badgeText = '';
 
-    const pageTag = `<span style="background: #2563eb; color: #fff; padding: 1px 6px; border-radius: 4px; font-weight: 700; font-size: 11px;">第${pageNum}页</span>`;
+    const sep = '<span class="gse-badge-sep">|</span>';
+    const pageTag = `<span class="gse-capsule-page-tag">第${pageNum}页</span>`;
 
     const pluginList = Object.values(readiness.plugins || {});
-    const pluginBadgesReady = pluginList.map(p => `<span title="${escapeHtml(p.name)} 数据加载数">${p.badgeKey}:${p.loadedCount}</span>`).join('<span style="margin: 0 3px; opacity: 0.5;">|</span>');
-    const pluginBadgesLoading = pluginList.map(p => `<span title="${escapeHtml(p.name)} 加载进度">${p.badgeKey}:${p.loadedCount}/${totalFound}</span>`).join('<span style="margin: 0 3px; opacity: 0.5;">|</span>');
+    const pluginBadgesReady = pluginList.map(p => `<span title="${escapeHtml(p.name)} 数据加载数">${p.badgeKey}:${p.loadedCount}</span>`).join(sep);
+    const pluginBadgesLoading = pluginList.map(p => `<span title="${escapeHtml(p.name)} 加载进度">${p.badgeKey}:${p.loadedCount}/${totalFound}</span>`).join(sep);
 
     if (readiness.state === 'NO_PLUGINS') {
       badgeClass = 'ready';
-      badgeText = `${pageTag} <span style="margin: 0 3px; opacity: 0.5;">|</span> <span>${statsStr}</span> <span style="font-size:10px; opacity:0.7;">(纯净SERP)</span>`;
+      badgeText = `${pageTag} ${sep} <span>${statsStr}</span> <span style="font-size:10px; opacity:0.7;">(纯净SERP)</span>`;
     } else if (readiness.state === 'READY') {
       badgeClass = 'ready';
       badgeText = `
         <span style="color: #059669; font-weight: bold;">🟢 已就绪</span>
-        <span style="margin: 0 3px; opacity: 0.5;">|</span>
+        ${sep}
         ${pageTag}
-        <span style="margin: 0 3px; opacity: 0.5;">|</span>
+        ${sep}
         <span>${statsStr}</span>
-        ${pluginBadgesReady ? `<span style="margin: 0 3px; opacity: 0.5;">|</span>${pluginBadgesReady}` : ''}
+        ${pluginBadgesReady ? `${sep}${pluginBadgesReady}` : ''}
       `;
     } else {
       badgeClass = 'pending';
       badgeText = `
         <span style="color: #d97706; font-weight: bold;">⏳ 插件加载中</span>
-        <span style="margin: 0 3px; opacity: 0.5;">|</span>
+        ${sep}
         ${pageTag}
-        ${pluginBadgesLoading ? `<span style="margin: 0 3px; opacity: 0.5;">|</span>${pluginBadgesLoading}` : ''}
+        ${pluginBadgesLoading ? `${sep}${pluginBadgesLoading}` : ''}
       `;
     }
 
     if (kwCount > 0) {
-      badgeText += `<span style="margin: 0 3px; opacity: 0.5;">|</span><span title="关键词库总数">词:${kwCount}</span>`;
+      badgeText += `${sep}<span title="关键词库总数">词:${kwCount}</span>`;
     }
     if (prodCount > 0) {
-      badgeText += `<span style="margin: 0 3px; opacity: 0.5;">|</span><span title="竞品产品数">品:${prodCount}</span>`;
+      badgeText += `${sep}<span title="竞品产品数">品:${prodCount}</span>`;
     }
 
     const accBtnText = isAccumulateMode
       ? `➕ 累积中 (${itemCount}条${isMultiPage ? ' 跨' + collectedPages.length + '页' : ''})`
       : '➕ 追加模式';
 
-    rootEl.innerHTML = `
-      <div class="gse-toast" id="gse-toast"></div>
-      <div class="gse-capsule ${isMinimized ? 'minimized' : ''}" id="gse-capsule">
-        <div class="gse-brand" id="gse-btn-brand" title="点击切换展开/折叠">
-          <div class="gse-brand-icon">G</div>
-          <span class="gse-brand-title">SERP SEO</span>
-        </div>
+    const badgeTitle = readiness.statusText || currentSerpData.resultStats?.raw || '搜索项与就绪统计';
 
-        ${!isMinimized ? `
-          <div class="gse-badge ${badgeClass}" title="${escapeHtml(readiness.statusText || currentSerpData.resultStats?.raw || '搜索项与就绪统计')}">
-            ${badgeText}
-          </div>
-
-          <div class="gse-divider"></div>
-
-          <button class="gse-btn gse-btn-primary" id="gse-btn-extract" title="立即重新扫描页面提取最新数据">
-            <span>🔄 提取</span>
-          </button>
-
-          <button class="gse-btn gse-btn-success" id="gse-btn-copy" title="复制当前自然搜索结果表格 (TSV格式)">
-            <span>📋 复制表格</span>
-          </button>
-
-          <button class="gse-btn" id="gse-btn-csv" title="下载CSV表格文件 (UTF-8 BOM)">
-            <span>📥 导出CSV</span>
-          </button>
-
-          <button class="gse-btn" id="gse-btn-preview" title="打开全景多Tab数据表格与长尾词/产品预览">
-            <span>👁️ 全景预览</span>
-          </button>
-
-          <button class="gse-btn ${isAccumulateMode ? 'gse-btn-primary' : ''}" id="gse-btn-accumulate" title="跨翻页追加模式: ${isAccumulateMode ? '已开启' : '已关闭'}">
-            <span>${accBtnText}</span>
-          </button>
-        ` : `
-          <div class="gse-badge ${badgeClass}">${statsStr}</div>
-        `}
-
-        <button class="gse-btn gse-btn-icon" id="gse-btn-toggle-min" title="${isMinimized ? '展开' : '折叠'}">
-          <span>${isMinimized ? '◀' : '✕'}</span>
-        </button>
-      </div>
-    `;
+    if (globalThis.GseTemplates?.capsuleTemplate) {
+      rootEl.innerHTML = globalThis.GseTemplates.capsuleTemplate({
+        isMinimized,
+        statsStr,
+        badgeClass,
+        badgeText,
+        badgeTitle,
+        accBtnText,
+        isAccumulateMode
+      });
+    }
 
     bindCapsuleEvents(callbacks);
   }

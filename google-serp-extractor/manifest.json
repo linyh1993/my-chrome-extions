@@ -55,6 +55,8 @@
       "js": [
         "shared/exporter.js",
         "content/dom-utils.js",
+        "content/templates.js",
+        "content/view-renderers.js",
         "content/plugin-adapters.js",
         "content/serp-modules.js",
         "content/parser.js",
