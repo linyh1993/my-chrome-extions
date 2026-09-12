@@ -8,6 +8,7 @@ const rulesEngine = globalThis.XCleanerRules || {};
 const DEFAULT_SETTINGS = rulesEngine.DEFAULT_CLEANER_SETTINGS || {
   enabled: true,
   hideMode: 'collapse',
+  autoBlock: true,
   filterKeywords: true,
   filterHomophones: true,
   filterPureNumbers: true,

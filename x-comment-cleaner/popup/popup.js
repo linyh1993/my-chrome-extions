@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const resetCountBtn = document.getElementById('resetCountBtn');
   const modeCollapse = document.getElementById('modeCollapse');
   const modeHide = document.getElementById('modeHide');
+  const autoBlockToggle = document.getElementById('autoBlockToggle');
 
   const packsGrid = document.getElementById('packsGrid');
 
@@ -56,6 +57,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     modeCollapse.checked = true;
   }
 
+  // Init Auto Block Toggle
+  if (autoBlockToggle) autoBlockToggle.checked = settings.autoBlock !== false;
+
   // Init Algorithm Toggles
   if (filterSimhash) filterSimhash.checked = settings.filterSimhash !== false;
   if (filterHeuristics) filterHeuristics.checked = settings.filterHeuristics !== false;
@@ -82,6 +86,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   modeHide.addEventListener('change', () => {
     if (modeHide.checked) chrome.storage.sync.set({ hideMode: 'hide' });
   });
+
+  if (autoBlockToggle) {
+    autoBlockToggle.addEventListener('change', () => {
+      chrome.storage.sync.set({ autoBlock: autoBlockToggle.checked });
+    });
+  }
 
   if (filterSimhash) {
     filterSimhash.addEventListener('change', () => {
@@ -263,8 +273,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Storage listener for background stats updates
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'sync' && changes.blockedCount) {
-      blockedCountEl.textContent = changes.blockedCount.newValue || 0;
+    if (area === 'sync') {
+      if (changes.blockedCount) {
+        blockedCountEl.textContent = changes.blockedCount.newValue || 0;
+      }
+      if (changes.autoBlock && autoBlockToggle) {
+        autoBlockToggle.checked = changes.autoBlock.newValue !== false;
+      }
     }
   });
 

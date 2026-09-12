@@ -13,6 +13,7 @@
   let currentSettings = {
     enabled: true,
     hideMode: 'collapse',
+    autoBlock: true,
     filterKeywords: true,
     filterHomophones: true,
     filterPureNumbers: true,
@@ -30,6 +31,8 @@
   const threadTextOccurrences = new Map(); // normalizedText -> Set of author handles
   const threadSimhashTracker = new Map();  // BigInt hash -> Set of author handles
   const blockedHandlesState = new Set();   // handles blocked in current session
+  const pendingBlockHandles = new Set();   // handles currently being blocked
+  const manuallyUnblockedHandles = new Set(); // handles unblocked by user in current session
   const clusterExpandedState = new Map();  // clusterKey -> boolean
   let isScanning = false;
   let scanDebounceTimer = null;
@@ -185,6 +188,30 @@
     });
   }
 
+  function triggerAutoBlock(handle) {
+    if (!currentSettings.autoBlock) return;
+    const norm = normalizeHandleFn(handle);
+    if (!norm) return;
+    if (blockedHandlesState.has(norm) || pendingBlockHandles.has(norm) || manuallyUnblockedHandles.has(norm)) return;
+
+    pendingBlockHandles.add(norm);
+    (async () => {
+      try {
+        if (typeof xAdapter.blockUser === 'function') {
+          const res = await xAdapter.blockUser(norm);
+          if (res && res.ok) {
+            blockedHandlesState.add(norm);
+            scheduleScan(50);
+          }
+        }
+      } catch (err) {
+        console.warn('[X Cleaner] 自动拉黑执行异常:', norm, err);
+      } finally {
+        pendingBlockHandles.delete(norm);
+      }
+    })();
+  }
+
   // 4. Timeline Evaluation & Clustering
   function scanTimeline() {
     if (isScanning || !currentSettings.enabled) return;
@@ -254,6 +281,10 @@
               if (chrome.runtime.lastError) { /* ignore */ }
             });
           }
+
+          if (checkResult.isSpam && authorHandle) {
+            triggerAutoBlock(authorHandle);
+          }
         }
       }
 
@@ -291,6 +322,9 @@
         const isExpanded = clusterExpandedState.get(clusterKey) === true;
 
         const authors = Array.from(new Set(cluster.map(t => t.dataset.xSpamAuthor).filter(Boolean)));
+        for (const a of authors) {
+          triggerAutoBlock(a);
+        }
         const primaryAuthor = authors[0] || '';
         const isSingleAuthor = authors.length === 1;
         const isBlocked = authors.length > 0 && authors.every(a => blockedHandlesState.has(normalizeHandleFn(a)));
@@ -351,12 +385,20 @@
               if (isBlocked) {
                 for (const a of authors) {
                   const res = await xAdapter.unblockUser(a);
-                  if (res.ok) blockedHandlesState.delete(normalizeHandleFn(a));
+                  if (res.ok) {
+                    const normA = normalizeHandleFn(a);
+                    blockedHandlesState.delete(normA);
+                    manuallyUnblockedHandles.add(normA);
+                  }
                 }
               } else {
                 for (const a of authors) {
                   const res = await xAdapter.blockUser(a);
-                  if (res.ok) blockedHandlesState.add(normalizeHandleFn(a));
+                  if (res.ok) {
+                    const normA = normalizeHandleFn(a);
+                    blockedHandlesState.add(normA);
+                    manuallyUnblockedHandles.delete(normA);
+                  }
                 }
               }
               scheduleScan(10);

@@ -158,6 +158,7 @@ const X_SPAM_PATTERNS = [
 const DEFAULT_CLEANER_SETTINGS = {
   enabled: true,
   hideMode: "collapse",
+  autoBlock: true,
   filterKeywords: true,
   filterHomophones: true,
   filterPureNumbers: true,
