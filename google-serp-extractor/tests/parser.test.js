@@ -5,6 +5,9 @@
 
 const assert = require('assert');
 const {
+  PluginRegistry,
+  KeywordsEverywhereAdapter,
+  AitdkAdapter,
   extractSearchQuery,
   extractResultStats,
   extractPageVolumeInfo,
@@ -29,6 +32,9 @@ const {
 
 const {
   GSE_SERP_COLUMNS,
+  GSE_CORE_SERP_COLUMNS,
+  getActiveSerpColumns,
+  registerPluginColumns,
   GSE_KEYWORDS_COLUMNS,
   GSE_PRODUCTS_COLUMNS,
   GSE_PAA_COLUMNS,
@@ -619,6 +625,131 @@ describe('10. Pagination Recognition, Global Ranking & Multi-Page Session Accumu
   });
 });
 
+describe('11. Plugin Adapter Architecture, Dynamic Registration & Error Boundary Isolation', () => {
+  it('should maintain built-in adapters in PluginRegistry', () => {
+    const all = PluginRegistry.getAll();
+    assert(all.length >= 2);
+    assert(PluginRegistry.get('keywords_everywhere'));
+    assert(PluginRegistry.get('aitdk'));
+  });
+
+  it('should allow dynamic registration and unregistration of third-party plugin adapters', () => {
+    const mockSemrushAdapter = {
+      id: 'semrush',
+      name: 'Semrush Authority',
+      badgeKey: 'S',
+      columns: [
+        { key: 'semrushAs', label: '权威得分 (Semrush AS)' }
+      ],
+      detect(doc) {
+        return Boolean(doc.querySelector?.('.semrush-badge'));
+      },
+      extractItemMetrics(container) {
+        const asEl = container.querySelector?.('.semrush-as');
+        return {
+          metrics: {
+            semrushAs: asEl ? asEl.textContent.trim() : '45'
+          },
+          isReady: true,
+          isLoading: false
+        };
+      }
+    };
+
+    PluginRegistry.register(mockSemrushAdapter);
+    registerPluginColumns(mockSemrushAdapter.id, mockSemrushAdapter.columns);
+
+    assert.strictEqual(PluginRegistry.get('semrush'), mockSemrushAdapter);
+
+    // Verify dynamic column export includes the new plugin
+    const activeCols = getActiveSerpColumns(['semrush']);
+    const foundSemrushCol = activeCols.find(c => c.key === 'semrushAs');
+    assert(foundSemrushCol, 'Active columns should contain registered semrush column');
+    assert.strictEqual(foundSemrushCol.label, '权威得分 (Semrush AS)');
+
+    // Verify detection in DOM
+    const docWithSemrush = new MockDocument(
+      new MockElement('div', { id: 'search' }, '', [
+        new MockElement('div', { class: 'semrush-badge' }, 'Semrush Active'),
+        new MockElement('div', { class: 'g' }, '', [
+          new MockElement('a', { href: 'https://example.com' }, '', [
+            new MockElement('h3', {}, 'Example Title')
+          ]),
+          new MockElement('span', { class: 'semrush-as' }, '82')
+        ])
+      ])
+    );
+
+    const detected = PluginRegistry.getDetected(docWithSemrush, []);
+    const detectedSemrush = detected.find(a => a.id === 'semrush');
+    assert(detectedSemrush, 'Mock Semrush adapter should be dynamically detected');
+
+    // Parse page with Semrush
+    const result = parseCurrentPage(docWithSemrush);
+    assert(result.activePluginIds.includes('semrush'));
+    assert.strictEqual(result.items.length, 1);
+    assert.strictEqual(result.items[0].semrushAs, '82');
+    assert.strictEqual(result.items[0].pluginMetrics.semrush.semrushAs, '82');
+
+    // Verify readiness state includes Semrush
+    assert(result.readiness.plugins.semrush);
+    assert.strictEqual(result.readiness.plugins.semrush.badgeKey, 'S');
+    assert.strictEqual(result.readiness.plugins.semrush.loadedCount, 1);
+
+    // Cleanup: unregister so later tests remain unaffected
+    PluginRegistry.unregister('semrush');
+    assert.strictEqual(PluginRegistry.get('semrush'), undefined);
+  });
+
+  it('should safely isolate errors thrown inside a buggy third-party plugin adapter', () => {
+    const buggyAdapter = {
+      id: 'buggy_plugin',
+      name: 'Buggy Plugin',
+      badgeKey: 'B',
+      detect() {
+        return true;
+      },
+      extractItemMetrics() {
+        throw new Error('Crashing on purpose inside third-party plugin');
+      }
+    };
+
+    PluginRegistry.register(buggyAdapter);
+
+    const doc = new MockDocument(
+      new MockElement('div', { id: 'search' }, '', [
+        new MockElement('div', { class: 'g' }, '', [
+          new MockElement('a', { href: 'https://clean-serp.org' }, '', [
+            new MockElement('h3', {}, 'Clean Organic Result')
+          ])
+        ])
+      ])
+    );
+
+    // Parsing should NOT crash despite buggy adapter throwing
+    let data = null;
+    assert.doesNotThrow(() => {
+      data = parseCurrentPage(doc);
+    });
+
+    assert(data);
+    assert.strictEqual(data.items.length, 1);
+    assert.strictEqual(data.items[0].title, 'Clean Organic Result');
+    assert.strictEqual(data.items[0].url, 'https://clean-serp.org/');
+
+    // Cleanup
+    PluginRegistry.unregister('buggy_plugin');
+  });
+
+  it('should return pure core SERP columns when no third-party plugins are detected', () => {
+    const pureCoreCols = getActiveSerpColumns([]);
+    assert.strictEqual(pureCoreCols.length, GSE_CORE_SERP_COLUMNS.length + 3); // Core + 3 metadata cols
+    assert(!pureCoreCols.some(c => c.key === 'mozDa'));
+    assert(!pureCoreCols.some(c => c.key === 'monthlyVisits'));
+  });
+});
+
 console.log('\n====================================================');
 console.log(`✅ Results: ${passedTests}/${totalTests} tests passed`);
 console.log('====================================================');
+

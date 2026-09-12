@@ -63,6 +63,10 @@
 
     const pageTag = `<span style="background: #2563eb; color: #fff; padding: 1px 6px; border-radius: 4px; font-weight: 700; font-size: 11px;">第${pageNum}页</span>`;
 
+    const pluginList = Object.values(readiness.plugins || {});
+    const pluginBadgesReady = pluginList.map(p => `<span title="${escapeHtml(p.name)} 数据加载数">${p.badgeKey}:${p.loadedCount}</span>`).join('<span style="margin: 0 3px; opacity: 0.5;">|</span>');
+    const pluginBadgesLoading = pluginList.map(p => `<span title="${escapeHtml(p.name)} 加载进度">${p.badgeKey}:${p.loadedCount}/${totalFound}</span>`).join('<span style="margin: 0 3px; opacity: 0.5;">|</span>');
+
     if (readiness.state === 'NO_PLUGINS') {
       badgeClass = 'ready';
       badgeText = `${pageTag} <span style="margin: 0 3px; opacity: 0.5;">|</span> <span>${statsStr}</span> <span style="font-size:10px; opacity:0.7;">(纯净SERP)</span>`;
@@ -74,10 +78,7 @@
         ${pageTag}
         <span style="margin: 0 3px; opacity: 0.5;">|</span>
         <span>${statsStr}</span>
-        <span style="margin: 0 3px; opacity: 0.5;">|</span>
-        <span title="AITDK 数据加载数">A:${aitdkCount}</span>
-        <span style="margin: 0 3px; opacity: 0.5;">|</span>
-        <span title="Keywords Everywhere 数据加载数">K:${keCount}</span>
+        ${pluginBadgesReady ? `<span style="margin: 0 3px; opacity: 0.5;">|</span>${pluginBadgesReady}` : ''}
       `;
     } else {
       badgeClass = 'pending';
@@ -85,10 +86,7 @@
         <span style="color: #d97706; font-weight: bold;">⏳ 插件加载中</span>
         <span style="margin: 0 3px; opacity: 0.5;">|</span>
         ${pageTag}
-        <span style="margin: 0 3px; opacity: 0.5;">|</span>
-        <span title="AITDK 加载进度">A:${aitdkCount}/${totalFound}</span>
-        <span style="margin: 0 3px; opacity: 0.5;">|</span>
-        <span title="KE 加载进度">K:${keCount}/${totalFound}</span>
+        ${pluginBadgesLoading ? `<span style="margin: 0 3px; opacity: 0.5;">|</span>${pluginBadgesLoading}` : ''}
       `;
     }
 
@@ -187,7 +185,8 @@
           showToast('当前没有可复制的数据');
           return;
         }
-        const tsv = globalThis.GseExporter.itemsToTsv(items);
+        const activeCols = globalThis.GseExporter?.getActiveSerpColumns?.(currentSerpData.activePluginIds);
+        const tsv = globalThis.GseExporter.itemsToTsv(items, activeCols);
         try {
           await globalThis.GseExporter.copyTextToClipboard(tsv);
           showToast(`✅ 已复制 ${items.length} 条数据至剪贴板，直接粘贴进 Excel / Google Sheets！`);
@@ -204,7 +203,8 @@
           showToast('当前没有可导出的数据');
           return;
         }
-        const csv = globalThis.GseExporter.itemsToCsv(items);
+        const activeCols = globalThis.GseExporter?.getActiveSerpColumns?.(currentSerpData.activePluginIds);
+        const csv = globalThis.GseExporter.itemsToCsv(items, activeCols);
         const query = (currentSerpData.query || 'google_serp').replace(/[^\w\u4e00-\u9fa5\-]/g, '_');
         const filename = `SERP_${query}_${new Date().toISOString().slice(0,10)}.csv`;
         globalThis.GseExporter.downloadFile(csv, filename, 'text/csv;charset=utf-8;');
@@ -412,51 +412,49 @@
       return;
     }
 
-    let rowsHtml = items.map(item => `
-      <tr>
-        <td style="font-weight: 800; text-align: center; color: #1e293b;">#${item.rank}</td>
-        <td style="text-align: center;"><span style="background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 700;">第${item.page || 1}页</span></td>
-        <td style="text-align: center; color: #64748b; font-size: 11px;">#${item.pageRank || item.rank}</td>
-        <td style="font-weight: 600;" title="${escapeHtml(item.title)}">
-          <a href="${escapeHtml(item.url)}" target="_blank">${escapeHtml(item.title)}</a>
-        </td>
-        <td><code>${escapeHtml(item.domain)}</code></td>
-        <td class="badge-moz">${escapeHtml(item.mozDa || '-')}${item.mozDaTrend ? ' (' + escapeHtml(item.mozDaTrend) + ')' : ''}</td>
-        <td>${escapeHtml(item.refDom || '-')}</td>
-        <td>${escapeHtml(item.refLinks || '-')}</td>
-        <td>${escapeHtml(item.spamScore || '-')}</td>
-        <td>${escapeHtml(item.pageTraffic || '-')}</td>
-        <td>${escapeHtml(item.siteTraffic || '-')}</td>
-        <td>${escapeHtml(item.pageKeywords || '-')}</td>
-        <td>${escapeHtml(item.siteKeywords || '-')}</td>
-        <td class="badge-aitdk">${escapeHtml(item.monthlyVisits || '-')}</td>
-        <td>${escapeHtml(item.avgDuration || '-')}</td>
-        <td>${escapeHtml(item.domainCreated || '-')}</td>
-        <td style="max-width: 200px;" title="${escapeHtml(item.snippet)}">${escapeHtml(item.snippet)}</td>
-      </tr>
-    `).join('');
+    const activeCols = globalThis.GseExporter?.getActiveSerpColumns
+      ? globalThis.GseExporter.getActiveSerpColumns(currentSerpData.activePluginIds)
+      : (globalThis.GseExporter?.GSE_SERP_COLUMNS || []);
+
+    const thsHtml = activeCols.map(col => `<th>${escapeHtml(col.label)}</th>`).join('');
+
+    const rowsHtml = items.map(item => {
+      const cellsHtml = activeCols.map(col => {
+        const val = item[col.key];
+        if (col.key === 'rank') {
+          return `<td style="font-weight: 800; text-align: center; color: #1e293b;">#${item.rank}</td>`;
+        }
+        if (col.key === 'page') {
+          return `<td style="text-align: center;"><span style="background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 700;">第${item.page || 1}页</span></td>`;
+        }
+        if (col.key === 'pageRank') {
+          return `<td style="text-align: center; color: #64748b; font-size: 11px;">#${item.pageRank || item.rank}</td>`;
+        }
+        if (col.key === 'title') {
+          return `<td style="font-weight: 600;" title="${escapeHtml(item.title)}"><a href="${escapeHtml(item.url)}" target="_blank">${escapeHtml(item.title)}</a></td>`;
+        }
+        if (col.key === 'domain') {
+          return `<td><code>${escapeHtml(item.domain)}</code></td>`;
+        }
+        if (col.key === 'snippet') {
+          return `<td style="max-width: 200px;" title="${escapeHtml(item.snippet)}">${escapeHtml(item.snippet)}</td>`;
+        }
+        if (col.key === 'mozDa') {
+          return `<td class="badge-moz">${escapeHtml(val || '-')}${item.mozDaTrend ? ' (' + escapeHtml(item.mozDaTrend) + ')' : ''}</td>`;
+        }
+        if (col.key === 'monthlyVisits') {
+          return `<td class="badge-aitdk">${escapeHtml(val || '-')}</td>`;
+        }
+        return `<td>${escapeHtml(val !== undefined && val !== null && val !== '' ? String(val) : '-')}</td>`;
+      }).join('');
+      return `<tr>${cellsHtml}</tr>`;
+    }).join('');
 
     container.innerHTML = `
       <table class="gse-table">
         <thead>
           <tr>
-            <th>全局排名</th>
-            <th>所属页码</th>
-            <th>页内名次</th>
-            <th>页面标题 (Title)</th>
-            <th>域名 (Domain)</th>
-            <th>MOZ DA</th>
-            <th>Ref Dom</th>
-            <th>Ref Links</th>
-            <th>Spam</th>
-            <th>单页流量</th>
-            <th>整站流量</th>
-            <th>单页词数</th>
-            <th>整站词数</th>
-            <th>月访问量 (AITDK)</th>
-            <th>平均时长</th>
-            <th>建立时间</th>
-            <th>摘要 (Snippet)</th>
+            ${thsHtml}
           </tr>
         </thead>
         <tbody>
@@ -676,7 +674,8 @@
 
         if (currentTab === 'serp') {
           const items = getActiveItems();
-          tsv = globalThis.GseExporter.itemsToTsv(items);
+          const activeCols = globalThis.GseExporter?.getActiveSerpColumns?.(currentSerpData.activePluginIds);
+          tsv = globalThis.GseExporter.itemsToTsv(items, activeCols);
           count = items.length;
         } else if (currentTab === 'keywords') {
           const list = currentSerpData.relatedKeywords || [];
@@ -714,7 +713,8 @@
 
         if (currentTab === 'serp') {
           const items = getActiveItems();
-          csv = globalThis.GseExporter.itemsToCsv(items);
+          const activeCols = globalThis.GseExporter?.getActiveSerpColumns?.(currentSerpData.activePluginIds);
+          csv = globalThis.GseExporter.itemsToCsv(items, activeCols);
           filename = `SERP_${query}_${dateStr}.csv`;
         } else if (currentTab === 'keywords') {
           const list = currentSerpData.relatedKeywords || [];

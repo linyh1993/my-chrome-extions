@@ -623,74 +623,240 @@
   }
 
   /**
-   * Assess readiness of third-party plugins (AITDK, Keywords Everywhere).
-   * Ensures extraction is decoupled: if plugins aren't installed or take time,
-   * the core SERP items are always available immediately.
+   * Plugin Adapter Architecture & Registry for Third-Party SEO Extensions
+   * Decouples the core SERP engine from specific extensions (AITDK, KE, Semrush, etc.).
+   * New plugins can be plugged in or existing ones removed without touching core SERP logic.
    */
-  function assessPluginReadiness(doc = document, items = []) {
-    const totalItems = items.length;
+  const PluginRegistry = {
+    _adapters: new Map(),
 
-    // AITDK detection & loading state
-    const aitdkMarkers = doc.querySelectorAll?.('.aitdk-site-metrics-container, .aitdk-site-metrics, .aitdk-metric-brand, [class*="aitdk"], [id*="aitdk"]') || [];
-    let aitdkLoadedCount = 0;
-    for (const item of items) {
-      if (item.aitdkReady) aitdkLoadedCount++;
-    }
-    const hasAitdk = aitdkMarkers.length > 0 || aitdkLoadedCount > 0;
-    const aitdkLoadingSpinners = doc.querySelectorAll('.aitdk-dots-loading, .loading.aitdk-metric-item');
-    const aitdkLoadingCount = aitdkLoadingSpinners.length;
-
-    // Keywords Everywhere detection & loading state
-    const keMarkers = doc.querySelectorAll('.xt-google-domain-link-metrics, .xt-google-url-metrics, #xt-google-query, #xt-google-ltkwid, #xt-google-trenkw, #xt-difficulty-root, [id*="xt-"]');
-    const hasKe = keMarkers.length > 0;
-    let keLoadedCount = 0;
-    for (const item of items) {
-      if (item.keReady) keLoadedCount++;
-    }
-    const keWidgetCount = doc.querySelectorAll('#xt-google-ltkwid, #xt-google-trenkw, #xt-related-search, #xt-difficulty-root').length;
-
-    // Determine status
-    let state = 'READY';
-    let statusText = '数据已就绪';
-
-    if (!hasAitdk && !hasKe) {
-      state = 'NO_PLUGINS';
-      statusText = '已就绪 (未安装/未启用 AITDK 或 Keywords Everywhere)';
-    } else {
-      const isAitdkStillLoading = aitdkLoadingCount > 0 || (hasAitdk && totalItems > 0 && aitdkLoadedCount === 0);
-      const isKeStillLoading = hasKe && totalItems > 0 && keLoadedCount === 0;
-
-      if (isAitdkStillLoading || isKeStillLoading) {
-        state = 'LOADING';
-        const parts = [];
-        if (hasAitdk) parts.push(`AITDK: ${aitdkLoadedCount}/${totalItems}`);
-        if (hasKe) parts.push(`KE: ${keLoadedCount}/${totalItems}`);
-        statusText = `插件指标异步加载中 (${parts.join(', ')})...`;
-      } else {
-        state = 'READY';
-        const parts = [];
-        if (hasAitdk) parts.push(`AITDK: ${aitdkLoadedCount}/${totalItems}`);
-        if (hasKe) parts.push(`KE: ${keLoadedCount}/${totalItems}`);
-        if (keWidgetCount > 0) parts.push(`侧栏组件: ${keWidgetCount}`);
-        statusText = `插件指标已全部就绪 (${parts.join(', ')})`;
+    register(adapter) {
+      if (!adapter || !adapter.id) {
+        throw new Error('Invalid plugin adapter: missing id');
       }
+      this._adapters.set(adapter.id, adapter);
+      if (typeof globalThis !== 'undefined' && globalThis.GseExporter && adapter.columns) {
+        globalThis.GseExporter.registerPluginColumns?.(adapter.id, adapter.columns);
+      }
+      return this;
+    },
+
+    unregister(adapterId) {
+      this._adapters.delete(adapterId);
+    },
+
+    get(id) {
+      return this._adapters.get(id);
+    },
+
+    getAll() {
+      return Array.from(this._adapters.values());
+    },
+
+    getDetected(doc = document, items = []) {
+      const detected = [];
+      for (const adapter of this._adapters.values()) {
+        try {
+          if (typeof adapter.detect === 'function' && adapter.detect(doc, items)) {
+            detected.push(adapter);
+          }
+        } catch (e) {
+          console.warn(`[GSE] Error detecting plugin ${adapter.id}:`, e);
+        }
+      }
+      return detected;
     }
+  };
+
+  /**
+   * Keywords Everywhere Plugin Adapter
+   */
+  const KeywordsEverywhereAdapter = {
+    id: 'keywords_everywhere',
+    name: 'Keywords Everywhere',
+    badgeKey: 'K',
+    columns: [
+      { key: 'mozDa', label: 'MOZ DA' },
+      { key: 'mozDaTrend', label: 'DA走势 (DA Trend)' },
+      { key: 'refDom', label: '引荐主域 (Ref Dom)' },
+      { key: 'refLinks', label: '外链数 (Ref Links)' },
+      { key: 'spamScore', label: '垃圾得分 (Spam Score)' },
+      { key: 'pageTraffic', label: '页面流量 (Page Traffic)' },
+      { key: 'siteTraffic', label: '整站流量 (Site Traffic)' },
+      { key: 'pageKeywords', label: '页面关键词数 (Page Keywords)' },
+      { key: 'siteKeywords', label: '整站关键词数 (Site Keywords)' }
+    ],
+    detect(doc = document, items = []) {
+      const markers = doc.querySelectorAll?.('.xt-google-domain-link-metrics, .xt-google-url-metrics, #xt-google-query, #xt-google-ltkwid, #xt-google-trenkw, #xt-difficulty-root, [id*="xt-"]') || [];
+      const hasKeInItems = items.some(i => i.keReady);
+      return markers.length > 0 || hasKeInItems;
+    },
+    extractItemMetrics(container, cardScope) {
+      const res = extractKeywordsEverywhereMetrics(container);
+      return {
+        metrics: {
+          mozDa: res.mozDa,
+          mozDaTrend: res.mozDaTrend,
+          refDom: res.refDom,
+          refLinks: res.refLinks,
+          spamScore: res.spamScore,
+          pageTraffic: res.pageTraffic,
+          siteTraffic: res.siteTraffic,
+          pageKeywords: res.pageKeywords,
+          siteKeywords: res.siteKeywords,
+          topKeywordsNote: res.topKeywordsNote,
+          keReady: res.keReady
+        },
+        isReady: res.keReady,
+        isLoading: false
+      };
+    },
+    extractPageWidgets(doc = document) {
+      return {
+        seoDifficulty: extractSeoDifficulty(doc),
+        relatedKeywords: extractRelatedKeywords(doc)
+      };
+    }
+  };
+
+  /**
+   * AITDK Plugin Adapter
+   */
+  const AitdkAdapter = {
+    id: 'aitdk',
+    name: 'AITDK',
+    badgeKey: 'A',
+    columns: [
+      { key: 'monthlyVisits', label: '月访问量 (AITDK)' },
+      { key: 'avgDuration', label: '平均时长 (Avg Duration)' },
+      { key: 'domainCreated', label: '域名建立时间 (Domain Created)' }
+    ],
+    detect(doc = document, items = []) {
+      const markers = doc.querySelectorAll?.('.aitdk-site-metrics-container, .aitdk-site-metrics, .aitdk-metric-brand, [class*="aitdk"], [id*="aitdk"]') || [];
+      const hasAitdkInItems = items.some(i => i.aitdkReady);
+      return markers.length > 0 || hasAitdkInItems;
+    },
+    extractItemMetrics(container, cardScope) {
+      const res = extractAitdkMetrics(container);
+      return {
+        metrics: {
+          monthlyVisits: res.monthlyVisits,
+          avgDuration: res.avgDuration,
+          domainCreated: res.domainCreated,
+          aitdkReady: res.aitdkReady
+        },
+        isReady: res.aitdkReady,
+        isLoading: res.aitdkLoading
+      };
+    }
+  };
+
+  // Register built-in adapters
+  PluginRegistry.register(KeywordsEverywhereAdapter);
+  PluginRegistry.register(AitdkAdapter);
+
+  /**
+   * Assess readiness of detected third-party plugins dynamically.
+   * Decoupled: evaluates whatever adapters are currently registered & detected.
+   */
+  function assessPluginReadiness(doc = document, items = [], detectedAdapters = null) {
+    const totalItems = items.length;
+    const adapters = detectedAdapters || PluginRegistry.getDetected(doc, items);
+
+    if (adapters.length === 0) {
+      return {
+        state: 'NO_PLUGINS',
+        isSettled: true,
+        statusText: '已就绪 (原生 Google 纯净模式)',
+        activePlugins: [],
+        plugins: {},
+        // Backward compatibility
+        aitdk: { detected: false, loadedCount: 0, loadingCount: 0, isReady: true },
+        ke: { detected: false, loadedCount: 0, widgetsCount: 0, isReady: true }
+      };
+    }
+
+    const plugins = {};
+    let anyStillLoading = false;
+    const statusParts = [];
+
+    for (const adapter of adapters) {
+      let loadedCount = 0;
+      for (const item of items) {
+        let isLoaded = false;
+        if (item.pluginMetrics?.[adapter.id]) {
+          const m = item.pluginMetrics[adapter.id];
+          if (m.isReady || Object.values(m).some(v => v && v !== '-')) {
+            isLoaded = true;
+          }
+        }
+        if (!isLoaded) {
+          if (item[`${adapter.id}Ready`]) {
+            isLoaded = true;
+          } else if (adapter.id === 'keywords_everywhere' && item.keReady) {
+            isLoaded = true;
+          } else if (adapter.id === 'aitdk' && item.aitdkReady) {
+            isLoaded = true;
+          } else if (adapter.columns && Array.isArray(adapter.columns)) {
+            isLoaded = adapter.columns.some(col => item[col.key] && item[col.key] !== '-');
+          }
+        }
+        if (isLoaded) {
+          loadedCount++;
+        }
+      }
+
+      let isLoading = false;
+      if (typeof adapter.isPluginLoading === 'function') {
+        try {
+          isLoading = adapter.isPluginLoading(doc, items, loadedCount, totalItems);
+        } catch (e) {
+          isLoading = false;
+        }
+      } else if (adapter.id === 'aitdk') {
+        const spinners = doc.querySelectorAll?.('.aitdk-dots-loading, .loading.aitdk-metric-item') || [];
+        isLoading = spinners.length > 0 || (totalItems > 0 && loadedCount === 0);
+      } else if (adapter.id === 'keywords_everywhere') {
+        isLoading = totalItems > 0 && loadedCount === 0;
+      }
+
+      if (isLoading) anyStillLoading = true;
+
+      plugins[adapter.id] = {
+        id: adapter.id,
+        name: adapter.name || adapter.id,
+        badgeKey: adapter.badgeKey || adapter.id.slice(0, 1).toUpperCase(),
+        loadedCount,
+        isLoading,
+        isReady: !isLoading
+      };
+
+      statusParts.push(`${adapter.name || adapter.id}: ${loadedCount}/${totalItems}`);
+    }
+
+    const state = anyStillLoading ? 'LOADING' : 'READY';
+    const statusText = state === 'LOADING'
+      ? `插件指标异步加载中 (${statusParts.join(', ')})...`
+      : `插件指标已全部就绪 (${statusParts.join(', ')})`;
 
     return {
       state,
-      isSettled: state !== 'LOADING',
+      isSettled: !anyStillLoading,
       statusText,
+      activePlugins: adapters.map(a => a.id),
+      plugins,
+      // Backward compatibility accessors
       aitdk: {
-        detected: hasAitdk,
-        loadedCount: aitdkLoadedCount,
-        loadingCount: aitdkLoadingCount,
-        isReady: !hasAitdk || (aitdkLoadedCount > 0 && aitdkLoadingCount === 0)
+        detected: Boolean(plugins.aitdk),
+        loadedCount: plugins.aitdk?.loadedCount || 0,
+        loadingCount: plugins.aitdk?.isLoading ? 1 : 0,
+        isReady: plugins.aitdk?.isReady ?? true
       },
       ke: {
-        detected: hasKe,
-        loadedCount: keLoadedCount,
-        widgetsCount: keWidgetCount,
-        isReady: !hasKe || keLoadedCount > 0 || keWidgetCount > 0
+        detected: Boolean(plugins.keywords_everywhere),
+        loadedCount: plugins.keywords_everywhere?.loadedCount || 0,
+        widgetsCount: doc.querySelectorAll?.('#xt-google-ltkwid, #xt-google-trenkw, #xt-related-search, #xt-difficulty-root')?.length || 0,
+        isReady: plugins.keywords_everywhere?.isReady ?? true
       }
     };
   }
@@ -1000,9 +1166,22 @@
     for (const item of newData.items) {
       if (itemMap.has(item.url)) {
         const existing = itemMap.get(item.url);
+
+        // Merge pluginMetrics dictionaries cleanly
+        const mergedPluginMetrics = {
+          ...(existing.pluginMetrics || {}),
+          ...(item.pluginMetrics || {})
+        };
+        for (const [pId, pMetrics] of Object.entries(mergedPluginMetrics)) {
+          const exMetrics = existing.pluginMetrics?.[pId] || {};
+          const newMetrics = item.pluginMetrics?.[pId] || {};
+          mergedPluginMetrics[pId] = { ...exMetrics, ...newMetrics };
+        }
+
         itemMap.set(item.url, {
           ...existing,
           ...item,
+          pluginMetrics: mergedPluginMetrics,
           // Retain rank/page if existing has valid values
           rank: item.rank || existing.rank,
           page: item.page || existing.page,
@@ -1101,6 +1280,10 @@
     const pageVolumeInfo = extractPageVolumeInfo(doc);
     const containers = findResultContainers(doc);
 
+    // Detect active third-party plugin adapters
+    const activeAdapters = PluginRegistry.getDetected(doc, []);
+    const activePluginIds = activeAdapters.map(a => a.id);
+
     const items = [];
     let pageRank = 1;
     let aitdkReadyCount = 0;
@@ -1111,16 +1294,9 @@
       const url = item.targetUrl;
       const domain = extractDomain(url);
       const snippet = extractSnippet(item.container);
-
-      const ke = extractKeywordsEverywhereMetrics(item.container);
-      const aitdk = extractAitdkMetrics(item.container);
-
-      if (aitdk.aitdkReady) aitdkReadyCount++;
-      if (ke.keReady) keReadyCount++;
-
       const globalRank = pageInfo.startOffset + pageRank;
 
-      items.push({
+      const itemData = {
         id: `serp_${globalRank}_${domain}`,
         rank: globalRank,
         page: pageInfo.pageNumber,
@@ -1130,28 +1306,32 @@
         url,
         domain,
         snippet,
-        // Keywords Everywhere
-        mozDa: ke.mozDa,
-        mozDaTrend: ke.mozDaTrend,
-        refDom: ke.refDom,
-        refLinks: ke.refLinks,
-        spamScore: ke.spamScore,
-        pageTraffic: ke.pageTraffic,
-        siteTraffic: ke.siteTraffic,
-        pageKeywords: ke.pageKeywords,
-        siteKeywords: ke.siteKeywords,
-        topKeywordsNote: ke.topKeywordsNote,
-        // AITDK
-        monthlyVisits: aitdk.monthlyVisits,
-        avgDuration: aitdk.avgDuration,
-        domainCreated: aitdk.domainCreated,
-        // Metadata & Status
         pageVolumeInfo,
         resultStatsRaw: resultStats.raw,
-        aitdkReady: aitdk.aitdkReady,
-        keReady: ke.keReady,
+        pluginMetrics: {},
         scrapedAt: new Date().toLocaleString()
-      });
+      };
+
+      // Safely extract metrics via each detected adapter
+      for (const adapter of activeAdapters) {
+        try {
+          if (typeof adapter.extractItemMetrics === 'function') {
+            const res = adapter.extractItemMetrics(item.container, item.cardScope);
+            if (res && res.metrics) {
+              itemData.pluginMetrics[adapter.id] = res.metrics;
+              // Flatten onto itemData for convenient direct access and backwards compatibility
+              Object.assign(itemData, res.metrics);
+            }
+          }
+        } catch (err) {
+          console.warn(`[GSE] Error running extractItemMetrics for ${adapter.id}:`, err);
+        }
+      }
+
+      if (itemData.aitdkReady) aitdkReadyCount++;
+      if (itemData.keReady) keReadyCount++;
+
+      items.push(itemData);
     }
 
     // Extended modules
@@ -1163,8 +1343,8 @@
     const aiOverview = extractAiOverview(doc);
     const discussions = extractDiscussions(doc);
 
-    // Assess plugin readiness (AITDK, Keywords Everywhere)
-    const readiness = assessPluginReadiness(doc, items);
+    // Assess plugin readiness dynamically across detected adapters
+    const readiness = assessPluginReadiness(doc, items, activeAdapters);
 
     return {
       query,
@@ -1172,6 +1352,7 @@
       resultStats,
       pageVolumeInfo,
       totalFound: items.length,
+      activePluginIds,
       aitdkReadyCount,
       keReadyCount,
       isFullyReady: readiness.isSettled,
@@ -1191,6 +1372,9 @@
   }
 
   return {
+    PluginRegistry,
+    KeywordsEverywhereAdapter,
+    AitdkAdapter,
     extractSearchQuery,
     extractResultStats,
     extractPageVolumeInfo,

@@ -30,6 +30,9 @@
 5. **智能等待与跨页追加**：
    - 自动监听 AITDK 与 Keywords Everywhere 的异步渲染完成状态。
    - 提供「➕ 追加模式」，翻页搜索时持续累积自然结果，轻松收集 Top 50 / Top 100 竞品。
+6. **插拔式插件适配器架构 (Plugin Adapter Architecture)**：
+   - **零耦合与沙箱隔离**：Google 原生核心 SERP 引擎完全独立，不硬依赖任何具体第三方扩展；第三方插件出错绝不影响 Google 搜索与原生提取。
+   - **即插即用注册表 (`PluginRegistry`)**：未来若新增更多 SEO 插件（如 Semrush, SimilarWeb, Ahrefs 等）或移除插件，只需实现适配器接口注册即可，状态胶囊、表格列、CSV/TSV 导出全部自动适配。
 
 ---
 

@@ -4,7 +4,7 @@
  * Covers: SERP Organic, Related Keywords (PASF), Products & Services, PAA, and Sponsored Ads.
  */
 
-const GSE_SERP_COLUMNS = [
+const GSE_CORE_SERP_COLUMNS = [
   { key: 'rank', label: '全局排名 (Rank)' },
   { key: 'page', label: '所属页码 (Page)' },
   { key: 'pageRank', label: '页内名次 (Page Rank)' },
@@ -12,22 +12,57 @@ const GSE_SERP_COLUMNS = [
   { key: 'title', label: '标题 (Title)' },
   { key: 'url', label: 'URL' },
   { key: 'domain', label: '域名 (Domain)' },
-  { key: 'snippet', label: '摘要 (Snippet)' },
-  { key: 'mozDa', label: 'MOZ DA' },
-  { key: 'mozDaTrend', label: 'DA走势 (DA Trend)' },
-  { key: 'refDom', label: '引荐主域 (Ref Dom)' },
-  { key: 'refLinks', label: '外链数 (Ref Links)' },
-  { key: 'spamScore', label: '垃圾得分 (Spam Score)' },
-  { key: 'pageTraffic', label: '页面流量 (Page Traffic)' },
-  { key: 'siteTraffic', label: '整站流量 (Site Traffic)' },
-  { key: 'pageKeywords', label: '页面关键词数 (Page Keywords)' },
-  { key: 'siteKeywords', label: '整站关键词数 (Site Keywords)' },
-  { key: 'monthlyVisits', label: '月访问量 (Monthly Visits)' },
-  { key: 'avgDuration', label: '平均时长 (Avg Duration)' },
-  { key: 'domainCreated', label: '域名建立时间 (Domain Created)' },
+  { key: 'snippet', label: '摘要 (Snippet)' }
+];
+
+const GSE_PLUGIN_COLUMNS = {
+  keywords_everywhere: [
+    { key: 'mozDa', label: 'MOZ DA' },
+    { key: 'mozDaTrend', label: 'DA走势 (DA Trend)' },
+    { key: 'refDom', label: '引荐主域 (Ref Dom)' },
+    { key: 'refLinks', label: '外链数 (Ref Links)' },
+    { key: 'spamScore', label: '垃圾得分 (Spam Score)' },
+    { key: 'pageTraffic', label: '页面流量 (Page Traffic)' },
+    { key: 'siteTraffic', label: '整站流量 (Site Traffic)' },
+    { key: 'pageKeywords', label: '页面关键词数 (Page Keywords)' },
+    { key: 'siteKeywords', label: '整站关键词数 (Site Keywords)' }
+  ],
+  aitdk: [
+    { key: 'monthlyVisits', label: '月访问量 (AITDK)' },
+    { key: 'avgDuration', label: '平均时长 (Avg Duration)' },
+    { key: 'domainCreated', label: '域名建立时间 (Domain Created)' }
+  ]
+};
+
+const GSE_METADATA_COLUMNS = [
   { key: 'resultStatsRaw', label: '搜索统计 (Result Stats)' },
   { key: 'pageVolumeInfo', label: '全局搜索量/CPC (Keywords Volume)' },
   { key: 'scrapedAt', label: '采集时间 (Scraped At)' }
+];
+
+function getActiveSerpColumns(activePluginIds = null) {
+  if (!activePluginIds || !Array.isArray(activePluginIds)) {
+    return GSE_SERP_COLUMNS;
+  }
+  const cols = [...GSE_CORE_SERP_COLUMNS];
+  for (const id of activePluginIds) {
+    if (GSE_PLUGIN_COLUMNS[id]) {
+      cols.push(...GSE_PLUGIN_COLUMNS[id]);
+    }
+  }
+  cols.push(...GSE_METADATA_COLUMNS);
+  return cols;
+}
+
+function registerPluginColumns(pluginId, columns) {
+  GSE_PLUGIN_COLUMNS[pluginId] = columns;
+}
+
+const GSE_SERP_COLUMNS = [
+  ...GSE_CORE_SERP_COLUMNS,
+  ...GSE_PLUGIN_COLUMNS.keywords_everywhere,
+  ...GSE_PLUGIN_COLUMNS.aitdk,
+  ...GSE_METADATA_COLUMNS
 ];
 
 const GSE_KEYWORDS_COLUMNS = [
@@ -91,12 +126,12 @@ function generateTableTsv(items, columns) {
   return [header, ...rows].join('\n');
 }
 
-function itemsToCsv(items) {
-  return generateTableCsv(items, GSE_SERP_COLUMNS);
+function itemsToCsv(items, customColumns = null) {
+  return generateTableCsv(items, customColumns || GSE_SERP_COLUMNS);
 }
 
-function itemsToTsv(items) {
-  return generateTableTsv(items, GSE_SERP_COLUMNS);
+function itemsToTsv(items, customColumns = null) {
+  return generateTableTsv(items, customColumns || GSE_SERP_COLUMNS);
 }
 
 function keywordsToCsv(keywords) {
@@ -175,7 +210,11 @@ function copyTextToClipboard(text) {
 // Global export for content script & popup
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    GSE_CORE_SERP_COLUMNS,
+    GSE_PLUGIN_COLUMNS,
     GSE_SERP_COLUMNS,
+    getActiveSerpColumns,
+    registerPluginColumns,
     GSE_KEYWORDS_COLUMNS,
     GSE_PRODUCTS_COLUMNS,
     GSE_PAA_COLUMNS,
@@ -196,7 +235,11 @@ if (typeof module !== 'undefined' && module.exports) {
   };
 } else {
   globalThis.GseExporter = {
+    GSE_CORE_SERP_COLUMNS,
+    GSE_PLUGIN_COLUMNS,
     GSE_SERP_COLUMNS,
+    getActiveSerpColumns,
+    registerPluginColumns,
     GSE_KEYWORDS_COLUMNS,
     GSE_PRODUCTS_COLUMNS,
     GSE_PAA_COLUMNS,
