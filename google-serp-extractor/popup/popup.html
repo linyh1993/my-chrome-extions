@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google SERP & SEO 提取器</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="popup-header">
+      <div class="brand">
+        <div class="brand-icon">G</div>
+        <div>
+          <h1 class="brand-title">SERP SEO 提取器</h1>
+          <p class="brand-subtitle">Google + AITDK + Keywords Everywhere</p>
+        </div>
+      </div>
+      <span class="status-indicator" id="status-tag">检测中...</span>
+    </header>
+
+    <!-- Query & Volume Banner -->
+    <div class="query-card" id="query-card">
+      <div class="query-label">当前搜索词：</div>
+      <div class="query-text" id="query-text">正在识别...</div>
+      <div class="volume-text" id="volume-text"></div>
+    </div>
+
+    <!-- Stats Counter Cards -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-num" id="stat-total">0</div>
+        <div class="stat-title">搜索结果项</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num stat-aitdk" id="stat-aitdk">0</div>
+        <div class="stat-title">AITDK 数据</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num stat-ke" id="stat-ke">0</div>
+        <div class="stat-title">KE 关键词数据</div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="action-buttons">
+      <button class="btn btn-primary" id="btn-copy-tsv">
+        <span>📋 复制表格 (TSV)</span>
+      </button>
+      <button class="btn btn-success" id="btn-export-csv">
+        <span>📥 导出 CSV 文件</span>
+      </button>
+      <div class="btn-group">
+        <button class="btn btn-secondary" id="btn-refresh">
+          <span>🔄 刷新提取</span>
+        </button>
+        <button class="btn btn-secondary" id="btn-open-modal">
+          <span>👁️ 页面大图表</span>
+        </button>
+        <button class="btn btn-secondary" id="btn-export-json">
+          <span>JSON</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Toast message -->
+    <div class="toast" id="popup-toast"></div>
+
+    <!-- Mini Preview List -->
+    <div class="preview-section">
+      <div class="preview-header">
+        <span>数据预览 (前 5 项)</span>
+        <span class="preview-count" id="preview-count">0 项</span>
+      </div>
+      <div class="preview-list" id="preview-list">
+        <div class="empty-hint">请在 Google 搜索结果页面点击使用</div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="popup-footer">
+      <span>直接复制后可按 Ctrl+V 粘贴进 Excel / Google Sheets</span>
+    </footer>
+  </div>
+
+  <script src="../shared/exporter.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

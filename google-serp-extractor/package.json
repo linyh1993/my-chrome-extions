@@ -1,0 +1,17 @@
+{
+  "name": "google-serp-extractor",
+  "version": "1.0.0",
+  "description": "Chrome extension to extract Google SERP items alongside injected AITDK and Keywords Everywhere SEO metrics.",
+  "scripts": {
+    "test": "node tests/parser.test.js"
+  },
+  "keywords": [
+    "chrome-extension",
+    "google-serp",
+    "seo",
+    "aitdk",
+    "keywords-everywhere"
+  ],
+  "author": "",
+  "license": "MIT"
+}

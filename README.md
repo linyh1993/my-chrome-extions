@@ -8,6 +8,7 @@
 |------|------|
 | [`omni-relay/`](omni-relay/) | **推荐安装**：通用多平台（X, Reddit 等）数据与流量中继器 |
 | [`x-comment-cleaner/`](x-comment-cleaner/) | **推荐安装**：X 垃圾评论与引流 Bot 拦截助手（独立扩展） |
+| [`google-serp-extractor/`](google-serp-extractor/) | **推荐安装**：Google 搜索与 SEO（AITDK + Keywords Everywhere）数据提取器 |
 
 ## 归档项目
 

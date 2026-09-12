@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "Google SERP & SEO 扩展数据提取器",
+  "version": "1.0.0",
+  "description": "一键采集 Google 搜索结果项，联合提取 AITDK 与 Keywords Everywhere 注入的 SEO 指标（MOZ DA、外链、预估流量、关键词数、月访问量等），支持复制表格(TSV)与导出CSV/JSON。",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "*://www.google.com/search*",
+    "*://www.google.com.hk/search*",
+    "*://*.google.com/search*",
+    "*://*.google.*/search*"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Google SERP & SEO 提取器",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://www.google.com/search*",
+        "*://www.google.com.hk/search*",
+        "*://*.google.com/search*",
+        "*://*.google.*/search*"
+      ],
+      "js": [
+        "shared/exporter.js",
+        "content/parser.js",
+        "content/floating-ui.js",
+        "content/content.js"
+      ],
+      "css": [
+        "content/floating-ui.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
