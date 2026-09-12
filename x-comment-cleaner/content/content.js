@@ -128,6 +128,8 @@
     document.querySelectorAll('article[data-testid="tweet"]').forEach((el) => {
       delete el.dataset.xSpamProcessed;
       delete el.dataset.xSpamEvaluation;
+      delete el.dataset.xSpamIsOp;
+      delete el.dataset.xSpamTweetId;
       delete el.dataset.xSpam;
       delete el.dataset.xSpamReason;
       delete el.dataset.xSpamText;
@@ -188,16 +190,20 @@
     return links;
   }
 
-  function getTweetId(tweetElement) {
-    const timeLink = tweetElement.querySelector('time')?.closest('a');
+  function getTweetId(tweetElement, authorHandle) {
+    // 优先从 timestamp <time> 父级 <a> 获取推文的永久链接
+    const timeLink = tweetElement.querySelector('time')?.closest('a[href*="/status/"]');
     if (timeLink) {
       const match = (timeLink.getAttribute('href') || '').match(/\/status\/(\d+)/);
       if (match) return match[1];
     }
-    const anyStatusLink = tweetElement.querySelector('a[href*="/status/"]');
-    if (anyStatusLink) {
-      const match = (anyStatusLink.getAttribute('href') || '').match(/\/status\/(\d+)/);
-      if (match) return match[1];
+    // 如果传入了推文作者 handle，匹配属于该作者的 status 链接
+    if (authorHandle) {
+      const authorLink = tweetElement.querySelector(`a[href*="/${authorHandle}/status/"]`);
+      if (authorLink) {
+        const match = (authorLink.getAttribute('href') || '').match(/\/status\/(\d+)/);
+        if (match) return match[1];
+      }
     }
     return '';
   }
@@ -322,46 +328,37 @@
 
     try {
       const opHandle = getOpHandle();
-      const opTweetId = getOpTweetId();
       const allTweets = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
       if (allTweets.length === 0) return;
 
+      // 1. 分离主推与评论区回复
       const replyTweets = [];
-      let foundOpTweet = false;
-
-      for (let i = 0; i < allTweets.length; i++) {
-        const tweet = allTweets[i];
-        const tid = getTweetId(tweet);
-
-        // 1. 如果匹配 URL 中的主推 ID，必定是楼主主推
-        if (opTweetId && tid === opTweetId) {
-          foundOpTweet = true;
-          tweet.dataset.xSpamProcessed = 'true';
-          tweet.dataset.xSpamEvaluation = 'false';
-          delete tweet.dataset.xSpam;
-          tweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
-          continue;
+      if (allTweets.length > 0) {
+        // 首个推文如果在页面顶端（未深度滚动），通常为当前页面的楼主主推（OP）
+        const firstTweet = allTweets[0];
+        if (window.scrollY < 300 && !firstTweet.dataset.xSpamProcessed) {
+          firstTweet.dataset.xSpamProcessed = 'true';
+          firstTweet.dataset.xSpamIsOp = 'true';
+          firstTweet.dataset.xSpamEvaluation = 'false';
+          delete firstTweet.dataset.xSpam;
+          firstTweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
         }
 
-        // 2. 如果尚未找到主推，且处于页面顶部（scrollY < 250），首个推文视为主推
-        if (!foundOpTweet && i === 0 && window.scrollY < 250) {
-          foundOpTweet = true;
-          tweet.dataset.xSpamProcessed = 'true';
-          tweet.dataset.xSpamEvaluation = 'false';
-          delete tweet.dataset.xSpam;
-          tweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
-          continue;
+        for (const tweet of allTweets) {
+          // 如果已被确认为主推，跳过垃圾评论判定
+          if (tweet.dataset.xSpamIsOp === 'true') {
+            continue;
+          }
+          replyTweets.push(tweet);
         }
-
-        replyTweets.push(tweet);
       }
 
-      // Evaluate replies
+      // 2. 评定评论区每条回复
       for (const tweet of replyTweets) {
         const { handle: authorHandle, displayName: authorDisplayName } = getAuthorInfo(tweet);
 
-        // OP Protection (Thread author is exempt)
-        if (opHandle && authorHandle.toLowerCase() === opHandle) {
+        // OP 保护（帖主本人在评论区的所有互动不视为垃圾评论）
+        if (opHandle && authorHandle && authorHandle.toLowerCase() === opHandle) {
           tweet.dataset.xSpamProcessed = 'true';
           tweet.dataset.xSpamEvaluation = 'false';
           delete tweet.dataset.xSpam;
@@ -371,13 +368,15 @@
 
         const tweetTextEl = tweet.querySelector('div[data-testid="tweetText"]');
         const text = tweetTextEl ? (tweetTextEl.innerText || tweetTextEl.textContent || '').trim() : '';
-        const tweetId = getTweetId(tweet);
+        const tweetId = getTweetId(tweet, authorHandle);
         const lastTweetId = tweet.dataset.xSpamTweetId;
+        const lastAuthor = tweet.dataset.xSpamAuthor;
         const lastEvaluatedText = tweet.dataset.xSpamLastText;
 
         // 判断推文是否为新载入、DOM回收复用或文本已更新
         const isNewOrChanged = tweet.dataset.xSpamProcessed !== 'true'
           || (tweetId && lastTweetId !== tweetId)
+          || (authorHandle && lastAuthor !== authorHandle)
           || lastEvaluatedText !== text;
 
         if (isNewOrChanged) {

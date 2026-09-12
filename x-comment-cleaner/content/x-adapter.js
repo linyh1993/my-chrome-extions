@@ -42,15 +42,21 @@
     const url = `https://x.com/i/api/graphql/${USER_BY_SCREEN_NAME_QUERY_ID}/UserByScreenName?variables=${variables}&features=${USER_FEATURES}&fieldToggles=${FIELD_TOGGLES}`;
 
     try {
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timeoutId = controller ? setTimeout(() => controller.abort(), 2500) : null;
+
       const res = await fetch(url, {
         method: 'GET',
         credentials: 'include',
+        signal: controller ? controller.signal : undefined,
         headers: {
           Authorization: X_WEB_BEARER,
           'X-Twitter-Auth-Type': 'OAuth2Session',
           'X-Csrf-Token': csrf
         }
       });
+      if (timeoutId) clearTimeout(timeoutId);
+
       if (!res.ok) return null;
       const body = await res.json();
       const result = body.data?.user?.result;
