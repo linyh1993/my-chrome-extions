@@ -114,36 +114,49 @@
     const norm = (handle || '').trim().replace(/^@+/, '').toLowerCase();
     if (!norm) return { ok: false, error: '账号为空' };
 
-    // 优先尝试 UserByScreenName 解析 rest_id
-    let userId = userIdCache.get(norm);
-    if (!userId) {
-      userId = await resolveUserIdByHandle(norm);
-    }
-
-    if (userId) {
-      const res = await runNativeAction('block', userId, false);
+    // 1. 若有缓存的 userId，直接调用
+    const cachedUid = userIdCache.get(norm);
+    if (cachedUid) {
+      const res = await runNativeAction('block', cachedUid, false);
       if (res.ok || res.status === 429) return res;
     }
 
-    // 若 GraphQL 解析未命中或失败，降级直接使用 screen_name 提交拉黑
-    return runNativeAction('block', norm, true);
+    // 2. 优先直接使用 screen_name 发送 1.1/blocks/create.json（单次快速往返，官方端点原生支持）
+    const directRes = await runNativeAction('block', norm, true);
+    if (directRes.ok || directRes.status === 429) {
+      return directRes;
+    }
+
+    // 3. 兜底：若 direct 请求异常，尝试通过 GraphQL 解析 userId 再次提交
+    const userId = await resolveUserIdByHandle(norm);
+    if (userId && userId !== cachedUid) {
+      return runNativeAction('block', userId, false);
+    }
+
+    return directRes;
   }
 
   async function unblockUser(handle) {
     const norm = (handle || '').trim().replace(/^@+/, '').toLowerCase();
     if (!norm) return { ok: false, error: '账号为空' };
 
-    let userId = userIdCache.get(norm);
-    if (!userId) {
-      userId = await resolveUserIdByHandle(norm);
-    }
-
-    if (userId) {
-      const res = await runNativeAction('unblock', userId, false);
+    const cachedUid = userIdCache.get(norm);
+    if (cachedUid) {
+      const res = await runNativeAction('unblock', cachedUid, false);
       if (res.ok || res.status === 429) return res;
     }
 
-    return runNativeAction('unblock', norm, true);
+    const directRes = await runNativeAction('unblock', norm, true);
+    if (directRes.ok || directRes.status === 429) {
+      return directRes;
+    }
+
+    const userId = await resolveUserIdByHandle(norm);
+    if (userId && userId !== cachedUid) {
+      return runNativeAction('unblock', userId, false);
+    }
+
+    return directRes;
   }
 
   const XActionAdapter = {

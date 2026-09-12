@@ -101,6 +101,11 @@
     return (match && match[1] !== 'i') ? match[1].toLowerCase() : '';
   }
 
+  function getOpTweetId() {
+    const match = window.location.href.match(/\/(?:twitter\.com|x\.com)\/(?:[^/]+|i)\/status\/(\d+)/i);
+    return match ? match[1] : '';
+  }
+
   function handleUrlChange() {
     const currentUrl = window.location.href.split('?')[0];
     if (currentUrl !== currentThreadUrl) {
@@ -317,18 +322,39 @@
 
     try {
       const opHandle = getOpHandle();
+      const opTweetId = getOpTweetId();
       const allTweets = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
       if (allTweets.length === 0) return;
 
-      // The FIRST tweet in a thread view is the focal OP post
-      const mainTweet = allTweets[0];
-      mainTweet.dataset.xSpamProcessed = 'true';
-      delete mainTweet.dataset.xSpam;
-      delete mainTweet.dataset.xSpamEvaluation;
-      mainTweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
+      const replyTweets = [];
+      let foundOpTweet = false;
 
-      if (allTweets.length <= 1) return;
-      const replyTweets = allTweets.slice(1);
+      for (let i = 0; i < allTweets.length; i++) {
+        const tweet = allTweets[i];
+        const tid = getTweetId(tweet);
+
+        // 1. 如果匹配 URL 中的主推 ID，必定是楼主主推
+        if (opTweetId && tid === opTweetId) {
+          foundOpTweet = true;
+          tweet.dataset.xSpamProcessed = 'true';
+          tweet.dataset.xSpamEvaluation = 'false';
+          delete tweet.dataset.xSpam;
+          tweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
+          continue;
+        }
+
+        // 2. 如果尚未找到主推，且处于页面顶部（scrollY < 250），首个推文视为主推
+        if (!foundOpTweet && i === 0 && window.scrollY < 250) {
+          foundOpTweet = true;
+          tweet.dataset.xSpamProcessed = 'true';
+          tweet.dataset.xSpamEvaluation = 'false';
+          delete tweet.dataset.xSpam;
+          tweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
+          continue;
+        }
+
+        replyTweets.push(tweet);
+      }
 
       // Evaluate replies
       for (const tweet of replyTweets) {
@@ -345,10 +371,16 @@
 
         const tweetTextEl = tweet.querySelector('div[data-testid="tweetText"]');
         const text = tweetTextEl ? (tweetTextEl.innerText || tweetTextEl.textContent || '').trim() : '';
-
-        // Only evaluate if text has rendered or if we haven't processed with this text yet
+        const tweetId = getTweetId(tweet);
+        const lastTweetId = tweet.dataset.xSpamTweetId;
         const lastEvaluatedText = tweet.dataset.xSpamLastText;
-        if (tweet.dataset.xSpamProcessed !== 'true' || lastEvaluatedText !== text) {
+
+        // 判断推文是否为新载入、DOM回收复用或文本已更新
+        const isNewOrChanged = tweet.dataset.xSpamProcessed !== 'true'
+          || (tweetId && lastTweetId !== tweetId)
+          || lastEvaluatedText !== text;
+
+        if (isNewOrChanged) {
           if (!text && !authorHandle) {
             // Still loading/hydrating DOM, don't mark permanently processed yet
             continue;
@@ -367,6 +399,7 @@
           });
 
           tweet.dataset.xSpamProcessed = 'true';
+          tweet.dataset.xSpamTweetId = tweetId || '';
           tweet.dataset.xSpamLastText = text;
           tweet.dataset.xSpamEvaluation = checkResult.isSpam ? 'true' : 'false';
           tweet.dataset.xSpamReason = checkResult.reason || '';
@@ -425,6 +458,7 @@
         const primaryAuthor = authors[0] || '';
         const isSingleAuthor = authors.length === 1;
         const isBlocked = authors.length > 0 && authors.every(a => blockedHandlesState.has(normalizeHandleFn(a)));
+        const isQueued = !isBlocked && authors.length > 0 && authors.some(a => autoBlockQueue.some(t => t.handle === normalizeHandleFn(a)));
 
         if (currentSettings.hideMode === 'hide') {
           for (const tweet of cluster) {
@@ -446,7 +480,9 @@
 
           const blockBtnText = isBlocked
             ? '✓ 已拉黑 · 撤销'
-            : (isSingleAuthor ? `🚫 原生拉黑 @${escapeHtml(primaryAuthor)}` : `🚫 一键拉黑 (${authors.length}人)`);
+            : (isQueued
+              ? '⏳ 防封排队拉黑中...'
+              : (isSingleAuthor ? `🚫 原生拉黑 @${escapeHtml(primaryAuthor)}` : `🚫 一键拉黑 (${authors.length}人)`));
 
           banner.innerHTML = `
             <div class="x-spam-inner-left">
@@ -562,24 +598,38 @@
     window.addEventListener('popstate', handleUrlChange);
   })();
 
+  // 1. 监听滚动事件：用户下拉/向下滚动时快速触发扫描新刷出的推文
+  window.addEventListener('scroll', () => {
+    scheduleScan(100);
+  }, { passive: true });
+
+  // 2. 定时巡检兜底：每 800ms 扫描一次当前视口及新渲染的 DOM
+  setInterval(() => {
+    if (isStatusPage()) {
+      scheduleScan(100);
+    }
+  }, 800);
+
   setInterval(handleUrlChange, 250);
 
+  // 3. MutationObserver 监听节点增删与文本动态更新
   const observer = new MutationObserver((mutations) => {
-    let hasAddedNodes = false;
+    let shouldScan = false;
     for (const mutation of mutations) {
-      if (mutation.addedNodes.length > 0) {
-        hasAddedNodes = true;
+      if (mutation.addedNodes.length > 0 || mutation.type === 'characterData') {
+        shouldScan = true;
         break;
       }
     }
-    if (hasAddedNodes) {
-      scheduleScan(100);
+    if (shouldScan) {
+      scheduleScan(80);
     }
   });
 
   observer.observe(document.documentElement, {
     childList: true,
-    subtree: true
+    subtree: true,
+    characterData: true
   });
 
   handleUrlChange();
