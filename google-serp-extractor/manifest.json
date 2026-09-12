@@ -13,10 +13,17 @@
     "activeTab"
   ],
   "host_permissions": [
-    "*://www.google.com/search*",
-    "*://www.google.com.hk/search*",
     "*://*.google.com/search*",
-    "*://*.google.*/search*"
+    "*://*.google.com.hk/search*",
+    "*://*.google.com.tw/search*",
+    "*://*.google.co.uk/search*",
+    "*://*.google.co.jp/search*",
+    "*://*.google.ca/search*",
+    "*://*.google.com.au/search*",
+    "*://*.google.de/search*",
+    "*://*.google.fr/search*",
+    "*://*.google.co.in/search*",
+    "*://*.google.com.sg/search*"
   ],
   "action": {
     "default_popup": "popup/popup.html",
@@ -33,10 +40,17 @@
   "content_scripts": [
     {
       "matches": [
-        "*://www.google.com/search*",
-        "*://www.google.com.hk/search*",
         "*://*.google.com/search*",
-        "*://*.google.*/search*"
+        "*://*.google.com.hk/search*",
+        "*://*.google.com.tw/search*",
+        "*://*.google.co.uk/search*",
+        "*://*.google.co.jp/search*",
+        "*://*.google.ca/search*",
+        "*://*.google.com.au/search*",
+        "*://*.google.de/search*",
+        "*://*.google.fr/search*",
+        "*://*.google.co.in/search*",
+        "*://*.google.com.sg/search*"
       ],
       "js": [
         "shared/exporter.js",
