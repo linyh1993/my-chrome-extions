@@ -1,34 +1,108 @@
 /**
  * Google SERP & SEO Extractor - Content Script Entry Point
+ * Manages DOM observation, pagination tracking, and multi-page session accumulation.
  */
 
 (function() {
+  const SESSION_KEY = 'gse_serp_accum_session';
+  const MODE_KEY = 'gse_accum_mode_enabled';
+
   let lastData = null;
   let debounceTimer = null;
   let observer = null;
+  let lastUrl = window.location.href;
+
+  function getStoredSession() {
+    try {
+      const raw = sessionStorage.getItem(SESSION_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveStoredSession(session) {
+    try {
+      if (session) {
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      } else {
+        sessionStorage.removeItem(SESSION_KEY);
+      }
+    } catch (e) {}
+  }
+
+  function isAccumulateEnabled() {
+    try {
+      const flag = sessionStorage.getItem(MODE_KEY);
+      return flag === null ? true : flag === 'true';
+    } catch (e) {
+      return true;
+    }
+  }
+
+  function setAccumulateEnabled(val) {
+    try {
+      sessionStorage.setItem(MODE_KEY, val ? 'true' : 'false');
+    } catch (e) {}
+  }
 
   function doScan() {
     try {
-      const data = globalThis.GseParser.parseCurrentPage(document);
-      lastData = data;
+      const pageData = globalThis.GseParser.parseCurrentPage(document, { currentUrl: window.location.href });
+      const query = (pageData.query || '').trim().toLowerCase();
+
+      const accEnabled = isAccumulateEnabled();
+      let effectiveData = pageData;
+
+      if (accEnabled) {
+        let stored = getStoredSession();
+        // If search query changed to a different topic, reset session
+        if (stored && stored.query && query && stored.query.toLowerCase() !== query) {
+          stored = null;
+          saveStoredSession(null);
+        }
+
+        if (globalThis.GseParser.mergeMultiPageData) {
+          effectiveData = globalThis.GseParser.mergeMultiPageData(stored, pageData);
+        }
+        saveStoredSession(effectiveData);
+      } else {
+        saveStoredSession(null);
+      }
+
+      lastData = effectiveData;
+
+      const callbacks = {
+        onExtract: doScan,
+        isAccumulateMode: accEnabled,
+        onToggleAccumulate: (enabled) => {
+          setAccumulateEnabled(enabled);
+          if (!enabled) {
+            saveStoredSession(null);
+          }
+          doScan();
+        },
+        onClearAccumulate: () => {
+          saveStoredSession(null);
+          doScan();
+        }
+      };
 
       // Update in-page floating capsule
       if (globalThis.GseFloatingUI) {
-        globalThis.GseFloatingUI.updateStatus(data, {
-          onExtract: doScan
-        });
+        globalThis.GseFloatingUI.updateStatus(effectiveData, callbacks);
       }
 
       // Notify background service worker to update extension badge
       if (chrome.runtime && chrome.runtime.id) {
         chrome.runtime.sendMessage({
           cmd: 'UPDATE_BADGE',
-          count: data.totalFound,
-          ready: data.isFullyReady
+          count: effectiveData.totalFound,
+          ready: effectiveData.isFullyReady
         }).catch(() => {});
       }
 
-      return data;
+      return effectiveData;
     } catch (err) {
       console.error('[GSE] Scan error:', err);
       return null;
@@ -99,20 +173,69 @@
       return true;
     }
 
+    if (request.cmd === 'CLEAR_ACCUMULATE') {
+      saveStoredSession(null);
+      const data = doScan();
+      sendResponse({ ok: true, data });
+      return true;
+    }
+
+    if (request.cmd === 'TOGGLE_ACCUMULATE') {
+      setAccumulateEnabled(Boolean(request.enabled));
+      if (!request.enabled) saveStoredSession(null);
+      const data = doScan();
+      sendResponse({ ok: true, data });
+      return true;
+    }
+
     if (request.cmd === 'OPEN_PREVIEW') {
       if (globalThis.GseFloatingUI) {
-        globalThis.GseFloatingUI.openPreviewModal({ onExtract: doScan });
+        globalThis.GseFloatingUI.openPreviewModal({
+          onExtract: doScan,
+          isAccumulateMode: isAccumulateEnabled(),
+          onToggleAccumulate: (enabled) => {
+            setAccumulateEnabled(enabled);
+            if (!enabled) saveStoredSession(null);
+            doScan();
+          },
+          onClearAccumulate: () => {
+            saveStoredSession(null);
+            doScan();
+          }
+        });
       }
       sendResponse({ ok: true });
       return true;
     }
   });
 
+  // Track URL changes (Google SPA navigation or pagination anchor clicks)
+  setInterval(() => {
+    if (window.location.href !== lastUrl) {
+      lastUrl = window.location.href;
+      scheduleScan(400);
+    }
+  }, 1000);
+
+  window.addEventListener('popstate', () => {
+    scheduleScan(400);
+  });
+
   // Start initialization
   function init() {
     if (globalThis.GseFloatingUI) {
       globalThis.GseFloatingUI.initFloatingUI({
-        onExtract: doScan
+        onExtract: doScan,
+        isAccumulateMode: isAccumulateEnabled(),
+        onToggleAccumulate: (enabled) => {
+          setAccumulateEnabled(enabled);
+          if (!enabled) saveStoredSession(null);
+          doScan();
+        },
+        onClearAccumulate: () => {
+          saveStoredSession(null);
+          doScan();
+        }
       });
     }
 

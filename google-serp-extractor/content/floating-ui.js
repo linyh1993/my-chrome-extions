@@ -42,17 +42,18 @@
   function renderCapsule(callbacks) {
     if (!rootEl) return;
 
-    const itemCount = isAccumulateMode ? accumulatedItems.length : currentSerpData.items.length;
+    const itemCount = (currentSerpData.items || []).length;
     const totalFound = currentSerpData.totalFound || 0;
     const aitdkCount = currentSerpData.aitdkReadyCount || 0;
     const keCount = currentSerpData.keReadyCount || 0;
     const kwCount = (currentSerpData.relatedKeywords || []).length;
     const prodCount = (currentSerpData.relatedProducts || []).length;
-    const paaCount = (currentSerpData.peopleAlsoAsk || []).length;
-    const adCount = (currentSerpData.sponsoredAds || []).length;
+
+    const pageNum = currentSerpData.pageInfo?.pageNumber || 1;
+    const collectedPages = currentSerpData.collectedPages || [pageNum];
+    const isMultiPage = collectedPages.length > 1;
 
     const readiness = currentSerpData.readiness || {};
-    const isReady = readiness.isSettled;
     const statsStr = currentSerpData.resultStats?.totalResults
       ? `${Number(currentSerpData.resultStats.totalResults).toLocaleString()} 结果`
       : `${totalFound} 项`;
@@ -60,13 +61,17 @@
     let badgeClass = 'pending';
     let badgeText = '';
 
+    const pageTag = `<span style="background: #2563eb; color: #fff; padding: 1px 6px; border-radius: 4px; font-weight: 700; font-size: 11px;">第${pageNum}页</span>`;
+
     if (readiness.state === 'NO_PLUGINS') {
       badgeClass = 'ready';
-      badgeText = `<span>${statsStr}</span> <span style="font-size:10px; opacity:0.7;">(纯净SERP)</span>`;
+      badgeText = `${pageTag} <span style="margin: 0 3px; opacity: 0.5;">|</span> <span>${statsStr}</span> <span style="font-size:10px; opacity:0.7;">(纯净SERP)</span>`;
     } else if (readiness.state === 'READY') {
       badgeClass = 'ready';
       badgeText = `
         <span style="color: #059669; font-weight: bold;">🟢 已就绪</span>
+        <span style="margin: 0 3px; opacity: 0.5;">|</span>
+        ${pageTag}
         <span style="margin: 0 3px; opacity: 0.5;">|</span>
         <span>${statsStr}</span>
         <span style="margin: 0 3px; opacity: 0.5;">|</span>
@@ -78,6 +83,8 @@
       badgeClass = 'pending';
       badgeText = `
         <span style="color: #d97706; font-weight: bold;">⏳ 插件加载中</span>
+        <span style="margin: 0 3px; opacity: 0.5;">|</span>
+        ${pageTag}
         <span style="margin: 0 3px; opacity: 0.5;">|</span>
         <span title="AITDK 加载进度">A:${aitdkCount}/${totalFound}</span>
         <span style="margin: 0 3px; opacity: 0.5;">|</span>
@@ -91,6 +98,10 @@
     if (prodCount > 0) {
       badgeText += `<span style="margin: 0 3px; opacity: 0.5;">|</span><span title="竞品产品数">品:${prodCount}</span>`;
     }
+
+    const accBtnText = isAccumulateMode
+      ? `➕ 累积中 (${itemCount}条${isMultiPage ? ' 跨' + collectedPages.length + '页' : ''})`
+      : '➕ 追加模式';
 
     rootEl.innerHTML = `
       <div class="gse-toast" id="gse-toast"></div>
@@ -124,7 +135,7 @@
           </button>
 
           <button class="gse-btn ${isAccumulateMode ? 'gse-btn-primary' : ''}" id="gse-btn-accumulate" title="跨翻页追加模式: ${isAccumulateMode ? '已开启' : '已关闭'}">
-            <span>${isAccumulateMode ? '➕ 追加中 (' + accumulatedItems.length + ')' : '➕ 追加模式'}</span>
+            <span>${accBtnText}</span>
           </button>
         ` : `
           <div class="gse-badge ${badgeClass}">${statsStr}</div>
@@ -209,43 +220,30 @@
 
     if (btnAccumulate) {
       btnAccumulate.addEventListener('click', () => {
-        isAccumulateMode = !isAccumulateMode;
-        if (isAccumulateMode && accumulatedItems.length === 0 && currentSerpData.items.length > 0) {
-          accumulateCurrentItems();
+        const nextMode = !isAccumulateMode;
+        isAccumulateMode = nextMode;
+        if (callbacks.onToggleAccumulate) {
+          callbacks.onToggleAccumulate(nextMode);
         }
-        showToast(isAccumulateMode ? '已开启跨页追加模式！翻页将持续累加数据' : '已关闭追加模式');
-        renderCapsule(callbacks);
+        showToast(nextMode ? '已开启跨页追加模式！翻页将持续累加数据' : '已关闭追加模式，仅保留当前页');
       });
     }
   }
 
   function getActiveItems() {
-    return isAccumulateMode && accumulatedItems.length > 0 ? accumulatedItems : currentSerpData.items;
-  }
-
-  function accumulateCurrentItems() {
-    const existingUrls = new Set(accumulatedItems.map(x => x.url));
-    let added = 0;
-    for (const item of currentSerpData.items) {
-      if (!existingUrls.has(item.url)) {
-        accumulatedItems.push({
-          ...item,
-          rank: accumulatedItems.length + 1
-        });
-        existingUrls.add(item.url);
-        added++;
-      }
-    }
-    return added;
+    return currentSerpData.items || [];
   }
 
   function updateStatus(serpData, callbacks) {
     currentSerpData = serpData;
-    if (isAccumulateMode) {
-      accumulateCurrentItems();
+    if (callbacks && typeof callbacks.isAccumulateMode === 'boolean') {
+      isAccumulateMode = callbacks.isAccumulateMode;
+    } else if (serpData.isAccumulated) {
+      isAccumulateMode = true;
     }
     renderCapsule(callbacks);
     if (modalEl && !modalEl.classList.contains('gse-hidden')) {
+      renderModalFramework(callbacks);
       renderModalTable();
     }
   }
@@ -284,19 +282,26 @@
     const paaCount = (currentSerpData.peopleAlsoAsk || []).length;
     const hasAi = Boolean(currentSerpData.aiOverview?.hasAiOverview);
 
+    const pageNum = currentSerpData.pageInfo?.pageNumber || 1;
+    const collectedPages = currentSerpData.collectedPages || [pageNum];
+    const isMultiPage = collectedPages.length > 1;
+
     modalEl.innerHTML = `
       <div class="gse-modal">
         <div class="gse-modal-header">
           <div class="gse-modal-title">
             <div class="gse-brand-icon">G</div>
             <span>全景 SERP & SEO 数据 - 关键词: "${escapeHtml(currentSerpData.query || '未命名')}"</span>
-            ${currentSerpData.resultStats?.raw ? `<span style="font-size: 11px; font-weight: normal; color: #64748b;">(${escapeHtml(currentSerpData.resultStats.raw)})</span>` : ''}
+            <span style="font-size: 12px; font-weight: 700; color: #1d4ed8; background: #dbeafe; padding: 2px 8px; border-radius: 6px; margin-left: 6px;">第 ${pageNum} 页</span>
+            ${isMultiPage ? `<span style="font-size: 11px; color: #047857; font-weight: 700; background: #d1fae5; padding: 2px 8px; border-radius: 6px; margin-left: 4px;">(跨页累积 ${collectedPages.length} 页: P${collectedPages.join(', P')})</span>` : ''}
+            ${currentSerpData.resultStats?.raw ? `<span style="font-size: 11px; font-weight: normal; color: #64748b; margin-left: 6px;">(${escapeHtml(currentSerpData.resultStats.raw)})</span>` : ''}
           </div>
           <div class="gse-modal-controls">
             <button class="gse-btn gse-btn-success" id="gse-modal-copy-active">📋 复制当前 Tab</button>
             <button class="gse-btn gse-btn-primary" id="gse-modal-csv-active">📥 导出当前 CSV</button>
             <button class="gse-btn" id="gse-modal-export-all-json">📦 导出全景 JSON</button>
-            ${isAccumulateMode ? '<button class="gse-btn" id="gse-modal-clear-acc">🗑️ 清空累积</button>' : ''}
+            <button class="gse-btn ${isAccumulateMode ? 'gse-btn-primary' : ''}" id="gse-modal-toggle-acc" title="切换多页累积模式">${isAccumulateMode ? '🟢 累积模式: 开' : '⚪ 累积模式: 关'}</button>
+            ${(isAccumulateMode || isMultiPage) ? '<button class="gse-btn" id="gse-modal-clear-acc" title="清空跨页累积数据">🗑️ 清空累积</button>' : ''}
             <button class="gse-btn" id="gse-modal-close" style="font-size: 14px; font-weight: bold;">✕</button>
           </div>
         </div>
@@ -409,7 +414,9 @@
 
     let rowsHtml = items.map(item => `
       <tr>
-        <td style="font-weight: 700; text-align: center;">${item.rank}</td>
+        <td style="font-weight: 800; text-align: center; color: #1e293b;">#${item.rank}</td>
+        <td style="text-align: center;"><span style="background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 700;">第${item.page || 1}页</span></td>
+        <td style="text-align: center; color: #64748b; font-size: 11px;">#${item.pageRank || item.rank}</td>
         <td style="font-weight: 600;" title="${escapeHtml(item.title)}">
           <a href="${escapeHtml(item.url)}" target="_blank">${escapeHtml(item.title)}</a>
         </td>
@@ -433,7 +440,9 @@
       <table class="gse-table">
         <thead>
           <tr>
-            <th>#</th>
+            <th>全局排名</th>
+            <th>所属页码</th>
+            <th>页内名次</th>
             <th>页面标题 (Title)</th>
             <th>域名 (Domain)</th>
             <th>MOZ DA</th>
@@ -748,12 +757,24 @@
       });
     }
 
+    const btnToggleAcc = document.getElementById('gse-modal-toggle-acc');
+    if (btnToggleAcc) {
+      btnToggleAcc.addEventListener('click', () => {
+        const next = !isAccumulateMode;
+        isAccumulateMode = next;
+        if (callbacks.onToggleAccumulate) {
+          callbacks.onToggleAccumulate(next);
+        }
+        showToast(next ? '已开启跨页累积模式' : '已关闭跨页累积模式');
+      });
+    }
+
     if (btnClearAcc) {
       btnClearAcc.addEventListener('click', () => {
-        accumulatedItems = [];
-        renderModalTable();
-        renderCapsule(callbacks);
-        showToast('已清空累积数据');
+        if (callbacks.onClearAccumulate) {
+          callbacks.onClearAccumulate();
+        }
+        showToast('已清空跨页累积数据，重置为仅当前页！');
       });
     }
   }

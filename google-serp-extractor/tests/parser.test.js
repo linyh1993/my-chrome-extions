@@ -22,6 +22,8 @@ const {
   extractDiscussions,
   extractSeoDifficulty,
   assessPluginReadiness,
+  extractPageInfo,
+  mergeMultiPageData,
   parseCurrentPage
 } = require('../content/parser.js');
 
@@ -469,6 +471,96 @@ describe('9. Plugin Readiness and Decoupled Safety', () => {
     assert.strictEqual(readiness.isSettled, true);
     assert.strictEqual(readiness.aitdk.loadedCount, 1);
     assert.strictEqual(readiness.ke.loadedCount, 1);
+  });
+});
+
+describe('10. Pagination Recognition, Global Ranking & Multi-Page Session Accumulation', () => {
+  it('should correctly parse pagination from URL parameters', () => {
+    const p1 = extractPageInfo(null, 'https://www.google.com/search?q=ai+detector');
+    assert.strictEqual(p1.pageNumber, 1);
+    assert.strictEqual(p1.startOffset, 0);
+    assert.strictEqual(p1.isFirstPage, true);
+
+    const p2 = extractPageInfo(null, 'https://www.google.com/search?q=ai+detector&start=10');
+    assert.strictEqual(p2.pageNumber, 2);
+    assert.strictEqual(p2.startOffset, 10);
+    assert.strictEqual(p2.isFirstPage, false);
+
+    const p5 = extractPageInfo(null, 'https://www.google.com/search?q=ai+detector&start=40');
+    assert.strictEqual(p5.pageNumber, 5);
+    assert.strictEqual(p5.startOffset, 40);
+    assert.strictEqual(p5.isFirstPage, false);
+  });
+
+  it('should assign global ranks on Page 2 starting from 11', () => {
+    const doc = new MockDocument(
+      new MockElement('div', { id: 'search' }, '', [
+        new MockElement('div', { class: 'g' }, '', [
+          new MockElement('a', { href: 'https://example.com/p2-item1' }, '', [
+            new MockElement('h3', {}, 'Example P2 Item 1')
+          ])
+        ]),
+        new MockElement('div', { class: 'g' }, '', [
+          new MockElement('a', { href: 'https://example.com/p2-item2' }, '', [
+            new MockElement('h3', {}, 'Example P2 Item 2')
+          ])
+        ])
+      ])
+    );
+
+    const data = parseCurrentPage(doc, { currentUrl: 'https://www.google.com/search?q=test&start=10' });
+    assert.strictEqual(data.pageInfo.pageNumber, 2);
+    assert.strictEqual(data.items.length, 2);
+
+    assert.strictEqual(data.items[0].rank, 11);
+    assert.strictEqual(data.items[0].page, 2);
+    assert.strictEqual(data.items[0].pageRank, 1);
+
+    assert.strictEqual(data.items[1].rank, 12);
+    assert.strictEqual(data.items[1].page, 2);
+    assert.strictEqual(data.items[1].pageRank, 2);
+  });
+
+  it('should merge multi-page data and sort by global rank', () => {
+    const page1Data = {
+      query: 'ai detector',
+      items: [
+        { rank: 1, page: 1, url: 'https://a.com', title: 'A' },
+        { rank: 2, page: 1, url: 'https://b.com', title: 'B' }
+      ],
+      relatedKeywords: [{ keyword: 'ai check', source: 'Google' }]
+    };
+
+    const page2Data = {
+      query: 'ai detector',
+      items: [
+        { rank: 11, page: 2, url: 'https://c.com', title: 'C' },
+        { rank: 12, page: 2, url: 'https://d.com', title: 'D' }
+      ],
+      relatedKeywords: [{ keyword: 'ai detect free', source: 'Google' }]
+    };
+
+    const merged = mergeMultiPageData(page1Data, page2Data);
+    assert.strictEqual(merged.items.length, 4);
+    assert.strictEqual(merged.items[0].rank, 1);
+    assert.strictEqual(merged.items[2].rank, 11);
+    assert.deepStrictEqual(merged.collectedPages, [1, 2]);
+    assert.strictEqual(merged.relatedKeywords.length, 2);
+  });
+
+  it('should include Page and PageRank in CSV/TSV export', () => {
+    const sampleItems = [
+      { rank: 11, page: 2, pageRank: 1, query: 'test', title: 'P2 Title', url: 'https://test.com', domain: 'test.com' }
+    ];
+    const csv = itemsToCsv(sampleItems);
+    assert(csv.includes('全局排名 (Rank)'));
+    assert(csv.includes('所属页码 (Page)'));
+    assert(csv.includes('页内名次 (Page Rank)'));
+    assert(csv.includes('11,2,1'));
+
+    const tsv = itemsToTsv(sampleItems);
+    assert(tsv.includes('全局排名 (Rank)\t所属页码 (Page)\t页内名次 (Page Rank)'));
+    assert(tsv.includes('11\t2\t1\ttest\tP2 Title'));
   });
 });
 

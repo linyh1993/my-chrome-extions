@@ -143,7 +143,15 @@ function renderData(data) {
     const hasAi = Boolean(data.aiOverview?.hasAiOverview);
     const hasDiff = Boolean(data.seoDifficulty?.hasDifficulty);
 
+    const pageNum = data.pageInfo?.pageNumber || 1;
+    const collectedPages = data.collectedPages || [pageNum];
+    const isMultiPage = collectedPages.length > 1;
+
     let chipsHtml = '';
+    chipsHtml += `<span class="status-indicator ready" style="background:#dbeafe; color:#1d4ed8; font-weight:700;">第 ${pageNum} 页</span>`;
+    if (isMultiPage) {
+      chipsHtml += `<span class="status-indicator ready" style="background:#d1fae5; color:#047857; font-weight:700;">已累积 ${collectedPages.length} 页</span>`;
+    }
     if (kwCount > 0) chipsHtml += `<span class="status-indicator">词库: ${kwCount}</span>`;
     if (hasDiff) chipsHtml += `<span class="status-indicator">SEO难度: ${data.seoDifficulty.seoDifficulty}</span>`;
     if (prodCount > 0) chipsHtml += `<span class="status-indicator">产品: ${prodCount}</span>`;
@@ -165,7 +173,7 @@ function renderData(data) {
   previewList.innerHTML = topItems.map(item => `
     <div class="preview-item">
       <div class="preview-item-title" title="${escapeHtml(item.title)}">
-        #${item.rank} ${escapeHtml(item.title)}
+        <span style="color:#0369a1; font-weight:700;">#${item.rank}</span> <span style="font-size:10px; color:#64748b; background:#f1f5f9; padding:1px 4px; border-radius:3px;">P${item.page || 1}</span> ${escapeHtml(item.title)}
       </div>
       <div class="preview-item-meta">
         <span>DA: <b>${escapeHtml(item.mozDa || '-')}</b></span>

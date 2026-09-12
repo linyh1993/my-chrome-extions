@@ -5,7 +5,9 @@
  */
 
 const GSE_SERP_COLUMNS = [
-  { key: 'rank', label: '排名 (Rank)' },
+  { key: 'rank', label: '全局排名 (Rank)' },
+  { key: 'page', label: '所属页码 (Page)' },
+  { key: 'pageRank', label: '页内名次 (Page Rank)' },
   { key: 'query', label: '搜索词 (Query)' },
   { key: 'title', label: '标题 (Title)' },
   { key: 'url', label: 'URL' },

@@ -884,16 +884,144 @@
   }
 
   /**
+   * Extract pagination information from URL and DOM
+   */
+  function extractPageInfo(doc = document, currentUrl = '') {
+    let urlStr = currentUrl;
+    if (!urlStr && typeof window !== 'undefined' && window.location) {
+      urlStr = window.location.href;
+    }
+
+    let startOffset = 0;
+    let pageNumber = 1;
+
+    if (urlStr) {
+      try {
+        const u = new URL(urlStr);
+        const startParam = u.searchParams.get('start');
+        if (startParam !== null) {
+          const parsedStart = parseInt(startParam, 10);
+          if (!isNaN(parsedStart) && parsedStart >= 0) {
+            startOffset = parsedStart;
+            pageNumber = Math.floor(parsedStart / 10) + 1;
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Fallback: check DOM pagination indicator if URL start wasn't found or was 0
+    if (pageNumber === 1 && doc && typeof doc.querySelector === 'function') {
+      const curEl = doc.querySelector('td.cur, [aria-current="page"], .YyVfkd');
+      if (curEl) {
+        const n = parseInt(curEl.textContent.trim(), 10);
+        if (!isNaN(n) && n > 0) {
+          pageNumber = n;
+          startOffset = (n - 1) * 10;
+        }
+      }
+    }
+
+    return {
+      pageNumber,
+      startOffset,
+      isFirstPage: pageNumber === 1
+    };
+  }
+
+  /**
+   * Merge multi-page SERP data items, deduplicating by URL and sorting by rank
+   */
+  function mergeMultiPageData(existingData, newData) {
+    if (!existingData || !existingData.items || existingData.items.length === 0) {
+      return newData;
+    }
+    if (!newData || !newData.items || newData.items.length === 0) {
+      return existingData;
+    }
+
+    // Merge items
+    const itemMap = new Map();
+    for (const item of existingData.items) {
+      itemMap.set(item.url, item);
+    }
+    for (const item of newData.items) {
+      itemMap.set(item.url, item);
+    }
+
+    const mergedItems = Array.from(itemMap.values()).sort((a, b) => (a.rank || 0) - (b.rank || 0));
+
+    // Merge related keywords
+    const kwMap = new Map();
+    for (const k of (existingData.relatedKeywords || [])) {
+      kwMap.set(k.keyword.toLowerCase(), k);
+    }
+    for (const k of (newData.relatedKeywords || [])) {
+      kwMap.set(k.keyword.toLowerCase(), k);
+    }
+    const mergedKeywords = Array.from(kwMap.values());
+
+    // Merge products
+    const prodMap = new Map();
+    for (const p of (existingData.relatedProducts || [])) {
+      prodMap.set((p.title || '') + (p.merchant || ''), p);
+    }
+    for (const p of (newData.relatedProducts || [])) {
+      prodMap.set((p.title || '') + (p.merchant || ''), p);
+    }
+    const mergedProducts = Array.from(prodMap.values());
+
+    // Merge PAA
+    const paaMap = new Map();
+    for (const q of (existingData.peopleAlsoAsk || [])) {
+      paaMap.set(q.question, q);
+    }
+    for (const q of (newData.peopleAlsoAsk || [])) {
+      paaMap.set(q.question, q);
+    }
+    const mergedPaa = Array.from(paaMap.values());
+
+    // Merge Ads
+    const adsMap = new Map();
+    for (const ad of (existingData.sponsoredAds || [])) {
+      adsMap.set(ad.url || ad.title, ad);
+    }
+    for (const ad of (newData.sponsoredAds || [])) {
+      adsMap.set(ad.url || ad.title, ad);
+    }
+    const mergedAds = Array.from(adsMap.values());
+
+    // Calculate distinct pages collected
+    const collectedPages = Array.from(new Set(mergedItems.map(i => i.page || 1))).sort((a, b) => a - b);
+
+    return {
+      ...newData,
+      query: newData.query || existingData.query,
+      isAccumulated: true,
+      collectedPages,
+      totalFound: mergedItems.length,
+      items: mergedItems,
+      relatedKeywords: mergedKeywords,
+      longTailKeywords: mergedKeywords.filter(k => k.source.includes('Long-Tail')),
+      trendingKeywords: mergedKeywords.filter(k => k.source.includes('Trending')),
+      relatedProducts: mergedProducts,
+      peopleAlsoAsk: mergedPaa,
+      sponsoredAds: mergedAds
+    };
+  }
+
+  /**
    * Main parsing function: extract all SERP items + SEO metrics + landscape modules
    */
-  function parseCurrentPage(doc = document) {
+  function parseCurrentPage(doc = document, options = {}) {
+    const currentUrl = options.currentUrl || '';
+    const pageInfo = extractPageInfo(doc, currentUrl);
     const query = extractSearchQuery(doc);
     const resultStats = extractResultStats(doc);
     const pageVolumeInfo = extractPageVolumeInfo(doc);
     const containers = findResultContainers(doc);
 
     const items = [];
-    let rank = 1;
+    let pageRank = 1;
     let aitdkReadyCount = 0;
     let keReadyCount = 0;
 
@@ -909,9 +1037,13 @@
       if (aitdk.aitdkReady) aitdkReadyCount++;
       if (ke.keReady) keReadyCount++;
 
+      const globalRank = pageInfo.startOffset + pageRank;
+
       items.push({
-        id: `serp_${rank}_${domain}`,
-        rank: rank++,
+        id: `serp_${globalRank}_${domain}`,
+        rank: globalRank,
+        page: pageInfo.pageNumber,
+        pageRank: pageRank++,
         query,
         title,
         url,
@@ -955,6 +1087,7 @@
 
     return {
       query,
+      pageInfo,
       resultStats,
       pageVolumeInfo,
       totalFound: items.length,
@@ -994,6 +1127,8 @@
     extractSponsoredAds,
     extractAiOverview,
     extractDiscussions,
+    extractPageInfo,
+    mergeMultiPageData,
     parseCurrentPage
   };
 });
