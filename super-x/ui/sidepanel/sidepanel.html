@@ -24,6 +24,7 @@
       <button type="button" class="tab-btn active" data-tab="tab-overview">📊 监控大盘</button>
       <button type="button" class="tab-btn" data-tab="tab-cleaner">🛡️ 评论净化</button>
       <button type="button" class="tab-btn" data-tab="tab-ui">🎨 界面定制</button>
+      <button type="button" class="tab-btn" data-tab="tab-follow-list">👥 关注转列表</button>
       <button type="button" class="tab-btn" data-tab="tab-backup">💾 备份管理</button>
     </nav>
 
@@ -210,7 +211,97 @@
       </div>
     </section>
 
-    <!-- Tab 4: 备份管理 -->
+    <!-- Tab 4: 关注转列表 -->
+    <section id="tab-follow-list" class="tab-pane">
+      <!-- 目标 List 设置卡片 -->
+      <div class="card-section">
+        <div class="section-header-flex">
+          <h3>🎯 目标 X 列表 (List)</h3>
+          <span class="badge-tag" id="follow-list-id-badge">未设置</span>
+        </div>
+        <p class="section-desc">支持直接粘贴 List 网址（如 https://x.com/i/lists/189...）或纯数字 List ID。</p>
+        <div class="list-input-group">
+          <input type="text" id="input-target-list" placeholder="粘贴 X List 网址或输入数字 ID" class="text-input" style="flex: 1; padding: 7px 10px; background: #0f1419; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-size: 12px;">
+          <button type="button" id="btn-save-target-list" class="btn-primary-small">保存目标</button>
+        </div>
+        <div class="rate-limit-badge" style="margin-top: 10px;">
+          <span class="badge-icon">💡</span>
+          <span>使用提示：在 X 网页打开任意关注列表页 (x.com/username/following) 滚动浏览，SuperX 将自动抓取并展示在下方。</span>
+        </div>
+      </div>
+
+      <!-- 筛选与控制栏 -->
+      <div class="card-section">
+        <div class="section-header-flex">
+          <h3>🔍 筛选与账号选择</h3>
+          <div class="action-btn-group">
+            <button type="button" class="btn-text-action" id="btn-select-all-users">全选</button>
+            <button type="button" class="btn-text-action" id="btn-invert-users">反选</button>
+            <button type="button" class="btn-text-action" id="btn-export-users-csv">导出 CSV</button>
+            <button type="button" class="btn-text-action danger" id="btn-clear-captured-users">清空</button>
+          </div>
+        </div>
+
+        <div class="filter-controls-grid">
+          <input type="text" id="filter-user-query" placeholder="搜索昵称 / Handle / 简介" class="text-input" style="padding: 6px 10px; background: #0f1419; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; color: #fff; font-size: 12px;">
+          <div class="filter-row-flex">
+            <label class="checkbox-row-compact">
+              <input type="checkbox" id="filter-mutual-only">
+              <span>仅互关 (Mutual)</span>
+            </label>
+            <label class="checkbox-row-compact">
+              <input type="checkbox" id="filter-verified-only">
+              <span>仅蓝标/认证</span>
+            </label>
+          </div>
+          <div class="filter-range-row">
+            <span>粉丝数:</span>
+            <input type="number" id="filter-min-followers" placeholder="Min" class="mini-input">
+            <span>-</span>
+            <input type="number" id="filter-max-followers" placeholder="Max" class="mini-input">
+          </div>
+        </div>
+
+        <div class="selection-summary-bar">
+          <span>已捕获 <strong id="follow-total-count">0</strong> 个 | 当前选中 <strong id="follow-selected-count">0</strong> 个</span>
+        </div>
+
+        <!-- 账号列表容器 -->
+        <div class="curator-users-table-wrap">
+          <div class="curator-users-list" id="curator-users-container">
+            <div class="empty-hint">暂无捕获的关注账号。请在 X 打开关注页滚动浏览。</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 执行批处理卡片 -->
+      <div class="card-section">
+        <div class="section-header-flex">
+          <h3>⚡ 批量加入列表任务</h3>
+          <span class="task-status-pill" id="follow-task-status-pill">待命</span>
+        </div>
+
+        <div class="task-delay-setting">
+          <label>防封安全机制：单次间隔 <strong>2.5s - 4.5s 随机浮动</strong>，遇 429 自动冷却退避。</label>
+        </div>
+
+        <div class="task-progress-box">
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="follow-task-progress-fill" style="width: 0%;"></div>
+          </div>
+          <div class="progress-meta" id="follow-task-progress-text">进度：0 / 0</div>
+        </div>
+
+        <div class="task-log-hint" id="follow-task-log">任务就绪。请勾选账号并确认目标 List 后启动。</div>
+
+        <div class="task-actions-row">
+          <button type="button" id="btn-start-batch-add" class="btn-primary">▶ 开始批量导入所选</button>
+          <button type="button" id="btn-stop-batch-add" class="btn-secondary" disabled>⏹ 停止任务</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 5: 备份管理 -->
     <section id="tab-backup" class="tab-pane">
       <div class="card-section">
         <h3>配置全量导出与重置</h3>

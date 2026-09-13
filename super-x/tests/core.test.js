@@ -63,9 +63,11 @@ assert.ok(!isolatedScripts.includes("features/x-comment-cleaner/simhash.js"), "s
 assert.ok(!isolatedScripts.includes("features/x-comment-cleaner/packs.js"), "packs.js should not be duplicated");
 assert.ok(isolatedScripts.includes("features/x-comment-cleaner/rules.js"), "rules.js must be loaded");
 assert.ok(isolatedScripts.includes("features/x-better-ui/better-ui-feature.js"), "better-ui-feature.js must be loaded");
+assert.ok(isolatedScripts.includes("features/x-follow-to-list/follow-list-feature.js"), "follow-list-feature.js must be loaded");
 
 const isolatedStyles = manifest.content_scripts[1].css;
 assert.ok(isolatedStyles.includes("features/x-better-ui/better-ui.css"), "better-ui.css must be loaded");
+assert.ok(isolatedStyles.includes("features/x-follow-to-list/follow-list.css"), "follow-list.css must be loaded");
 
 // 确保 better-ui.css 包含关键规则
 const betterCssPath = path.resolve(__dirname, "../features/x-better-ui/better-ui.css");
@@ -75,7 +77,7 @@ assert.ok(betterCss.includes("data-superx-widen"), "Must define widen timeline s
 assert.ok(betterCss.includes("#superx-toc-container") || betterCss.includes("#superx-article-outline"), "Must define article outline / TOC styles");
 assert.ok(betterCss.includes("data-testid=\"trend\""), "Must target modern trend element");
 
-console.log("✓ Manifest V3 & Better UI compliance check passed.");
+console.log("✓ Manifest V3 & Feature scripts check passed.");
 
 // 4. 测试 x-comment-cleaner 规则引擎评估与英文帖子识别
 const rulesPath = path.resolve(__dirname, "../features/x-comment-cleaner/rules.js");
@@ -213,4 +215,145 @@ assert.strictEqual(classifyHeading("1.2.3 缓存指纹对比").level, 3, "1.2.3 
 assert.strictEqual(classifyHeading("① 初始化阶段").level, 3, "Circled number ① must be Level 3");
 console.log("✓ TOC multi-level heading classification tests passed.");
 
+// 6. 测试 x-follow-to-list 核心逻辑
+// 6.1 List ID 提取测试
+function extractListId(input) {
+  const trimmed = (input || "").trim();
+  const match = trimmed.match(/lists\/(\d+)/i);
+  if (match) return match[1];
+  if (/^\d{5,}$/.test(trimmed)) return trimmed;
+  return "";
+}
+
+assert.strictEqual(extractListId("https://x.com/i/lists/1892837482390"), "1892837482390", "Must parse ID from full URL");
+assert.strictEqual(extractListId("https://twitter.com/i/lists/987654321/members"), "987654321", "Must parse ID from members URL");
+assert.strictEqual(extractListId("1234567890"), "1234567890", "Must keep plain numeric ID");
+assert.strictEqual(extractListId("not_a_valid_list_id"), "", "Must reject invalid list ID string");
+console.log("✓ extractListId URL & ID parsing tests passed.");
+
+// 6.2 用户数据解析与遍历测试
+function extractUsersMock(payload) {
+  const found = [];
+  const seen = new Set();
+  const text = (v) => (v == null ? "" : String(v));
+  const getId = (obj) => text(obj?.rest_id || obj?.id_str || obj?.id || obj?.user_id);
+  const getLegacy = (obj) => obj?.legacy || obj?.user_results?.result?.legacy || obj;
+  const getHandle = (obj) => {
+    const leg = getLegacy(obj);
+    return text(obj?.core?.screen_name || leg?.screen_name || obj?.screen_name || obj?.username);
+  };
+  const getName = (obj) => {
+    const leg = getLegacy(obj);
+    return text(obj?.core?.name || leg?.name || obj?.name);
+  };
+
+  const isUser = (obj) => {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
+    const id = getId(obj);
+    const handle = getHandle(obj);
+    return Boolean(id && handle && (obj.legacy || obj.core || obj.profile_image_url_https || obj.user_results));
+  };
+
+  const walk = (node, depth) => {
+    if (!node || depth > 16 || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, depth + 1);
+      return;
+    }
+    if (isUser(node)) {
+      const id = getId(node);
+      if (!seen.has(id)) {
+        seen.add(id);
+        const leg = getLegacy(node);
+        found.push({
+          id,
+          handle: getHandle(node),
+          name: getName(node),
+          followers: Number(leg?.followers_count || 0),
+          mutual: Boolean(leg?.followed_by)
+        });
+      }
+    }
+    for (const val of Object.values(node)) walk(val, depth + 1);
+  };
+
+  walk(payload, 0);
+  return found;
+}
+
+const mockGraphQLResponse = {
+  data: {
+    user: {
+      result: {
+        timeline: {
+          timeline: {
+            instructions: [
+              {
+                type: "TimelineAddEntries",
+                entries: [
+                  {
+                    entryId: "user-111",
+                    content: {
+                      itemContent: {
+                        user_results: {
+                          result: {
+                            rest_id: "111",
+                            legacy: {
+                              screen_name: "alice_dev",
+                              name: "Alice",
+                              followers_count: 5200,
+                              followed_by: true
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    entryId: "user-222",
+                    content: {
+                      itemContent: {
+                        user_results: {
+                          result: {
+                            rest_id: "222",
+                            legacy: {
+                              screen_name: "bob_ai",
+                              name: "Bob",
+                              followers_count: 320,
+                              followed_by: false
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+};
+
+const extractedUsers = extractUsersMock(mockGraphQLResponse);
+assert.strictEqual(extractedUsers.length, 2, "Must extract 2 users from GraphQL payload");
+assert.strictEqual(extractedUsers[0].handle, "alice_dev", "User 0 handle match");
+assert.strictEqual(extractedUsers[0].mutual, true, "User 0 mutual match");
+assert.strictEqual(extractedUsers[1].handle, "bob_ai", "User 1 handle match");
+assert.strictEqual(extractedUsers[1].mutual, false, "User 1 mutual match");
+console.log("✓ GraphQL Following/Followers user extractor test passed.");
+
+// 6.3 筛选逻辑测试
+const mutualFiltered = extractedUsers.filter(u => u.mutual);
+assert.strictEqual(mutualFiltered.length, 1, "Mutual filter should return 1");
+assert.strictEqual(mutualFiltered[0].handle, "alice_dev");
+
+const followersFiltered = extractedUsers.filter(u => u.followers > 1000);
+assert.strictEqual(followersFiltered.length, 1, "Followers > 1000 filter should return 1");
+assert.strictEqual(followersFiltered[0].handle, "alice_dev");
+console.log("✓ Follower filtering logic tests passed.");
+
 console.log("\n=== ALL AUTOMATED TESTS PASSED! ===");
+

@@ -1,0 +1,47 @@
+/* SuperX - Follow to List Styles */
+
+/* 页面悬浮捕获徽章 */
+.superx-follow-badge {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(15, 20, 25, 0.92);
+  color: #fff;
+  border: 1px solid #1d9bf0;
+  border-radius: 9999px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+}
+
+.superx-follow-badge:hover {
+  background: #1d9bf0;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(29, 155, 240, 0.4);
+}
+
+.superx-follow-badge-icon {
+  font-size: 15px;
+}
+
+.superx-follow-badge-count {
+  background: rgba(29, 155, 240, 0.25);
+  color: #1d9bf0;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  font-size: 12px;
+}
+
+.superx-follow-badge:hover .superx-follow-badge-count {
+  background: #fff;
+  color: #1d9bf0;
+}

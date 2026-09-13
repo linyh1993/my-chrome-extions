@@ -7,16 +7,21 @@
 
   console.log("[SuperX] Content Script initializing on", location.href);
 
-  // 1. 监听来自 MAIN world 的 GraphQL 网络事件
+  // 1. 监听来自 MAIN world 的网络与代理调用事件
   window.addEventListener("message", (event) => {
     if (event.source !== window) return;
     const data = event.data;
     if (data && data.source === "superx-network-hook") {
       if (window.__SuperX__ && window.__SuperX__.EventBus) {
-        window.__SuperX__.EventBus.emit("graphql:response", {
-          endpoint: data.endpoint,
-          data: data.data
-        });
+        if (data.endpoint) {
+          window.__SuperX__.EventBus.emit("graphql:response", {
+            endpoint: data.endpoint,
+            data: data.data
+          });
+        }
+        if (data.type === "SUPERX_ADD_LIST_MEMBER_RESULT") {
+          window.__SuperX__.EventBus.emit("list:add_result", data);
+        }
       }
     }
   });

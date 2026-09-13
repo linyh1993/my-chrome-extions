@@ -8,7 +8,8 @@ const DEFAULT_SUPERX_STATE = {
   globalEnabled: true,
   features: {
     "x-comment-cleaner": { enabled: true },
-    "x-better-ui": { enabled: true }
+    "x-better-ui": { enabled: true },
+    "x-follow-to-list": { enabled: true }
   }
 };
 
@@ -32,6 +33,9 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === "OPEN_SIDE_PANEL") {
     const tabId = sender.tab?.id || request.tabId;
+    if (request.tab) {
+      chrome.storage.session.set({ superx_active_sidepanel_tab: request.tab }).catch(() => {});
+    }
     if (tabId && chrome.sidePanel && chrome.sidePanel.open) {
       chrome.sidePanel.open({ tabId }).then(() => {
         sendResponse({ success: true });

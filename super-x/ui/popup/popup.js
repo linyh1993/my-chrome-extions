@@ -4,10 +4,11 @@
 document.addEventListener("DOMContentLoaded", async () => {
   const storage = window.__SuperX__.Storage;
 
-  // 1. 获取 DOM 元素
   const toggleCleaner = document.getElementById("toggle-cleaner");
   const toggleBetterUI = document.getElementById("toggle-better-ui");
+  const toggleFollowList = document.getElementById("toggle-follow-list");
   const popupBlockedCount = document.getElementById("popup-blocked-count");
+  const popupFollowCount = document.getElementById("popup-follow-count");
   const popupAutoBlock = document.getElementById("popup-auto-block");
   const popupModeCollapse = document.getElementById("popupModeCollapse");
   const popupModeHide = document.getElementById("popupModeHide");
@@ -17,6 +18,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const popupOutline = document.getElementById("popup-outline");
 
   const btnGotoCleaner = document.getElementById("btn-goto-cleaner-settings");
+  const btnGotoFollowCurator = document.getElementById("btn-goto-follow-curator");
   const btnOpenSidepanel = document.getElementById("btn-open-sidepanel");
 
   // 2. 读取 SuperX 总控状态
@@ -29,6 +31,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (toggleBetterUI) {
       toggleBetterUI.checked = features["x-better-ui"] ? features["x-better-ui"].enabled : true;
     }
+    if (toggleFollowList) {
+      toggleFollowList.checked = features["x-follow-to-list"] ? features["x-follow-to-list"].enabled : true;
+    }
+  });
+
+  // 读取已捕获关注数
+  chrome.storage.local.get(["superx_follow_list_captured_users"], (data) => {
+    const list = Array.isArray(data.superx_follow_list_captured_users) ? data.superx_follow_list_captured_users : [];
+    if (popupFollowCount) popupFollowCount.textContent = list.length;
   });
 
   // 3. 读取 x-comment-cleaner 专属配置
@@ -76,6 +87,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         type: "UPDATE_FEATURE_STATE",
         featureId: "x-better-ui",
         enabled: toggleBetterUI.checked
+      });
+    });
+  }
+
+  if (toggleFollowList) {
+    toggleFollowList.addEventListener("change", () => {
+      chrome.runtime.sendMessage({
+        type: "UPDATE_FEATURE_STATE",
+        featureId: "x-follow-to-list",
+        enabled: toggleFollowList.checked
       });
     });
   }
@@ -129,12 +150,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // 8. 唤起 Side Panel
-  async function openSidePanel() {
+  async function openSidePanel(targetTab) {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.id) {
       chrome.runtime.sendMessage({
         type: "OPEN_SIDE_PANEL",
-        tabId: tab.id
+        tabId: tab.id,
+        tab: targetTab
       }, (res) => {
         if (res && res.success) {
           window.close();
@@ -143,8 +165,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  if (btnGotoCleaner) btnGotoCleaner.addEventListener("click", openSidePanel);
-  if (btnOpenSidepanel) btnOpenSidepanel.addEventListener("click", openSidePanel);
+  if (btnGotoCleaner) btnGotoCleaner.addEventListener("click", () => openSidePanel("tab-cleaner"));
+  if (btnGotoFollowCurator) btnGotoFollowCurator.addEventListener("click", () => openSidePanel("tab-follow-list"));
+  if (btnOpenSidepanel) btnOpenSidepanel.addEventListener("click", () => openSidePanel());
 
   // 9. 监听跨上下文 storage 实时更新计数
   chrome.storage.onChanged.addListener((changes, area) => {
