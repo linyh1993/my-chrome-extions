@@ -197,6 +197,15 @@ html[style*="background-color: rgb(21, 32, 43)"] #superx-toc-popup,
   color: #1d9bf0;
 }
 
+.superx-toc-item.main-title {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: #1d9bf0;
+  border-bottom: 1px dashed rgba(128, 128, 128, 0.25);
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+}
+
 .superx-toc-item.h2 {
   padding-left: 18px;
   font-size: 12px;
