@@ -33,7 +33,12 @@ const KEYWORD_PACKS = [
       "不信你看", "不信看", "信不信你看", "不信你来", "想看私", "想看的", "懂的都懂", "懂的来",
       "私信看福利", "私信发福利", "主页自取福利", "进主页看福利", "福利视频在主页", "福利在主页", "福利在简介",
       "全国空降", "同城空降", "同城上门", "真人上门", "少妇上门", "学生妹上门", "线下私约",
-      "门槛群", "福利群", "吃瓜群", "黑料群", "大瓜", "瓜条", "夸克网盘", "解压码"
+      "门槛群", "福利群", "吃瓜群", "黑料群", "大瓜", "瓜条", "夸克网盘", "解压码",
+      "打飞机", "打✈️", "打🛩️", "打🛫", "能打飞机", "能打✈️", "主页能打", "打胶", "能打胶",
+      "免费破处", "破处", "同城破处", "找人破处", "开苞", "初夜", "包夜", "兼职女", "兼职妹",
+      "不是人机", "非人机", "不是机器人", "不是bot", "真人非bot",
+      "sao货", "sao逼", "sao女", "发sao", "太sao", "好sao", "没人比她sao", "没人比我sao", "比她sao", "比我sao", "没她sao", "没我sao",
+      "没人比她骚", "没人比我骚", "谁比她骚", "谁比我骚", "比她会玩", "没她会玩", "比我会玩", "没我会玩"
     ],
     gapRules: [
       { id: "adult-gap-door", terms: ["同城", "上门"], maxGap: 14 },
@@ -41,7 +46,14 @@ const KEYWORD_PACKS = [
       { id: "adult-gap-private", terms: ["同城", "私约"], maxGap: 14 },
       { id: "adult-gap-airdrop", terms: ["同城", "空降"], maxGap: 14 },
       { id: "adult-gap-profile", terms: ["福利", "主页"], maxGap: 10 },
-      { id: "adult-gap-bio", terms: ["福利", "简介"], maxGap: 10 }
+      { id: "adult-gap-bio", terms: ["福利", "简介"], maxGap: 10 },
+      { id: "adult-gap-plane", terms: ["主页", "打飞机"], maxGap: 14 },
+      { id: "adult-gap-fly", terms: ["主页", "打✈️"], maxGap: 14 },
+      { id: "adult-gap-fly-plane", terms: ["主页", "飞机"], maxGap: 14 },
+      { id: "adult-gap-deflower", terms: ["免费", "破处"], maxGap: 10 },
+      { id: "adult-gap-sao-cmp", terms: ["没人比", "骚"], maxGap: 12 },
+      { id: "adult-gap-sao-pinyin", terms: ["没人比", "sao"], maxGap: 12 },
+      { id: "adult-gap-brush-x", terms: ["刷了半天", "主页"], maxGap: 18 }
     ]
   },
   {
@@ -153,11 +165,16 @@ const KEYWORD_PACKS = [
 ];
 
 const X_SPAM_PATTERNS = [
-  /(?:没人|谁)比我.*(?:玩|骚|放|浪)/i,
-  /(?:不黑|水多|粉嫩|耐操|反差|大瓜).*不信/i,
-  /(?:看主页|看置顶|看相册|私信我|进群).*(?:福利|无门槛|吃瓜|资源|相册)/i,
-  /@[\w_]{3,20}\s*[\p{Emoji}\u200d\uFE0F\d\s]{1,15}$/u,
-  /(?:比她|好看|骚|看主|置顶|资源|私聊|福利|主页|吃瓜).*@[\w_]{3,20}/i,
+  /(?:没人|谁)比[我她].*(?:玩|骚|放|浪|sao)/i,
+  /(?:不黑|水多|粉嫩|耐操|反差|大瓜|破处).*不信/i,
+  /(?:看主页|看置顶|看相册|私信我|进群|主页.*(?:打✈️|打飞机|能打)).*(?:福利|无门槛|吃瓜|资源|相册|✈️|飞机)/i,
+  /@[a-zA-Z0-9_]{3,25}(?:[ \t\r\n\p{Emoji}\u200d\uFE0F]*[a-zA-Z0-9]{1,4})?\s*$/u,
+  /(?:比[她我]|好看|骚|sao|看主|置顶|资源|私聊|福利|主页|吃瓜|打✈️|打飞机|破处).*@[a-zA-Z0-9_]{3,25}/i,
+  /(?:主页|就她|就她主页|进主页).*能打(?:✈️|🛩️|🛫|飞机|胶)/i,
+  /(?:刷了半天|找了半天).*(?:主页|看她|看他|打✈️|打飞机)/i,
+  /(?:免费)?破处/i,
+  /(?:不是|非)(?:人机|机器人|bot)/i,
+  /sao[货逼女]|发sao|太sao/i,
   /\b(?:dm|pm)\s+(?:me|us)\b[\s\S]{0,40}\b(?:invest|crypto|profit|earn|signal)/i,
   /\b\d{1,7}\s*(?:usdt|usdc|btc|eth|sol|trx)\b[\s\S]{0,80}g[i1](?:v|w)?e?away/i
 ];
@@ -324,8 +341,20 @@ function isEnglishLanguage({ text = '', lang = '' } = {}) {
   return false;
 }
 
-function checkTranslationMeta(fullText = '') {
-  if (!fullText) return { isTranslated: false, isForeign: false, isEnglish: false, sourceLang: '' };
+function checkTranslationMeta(fullText = '', text = '') {
+  if (!fullText && !text) return { isTranslated: false, isForeign: false, isEnglish: false, sourceLang: '' };
+
+  const targetText = text || fullText;
+  const cjkChars = (targetText.match(/[\p{Script=Han}\u4e00-\u9fa5]/gu) || []).length;
+  // 关键保护：如果评论正文本身已经包含明显的中文汉字（>= 3 个），无论 Twitter 界面是否显示了“翻译帖子”，该评论本身就是中文内容，绝不能误判为外文！
+  if (cjkChars >= 3) {
+    return {
+      isTranslated: false,
+      sourceLang: 'zh',
+      isEnglish: false,
+      isForeign: false
+    };
+  }
 
   const hasShowOriginal = /显示原文|Show original/i.test(fullText);
   const hasTranslatePrompt = /翻译帖子|Translate post|Translate Tweet/i.test(fullText);
@@ -369,11 +398,17 @@ function extractChineseText(text) {
     .replace(/➕|\＋|\+/g, '加')
     .replace(/👗/g, '群')
     .replace(/🛰️|🛰/g, '微')
+    .replace(/✈️|🛩️|🛫|✈/g, '飞机')
     .replace(/威信|薇信|唯心|维信/g, '微信')
     .replace(/裙内|进裙|入裙/g, '进群')
     .replace(/門檻|门坎|门卡/g, '门槛')
     .replace(/看主頁/g, '看主页')
-    .replace(/置頂/g, '置顶');
+    .replace(/置頂/g, '置顶')
+    .replace(/破處/g, '破处')
+    .replace(/開苞/g, '开苞')
+    .replace(/處女/g, '处女')
+    .replace(/打膠/g, '打胶')
+    .replace(/\bsao\b|sao(?=[货逼女])|(?<=[比没])sao|sao/gi, '骚');
   const matches = s.match(/[\u4e00-\u9fa5]+/g);
   return matches ? matches.join('') : '';
 }
@@ -384,21 +419,29 @@ function normalizeTextForMatching(text, filterHomophones = true) {
 
   s = s.replace(/\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}(?:\s+\d{1,2}:\d{1,2}(?::\d{1,2})?)?\b/g, '');
   s = s.replace(/\b17\d{10,11}\b/g, '');
-  s = s.replace(/[\p{Emoji}\u200d\uFE0F\uE000-\uF8FF\u200B-\u200D\uFEFF]/gu, '');
 
   if (filterHomophones) {
     s = s
       .replace(/➕|\＋|\+/g, '加')
       .replace(/👗/g, '群')
       .replace(/🛰️|🛰/g, '微')
+      .replace(/✈️|🛩️|🛫|✈/g, '飞机')
       .replace(/威信|薇信|唯心|维信/g, '微信')
       .replace(/裙内|进裙|入裙/g, '进群')
       .replace(/門檻|门坎|门卡/g, '门槛')
       .replace(/看主頁/g, '看主页')
       .replace(/置頂/g, '置顶')
+      .replace(/破處/g, '破处')
+      .replace(/開苞/g, '开苞')
+      .replace(/處女/g, '处女')
+      .replace(/打膠/g, '打胶')
+      .replace(/\bsao\b|sao(?=[货逼女])|(?<=[比没])sao|sao/gi, '骚')
+      .replace(/[\p{Emoji}\u200d\uFE0F\uE000-\uF8FF\u200B-\u200D\uFEFF]/gu, '')
       .replace(/[\s\-_,，。！？!?.~～`@#$%^&*()（）:：/\\|<>'"“”‘’\d]+/g, '');
   } else {
-    s = s.replace(/[\s\-_,，。！？!?.~～`@#$%^&*()（）:：/\\|<>'"“”‘’\d]+/g, '');
+    s = s
+      .replace(/[\p{Emoji}\u200d\uFE0F\uE000-\uF8FF\u200B-\u200D\uFEFF]/gu, '')
+      .replace(/[\s\-_,，。！？!?.~～`@#$%^&*()（）:：/\\|<>'"“”‘’\d]+/g, '');
   }
 
   return s;
@@ -582,7 +625,7 @@ function evaluateReplySpam({
 
   // 2. English & Foreign / Auto-translated Content Protection (英文及 X 自动翻译外文内容不触发清理)
   if (cfg.skipEnglish !== false) {
-    const trans = checkTranslationMeta(rawText || text);
+    const trans = checkTranslationMeta(rawText || text, text);
     if (trans.isForeign || trans.isEnglish || isEnglishLanguage({ text, lang })) {
       return { isSpam: false, isEnglish: true };
     }
@@ -605,10 +648,15 @@ function evaluateReplySpam({
     }
   }
 
-  // 4. Mention Spam Pattern (@handle + random suffix)
+  // 4. Mention Spam Pattern (@handle + random salt/suffix)
   if (cfg.filterMentionSpam && text) {
-    const mentionPattern = /@[\w_]{3,20}\s*[\p{Emoji}\u200d\uFE0F\d\s]{1,15}$/u;
-    if (mentionPattern.test(text)) {
+    const hasChinese = /[\p{Script=Han}\u4e00-\u9fa5]/u.test(text);
+    const saltMentionPattern = /@[a-zA-Z0-9_]{3,25}(?:[ \t\r\n\p{Emoji}\u200d\uFE0F]*[a-zA-Z0-9]{1,4})?\s*$/u;
+    if (hasChinese && saltMentionPattern.test(text)) {
+      return { isSpam: true, reason: 'Bot 引流艾特' };
+    }
+    const legacyMentionPattern = /@[\w_]{3,20}\s*[\p{Emoji}\u200d\uFE0F\d\s]{1,15}$/u;
+    if (legacyMentionPattern.test(text)) {
       return { isSpam: true, reason: 'Bot 引流艾特' };
     }
   }

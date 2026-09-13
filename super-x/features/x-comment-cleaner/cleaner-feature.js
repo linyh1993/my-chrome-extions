@@ -116,6 +116,13 @@
   function checkTweetTranslation(tweet) {
     if (!tweet) return { isTranslated: false, isForeign: false, isEnglish: false, sourceLang: '' };
 
+    const { text } = getTweetTextAndLang(tweet);
+    const cjkInText = (text.match(/[\p{Script=Han}\u4e00-\u9fa5]/gu) || []).length;
+    // 关键修正：正文本身已有 3 个以上汉字时，推文是中文内容，即便页面因夹带字母带上了“翻译帖子”按钮也不能当外文
+    if (cjkInText >= 3) {
+      return { isTranslated: false, isForeign: false, isEnglish: false, sourceLang: 'zh' };
+    }
+
     const buttons = Array.from(tweet.querySelectorAll('button, div[role="button"], a[role="link"], span'));
     let hasShowOriginalBtn = false;
     let hasTranslatePromptBtn = false;
@@ -167,6 +174,13 @@
   function isPostForeignOrEnglish(tweet) {
     if (!tweet) return false;
 
+    // 关键前置：如果推文包含明显的中文汉字（>= 3 个），绝对不视为外文推文跳过
+    const { text, lang } = getTweetTextAndLang(tweet);
+    const cjkCount = (text.match(/[\p{Script=Han}\u4e00-\u9fa5]/gu) || []).length;
+    if (cjkCount >= 3) {
+      return false;
+    }
+
     // 1. 优先检查 X 原生自动翻译状态 (避免自动翻译将英文/外文转为中文后误判为中文帖)
     const translation = checkTweetTranslation(tweet);
     if (translation.isForeign || translation.isEnglish) {
@@ -174,7 +188,6 @@
     }
 
     // 2. 语言特征检测
-    const { text, lang } = getTweetTextAndLang(tweet);
     if (isEnglishLanguageFn({ text, lang })) {
       return true;
     }
