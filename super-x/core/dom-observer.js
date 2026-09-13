@@ -27,9 +27,38 @@
       this.observer = new MutationObserver((mutations) => {
         let shouldProcess = false;
         for (const m of mutations) {
-          if (m.addedNodes.length > 0 || m.type === 'characterData') {
+          // 过滤掉扩展内部 UI 变动（避免扩展自己修改 DOM 导致无限重复循环扫描与按钮闪烁）
+          let hasExternalChange = false;
+          for (let i = 0; i < m.addedNodes.length; i++) {
+            const node = m.addedNodes[i];
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const el = node;
+              if (
+                el.classList?.contains('x-spam-inner-banner') ||
+                el.classList?.contains('superx-viral-badge') ||
+                el.classList?.contains('superx-viral-tooltip') ||
+                el.classList?.contains('superx-bookmark-count') ||
+                el.classList?.contains('superx-copy-md-btn') ||
+                el.closest?.('.x-spam-inner-banner, .superx-viral-badge, .superx-viral-tooltip')
+              ) {
+                continue;
+              }
+            }
+            hasExternalChange = true;
+            break;
+          }
+
+          if (hasExternalChange) {
             shouldProcess = true;
             break;
+          }
+
+          if (m.type === 'characterData') {
+            const parent = m.target?.parentElement;
+            if (parent && !parent.closest?.('.x-spam-inner-banner, .superx-viral-badge, .superx-viral-tooltip')) {
+              shouldProcess = true;
+              break;
+            }
           }
         }
         if (shouldProcess) {

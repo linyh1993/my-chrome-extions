@@ -465,7 +465,10 @@
             tweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
           }
         } else {
-          leadTweet.dataset.xSpam = isExpanded ? 'expanded' : 'lead';
+          const targetLeadSpam = isExpanded ? 'expanded' : 'lead';
+          if (leadTweet.dataset.xSpam !== targetLeadSpam) {
+            leadTweet.dataset.xSpam = targetLeadSpam;
+          }
 
           let banner = leadTweet.querySelector('.x-spam-inner-banner');
           if (!banner) {
@@ -474,7 +477,11 @@
             leadTweet.insertBefore(banner, leadTweet.firstChild);
           }
 
-          banner.className = 'x-spam-inner-banner' + (isExpanded ? ' is-expanded' : '');
+          const targetBannerClass = 'x-spam-inner-banner' + (isExpanded ? ' is-expanded' : '');
+          if (banner.className !== targetBannerClass) {
+            banner.className = targetBannerClass;
+          }
+
           const reasonDesc = sampleReasons ? ` · (${escapeHtml(sampleReasons)}${sampleReasons ? ' 等' : ''})` : '';
 
           const blockBtnText = isBlocked
@@ -483,76 +490,92 @@
               ? '⏳ 防封排队拉黑中...'
               : (isSingleAuthor ? `🚫 原生拉黑 @${escapeHtml(primaryAuthor)}` : `🚫 一键拉黑 (${authors.length}人)`));
 
-          banner.innerHTML = `
-            <div class="x-spam-inner-left">
-              <span class="x-spam-inner-tag">🛡️ 已折叠 ${count} 条垃圾评论</span>
-              <span class="x-spam-inner-info" title="${escapeHtml(sampleReasons)}">${reasonDesc}</span>
-            </div>
-            <div class="x-spam-inner-actions">
-              <button class="x-spam-inner-btn x-spam-btn-block ${isBlocked ? 'is-blocked' : ''}" type="button">${blockBtnText}</button>
-              ${isSingleAuthor ? `<button class="x-spam-inner-btn x-spam-btn-white" type="button" title="信任该作者并加入白名单">加白</button>` : ''}
-              <button class="x-spam-inner-btn x-spam-btn-expand" type="button">${isExpanded ? `收起 (${count})` : `展开 (${count})`}</button>
-            </div>
-          `;
+          const renderSignature = `${count}|${isExpanded}|${isBlocked}|${isQueued}|${sampleReasons}|${blockBtnText}`;
 
-          // Button Actions
-          const expandBtn = banner.querySelector('.x-spam-btn-expand');
-          if (expandBtn) {
-            expandBtn.onclick = (e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              clusterExpandedState.set(clusterKey, !isExpanded);
-              scheduleScan(10);
-            };
-          }
+          if (!banner.dataset.isBusy && banner.dataset.renderSignature !== renderSignature) {
+            banner.dataset.renderSignature = renderSignature;
+            banner.innerHTML = `
+              <div class="x-spam-inner-left">
+                <span class="x-spam-inner-tag">🛡️ 已折叠 ${count} 条垃圾评论</span>
+                <span class="x-spam-inner-info" title="${escapeHtml(sampleReasons)}">${reasonDesc}</span>
+              </div>
+              <div class="x-spam-inner-actions">
+                <button class="x-spam-inner-btn x-spam-btn-block ${isBlocked ? 'is-blocked' : ''}" type="button">${blockBtnText}</button>
+                ${isSingleAuthor ? `<button class="x-spam-inner-btn x-spam-btn-white" type="button" title="信任该作者并加入白名单">加白</button>` : ''}
+                <button class="x-spam-inner-btn x-spam-btn-expand" type="button">${isExpanded ? `收起 (${count})` : `展开 (${count})`}</button>
+              </div>
+            `;
 
-          const blockBtn = banner.querySelector('.x-spam-btn-block');
-          if (blockBtn && typeof xAdapter.blockUser === 'function') {
-            blockBtn.onclick = async (e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              blockBtn.disabled = true;
-              blockBtn.textContent = '处理中...';
+            // Button Actions
+            const expandBtn = banner.querySelector('.x-spam-btn-expand');
+            if (expandBtn) {
+              expandBtn.onclick = (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const nextExp = clusterExpandedState.get(clusterKey) !== true;
+                clusterExpandedState.set(clusterKey, nextExp);
+                scheduleScan(10);
+              };
+            }
 
-              if (isBlocked) {
-                for (const a of authors) {
-                  const res = await xAdapter.unblockUser(a);
-                  if (res.ok) {
-                    const normA = normalizeHandleFn(a);
-                    blockedHandlesState.delete(normA);
-                    manuallyUnblockedHandles.add(normA);
-                    // 从待拉黑队列中移除
-                    const idx = autoBlockQueue.findIndex(t => t.handle === normA);
-                    if (idx !== -1) autoBlockQueue.splice(idx, 1);
+            const blockBtn = banner.querySelector('.x-spam-btn-block');
+            if (blockBtn && typeof xAdapter.blockUser === 'function') {
+              blockBtn.onclick = async (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                banner.dataset.isBusy = 'true';
+                blockBtn.disabled = true;
+                blockBtn.textContent = '处理中...';
+
+                try {
+                  if (isBlocked) {
+                    for (const a of authors) {
+                      const res = await xAdapter.unblockUser(a);
+                      if (res.ok) {
+                        const normA = normalizeHandleFn(a);
+                        blockedHandlesState.delete(normA);
+                        manuallyUnblockedHandles.add(normA);
+                        const idx = autoBlockQueue.findIndex(t => t.handle === normA);
+                        if (idx !== -1) autoBlockQueue.splice(idx, 1);
+                      }
+                    }
+                  } else {
+                    for (const a of authors) {
+                      const res = await xAdapter.blockUser(a);
+                      if (res.ok) {
+                        const normA = normalizeHandleFn(a);
+                        blockedHandlesState.add(normA);
+                        manuallyUnblockedHandles.delete(normA);
+                        recordBlockedAccount(normA, '手动点击拉黑');
+                      }
+                    }
                   }
+                } finally {
+                  delete banner.dataset.isBusy;
+                  scheduleScan(10);
                 }
-              } else {
-                for (const a of authors) {
-                  const res = await xAdapter.blockUser(a);
-                  if (res.ok) {
-                    const normA = normalizeHandleFn(a);
-                    blockedHandlesState.add(normA);
-                    manuallyUnblockedHandles.delete(normA);
-                    recordBlockedAccount(normA, '手动点击拉黑');
-                  }
-                }
-              }
-              scheduleScan(10);
-            };
-          }
+              };
+            }
 
-          const whiteBtn = banner.querySelector('.x-spam-btn-white');
-          if (whiteBtn && primaryAuthor) {
-            whiteBtn.onclick = (e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              addToWhitelist(primaryAuthor);
-            };
+            const whiteBtn = banner.querySelector('.x-spam-btn-white');
+            if (whiteBtn && primaryAuthor) {
+              whiteBtn.onclick = (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                addToWhitelist(primaryAuthor);
+              };
+            }
           }
 
           for (const follower of followers) {
-            follower.dataset.xSpam = isExpanded ? 'expanded' : 'follower';
-            follower.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
+            const targetFollowerSpam = isExpanded ? 'expanded' : 'follower';
+            if (follower.dataset.xSpam !== targetFollowerSpam) {
+              follower.dataset.xSpam = targetFollowerSpam;
+            }
+            const followerBanners = follower.querySelectorAll('.x-spam-inner-banner');
+            if (followerBanners.length > 0) {
+              followerBanners.forEach(b => b.remove());
+            }
           }
         }
       }
@@ -615,9 +638,30 @@
   const observer = new MutationObserver((mutations) => {
     let shouldScan = false;
     for (const mutation of mutations) {
-      if (mutation.addedNodes.length > 0 || mutation.type === 'characterData') {
+      let hasExternalChange = false;
+      for (let i = 0; i < mutation.addedNodes.length; i++) {
+        const node = mutation.addedNodes[i];
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const el = node;
+          if (el.classList?.contains('x-spam-inner-banner') || el.closest?.('.x-spam-inner-banner')) {
+            continue;
+          }
+        }
+        hasExternalChange = true;
+        break;
+      }
+
+      if (hasExternalChange) {
         shouldScan = true;
         break;
+      }
+
+      if (mutation.type === 'characterData') {
+        const parent = mutation.target?.parentElement;
+        if (parent && !parent.closest?.('.x-spam-inner-banner')) {
+          shouldScan = true;
+          break;
+        }
       }
     }
     if (shouldScan) {

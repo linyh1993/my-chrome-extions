@@ -113,6 +113,13 @@
       if (type === 'block' && isAlreadyBlocked) {
         return { ok: true, status: res.status, alreadyBlocked: true };
       }
+      // 官方对已封禁、已注销或不存在账号的典型返回
+      const isUserUnavailable = /Cannot find specified user|page does not exist|User has been suspended|user_unavailable|not found/i.test(errText)
+        || /"code":\s*(108|34|63|64)/.test(errText)
+        || res.status === 404;
+      if (isUserUnavailable) {
+        return { ok: true, status: res.status, userUnavailable: true, rawError: errText };
+      }
       return { ok: false, status: res.status, error: `HTTP ${res.status}: ${errText}` };
     } catch (e) {
       console.error(`[X Cleaner] 接口网络请求异常:`, e);
@@ -133,11 +140,11 @@
 
     // 2. 优先直接使用 screen_name 发送 1.1/blocks/create.json（单次快速往返，官方端点原生支持）
     const directRes = await runNativeAction('block', norm, true);
-    if (directRes.ok || directRes.status === 429) {
+    if (directRes.ok || directRes.status === 429 || directRes.alreadyBlocked || directRes.userUnavailable) {
       return directRes;
     }
 
-    // 3. 兜底：若 direct 请求异常，尝试通过 GraphQL 解析 userId 再次提交
+    // 3. 兜底：若 direct 请求异常且并非明确的已失效/已拉黑，尝试通过 GraphQL 解析 userId 再次提交
     const userId = await resolveUserIdByHandle(norm);
     if (userId && userId !== cachedUid) {
       return runNativeAction('block', userId, false);
