@@ -49,6 +49,27 @@
       <!-- populated dynamically -->
     </div>
 
+    <!-- Local Database Relay Card -->
+    <div class="relay-card" id="relay-card">
+      <div class="relay-header">
+        <span class="relay-title">🗄️ 本地数据库 (proxy-server)</span>
+        <span class="status-indicator" id="relay-status-tag">检测中...</span>
+      </div>
+      <div class="relay-body">
+        <button class="btn btn-relay" id="btn-sync-relay">
+          <span>🚀 立即同步至数据库</span>
+        </button>
+        <div class="relay-toggle-wrapper">
+          <label class="relay-switch" title="开启后，每次搜索解析就绪将自动落库">
+            <input type="checkbox" id="chk-auto-sync">
+            <span class="relay-slider"></span>
+          </label>
+          <span>自动入库</span>
+        </div>
+      </div>
+      <div class="relay-status-hint" id="relay-status-hint">端点: 127.0.0.1:9090/relay</div>
+    </div>
+
     <!-- Actions -->
     <div class="action-buttons">
       <button class="btn btn-primary" id="btn-copy-tsv">

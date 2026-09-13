@@ -33,6 +33,10 @@
 6. **插拔式插件适配器架构 (Plugin Adapter Architecture)**：
    - **零耦合与沙箱隔离**：Google 原生核心 SERP 引擎完全独立，不硬依赖任何具体第三方扩展；第三方插件出错绝不影响 Google 搜索与原生提取。
    - **即插即用注册表 (`PluginRegistry`)**：未来若新增更多 SEO 插件（如 Semrush, SimilarWeb, Ahrefs 等）或移除插件，只需实现适配器接口注册即可，状态胶囊、表格列、CSV/TSV 导出全部自动适配。
+7. **🗄️ 本地数据库中继落库 (Proxy-Server Relay)**：
+   - **直连本地中央网关**：内置标准 `RelayEnvelope` 协议，无缝接入本地 [proxy-server](file:///E:/dev/proxy-server) (`http://127.0.0.1:9090/relay`)。
+   - **彻底解决多词丢失**：支持一键「🚀 存入数据库」及可选「自动入库模式」，跨词连续搜索时后台自动沉淀至 PostgreSQL，绝无数据丢失风险。
+   - **安全跨域转发**：由 Extension Service Worker 托管请求，完全规避 Google HTTPS 页面的 Mixed Content 限制。
 
 ---
 

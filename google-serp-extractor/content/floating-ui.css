@@ -148,6 +148,23 @@
   color: #ffffff;
 }
 
+.gse-btn-relay {
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+  color: #ffffff;
+  border: 1px solid #5b21b6;
+  font-weight: 600;
+}
+
+.gse-btn-relay:hover {
+  background: linear-gradient(135deg, #6d28d9, #4c1d95);
+  color: #ffffff;
+}
+
+.gse-btn-relay:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .gse-btn-icon {
   padding: 5px;
   border-radius: 50%;

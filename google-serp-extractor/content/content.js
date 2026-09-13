@@ -85,6 +85,9 @@
         onClearAccumulate: () => {
           saveStoredSession(null);
           doScan();
+        },
+        onSyncRelay: async (dataToSync) => {
+          return await syncToRelay(dataToSync || effectiveData);
         }
       };
 
@@ -92,6 +95,9 @@
       if (globalThis.GseFloatingUI) {
         globalThis.GseFloatingUI.updateStatus(effectiveData, callbacks);
       }
+
+      // Check auto-sync to local database
+      maybeAutoSync(effectiveData);
 
       // Notify background service worker to update extension badge
       if (chrome.runtime && chrome.runtime.id) {
@@ -107,6 +113,43 @@
       console.error('[GSE] Scan error:', err);
       return null;
     }
+  }
+
+  let lastSyncedSignature = '';
+
+  async function syncToRelay(dataToSync) {
+    const data = dataToSync || lastData;
+    if (!data || !data.items || data.items.length === 0) {
+      return { ok: false, error: '当前没有可同步的搜索数据' };
+    }
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        cmd: 'RELAY_SYNC_DATA',
+        data,
+        sourceUrl: window.location.href
+      });
+      return resp || { ok: false, error: '未收到后台中继响应' };
+    } catch (e) {
+      return { ok: false, error: e.message || '与扩展后台通信失败' };
+    }
+  }
+
+  async function maybeAutoSync(effectiveData) {
+    if (!effectiveData || !effectiveData.items || effectiveData.items.length === 0) return;
+    try {
+      const settings = await chrome.runtime.sendMessage({ cmd: 'GET_RELAY_SETTINGS' });
+      if (settings && settings.autoSync && effectiveData.isFullyReady) {
+        const sig = `${effectiveData.query}_${effectiveData.items.length}_ready`;
+        if (sig !== lastSyncedSignature) {
+          lastSyncedSignature = sig;
+          const res = await syncToRelay(effectiveData);
+          if (res && res.ok && globalThis.GseFloatingUI?.showToast) {
+            const evId = res.details?.raw_event_id ? ` (Event #${res.details.raw_event_id})` : '';
+            globalThis.GseFloatingUI.showToast(`🚀 [自动落库] ${effectiveData.query} 数据已保存${evId}`);
+          }
+        }
+      }
+    } catch (e) {}
   }
 
   function scheduleScan(delay = 600) {
@@ -206,6 +249,9 @@
           onClearAccumulate: () => {
             saveStoredSession(null);
             doScan();
+          },
+          onSyncRelay: async (dataToSync) => {
+            return await syncToRelay(dataToSync || lastData);
           }
         });
       }
@@ -240,6 +286,9 @@
         onClearAccumulate: () => {
           saveStoredSession(null);
           doScan();
+        },
+        onSyncRelay: async (dataToSync) => {
+          return await syncToRelay(dataToSync || lastData);
         }
       });
     }

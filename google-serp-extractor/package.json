@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Chrome extension to extract Google SERP items alongside injected AITDK and Keywords Everywhere SEO metrics.",
   "scripts": {
-    "test": "node tests/parser.test.js"
+    "test": "node tests/parser.test.js && node tests/relay.test.js"
   },
   "keywords": [
     "chrome-extension",

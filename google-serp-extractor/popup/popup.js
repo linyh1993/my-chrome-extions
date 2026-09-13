@@ -25,6 +25,9 @@ async function initPopup() {
   // Fetch SERP data from content script
   await fetchData();
 
+  // Initialize relay card and settings
+  await initRelayCard();
+
   // Bind buttons
   document.getElementById('btn-refresh').addEventListener('click', async () => {
     await fetchData(true);
@@ -78,6 +81,83 @@ async function initPopup() {
       showToast('无法在页面中打开，请刷新网页重试');
     }
   });
+
+  document.getElementById('btn-sync-relay').addEventListener('click', async () => {
+    if (!currentData || !currentData.items || currentData.items.length === 0) {
+      showToast('暂无有效搜索数据可同步');
+      return;
+    }
+    const btn = document.getElementById('btn-sync-relay');
+    btn.disabled = true;
+    showToast('正在同步至本地 proxy-server...');
+
+    try {
+      const res = await chrome.runtime.sendMessage({
+        cmd: 'RELAY_SYNC_DATA',
+        data: currentData,
+        sourceUrl: ''
+      });
+      if (res && res.ok) {
+        showToast(`✅ ${res.message || '已成功入库 PostgreSQL'}`);
+        await updateRelayStatus();
+      } else {
+        showToast(`❌ 同步失败: ${res?.error || '无法连接 proxy-server (9090)'}`);
+      }
+    } catch (e) {
+      showToast('❌ 同步异常: ' + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('chk-auto-sync').addEventListener('change', async (e) => {
+    const autoSync = e.target.checked;
+    await chrome.runtime.sendMessage({
+      cmd: 'SAVE_RELAY_SETTINGS',
+      autoSync
+    });
+    showToast(autoSync ? '已开启搜索完成自动入库' : '已关闭自动入库');
+  });
+}
+
+async function initRelayCard() {
+  await updateRelayStatus();
+}
+
+async function updateRelayStatus() {
+  const statusTag = document.getElementById('relay-status-tag');
+  const statusHint = document.getElementById('relay-status-hint');
+  const chkAuto = document.getElementById('chk-auto-sync');
+
+  try {
+    const settings = await chrome.runtime.sendMessage({ cmd: 'GET_RELAY_SETTINGS' });
+    if (chkAuto && settings) {
+      chkAuto.checked = Boolean(settings.autoSync);
+    }
+
+    const pingRes = await chrome.runtime.sendMessage({ cmd: 'RELAY_PING' });
+    if (pingRes && pingRes.ok) {
+      statusTag.textContent = '🟢 在线 (9090)';
+      statusTag.className = 'status-indicator ready';
+    } else {
+      statusTag.textContent = '⚪ 未连接';
+      statusTag.className = 'status-indicator';
+    }
+
+    if (statusHint && settings) {
+      let hint = `端点: ${settings.endpointUrl || '127.0.0.1:9090/relay'}`;
+      if (settings.lastSync && settings.lastSync.time) {
+        const t = new Date(settings.lastSync.time).toLocaleTimeString();
+        hint += ` | 最近: ${settings.lastSync.query || '未命名'} (${t})`;
+      }
+      statusHint.textContent = hint;
+    }
+  } catch (e) {
+    if (statusTag) {
+      statusTag.textContent = '⚪ 离线';
+      statusTag.className = 'status-indicator';
+    }
+  }
 }
 
 async function fetchData(triggerFresh = false) {

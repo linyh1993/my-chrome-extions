@@ -59,6 +59,10 @@
           <button class="gse-btn ${isAccumulateMode ? 'gse-btn-primary' : ''}" id="gse-btn-accumulate" title="跨翻页追加模式: ${isAccumulateMode ? '已开启' : '已关闭'}">
             <span>${accBtnText}</span>
           </button>
+
+          <button class="gse-btn gse-btn-relay" id="gse-btn-sync-db" title="推送当前搜索数据至本地数据库 (127.0.0.1:9090)">
+            <span>🚀 存入数据库</span>
+          </button>
         ` : `
           <div class="gse-badge ${badgeClass}">${statsStr}</div>
         `}
@@ -99,6 +103,7 @@
             <button class="gse-btn gse-btn-success" id="gse-modal-copy-active">📋 复制当前 Tab</button>
             <button class="gse-btn gse-btn-primary" id="gse-modal-csv-active">📥 导出当前 CSV</button>
             <button class="gse-btn" id="gse-modal-export-all-json">📦 导出全景 JSON</button>
+            <button class="gse-btn gse-btn-relay" id="gse-modal-sync-db" title="推送数据至本地数据库 (127.0.0.1:9090)">🚀 存入数据库</button>
             <button class="gse-btn ${isAccumulateMode ? 'gse-btn-primary' : ''}" id="gse-modal-toggle-acc" title="切换多页累积模式">${isAccumulateMode ? '🟢 累积模式: 开' : '⚪ 累积模式: 关'}</button>
             ${(isAccumulateMode || isMultiPage) ? '<button class="gse-btn" id="gse-modal-clear-acc" title="清空跨页累积数据">🗑️ 清空累积</button>' : ''}
             <button class="gse-btn" id="gse-modal-close" style="font-size: 14px; font-weight: bold;">✕</button>

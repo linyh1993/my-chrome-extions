@@ -199,6 +199,28 @@
         showToast(nextMode ? '已开启跨页追加模式！翻页将持续累加数据' : '已关闭追加模式，仅保留当前页');
       });
     }
+
+    const btnSyncDb = document.getElementById('gse-btn-sync-db');
+    if (btnSyncDb) {
+      btnSyncDb.addEventListener('click', async () => {
+        const items = getActiveItems();
+        if (!items || items.length === 0) {
+          showToast('当前无有效搜索数据可入库');
+          return;
+        }
+        btnSyncDb.disabled = true;
+        showToast('正在向本地数据库中继同步...');
+        if (callbacks.onSyncRelay) {
+          const res = await callbacks.onSyncRelay(currentSerpData);
+          if (res && res.ok) {
+            showToast(`✅ ${res.message || '已成功落库至本地数据库'}`);
+          } else {
+            showToast(`❌ 同步失败: ${res?.error || '无法连接 proxy-server (9090)'}`);
+          }
+        }
+        btnSyncDb.disabled = false;
+      });
+    }
   }
 
   function getActiveItems() {

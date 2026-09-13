@@ -251,6 +251,28 @@
         globalThis.GseFloatingUI?.showToast?.(`✅ 已导出全景 JSON: ${filename}`);
       });
     }
+
+    const btnSyncDb = document.getElementById('gse-modal-sync-db');
+    if (btnSyncDb) {
+      btnSyncDb.addEventListener('click', async () => {
+        const items = getActiveItems();
+        if (!items || items.length === 0) {
+          globalThis.GseFloatingUI?.showToast?.('当前无有效搜索数据可入库');
+          return;
+        }
+        btnSyncDb.disabled = true;
+        globalThis.GseFloatingUI?.showToast?.('正在向本地数据库中继同步...');
+        if (currentCallbacks.onSyncRelay) {
+          const res = await currentCallbacks.onSyncRelay(currentSerpData);
+          if (res && res.ok) {
+            globalThis.GseFloatingUI?.showToast?.(`✅ ${res.message || '已成功落库至本地数据库'}`);
+          } else {
+            globalThis.GseFloatingUI?.showToast?.(`❌ 同步失败: ${res?.error || '无法连接 proxy-server (9090)'}`);
+          }
+        }
+        btnSyncDb.disabled = false;
+      });
+    }
   }
 
   return {

@@ -23,7 +23,9 @@
     "*://*.google.de/search*",
     "*://*.google.fr/search*",
     "*://*.google.co.in/search*",
-    "*://*.google.com.sg/search*"
+    "*://*.google.com.sg/search*",
+    "http://127.0.0.1:9090/*",
+    "http://localhost:9090/*"
   ],
   "action": {
     "default_popup": "popup/popup.html",
@@ -54,6 +56,7 @@
       ],
       "js": [
         "shared/exporter.js",
+        "shared/relay-client.js",
         "content/dom-utils.js",
         "content/templates.js",
         "content/view-renderers.js",
