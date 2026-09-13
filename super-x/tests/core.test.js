@@ -271,12 +271,41 @@ function extractUsersMock(payload) {
     const leg = getLegacy(obj);
     return text(obj?.core?.name || leg?.name || obj?.name);
   };
+  const getLocation = (node, leg) => {
+    const loc = leg?.location ?? node?.location;
+    if (!loc) return "";
+    if (typeof loc === "string") return loc.trim();
+    if (typeof loc === "object") return text(loc.location || loc.name || loc.city || "");
+    return "";
+  };
+  const getFollowers = (node, leg) => {
+    const val = node?.relationship_counts?.followers ??
+                leg?.relationship_counts?.followers ??
+                leg?.followers_count ??
+                node?.followers_count ??
+                node?.public_metrics?.followers_count ??
+                node?.followers ??
+                leg?.normal_followers_count ??
+                null;
+    return val != null ? (Number(val) || 0) : null;
+  };
+  const getFollowing = (node, leg) => {
+    const val = node?.relationship_counts?.following ??
+                leg?.relationship_counts?.following ??
+                leg?.friends_count ??
+                node?.friends_count ??
+                node?.following_count ??
+                node?.public_metrics?.following_count ??
+                node?.following ??
+                null;
+    return val != null ? (Number(val) || 0) : null;
+  };
 
   const isUser = (obj) => {
     if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
     const id = getId(obj);
     const handle = getHandle(obj);
-    return Boolean(id && handle && (obj.legacy || obj.core || obj.profile_image_url_https || obj.user_results));
+    return Boolean(id && handle && (obj.legacy || obj.core || obj.profile_image_url_https || obj.user_results || obj.relationship_counts));
   };
 
   const walk = (node, depth) => {
@@ -290,12 +319,21 @@ function extractUsersMock(payload) {
       if (!seen.has(id)) {
         seen.add(id);
         const leg = getLegacy(node);
+        const rawFollowers = getFollowers(node, leg);
+        const rawFollowing = getFollowing(node, leg);
+        const statsFetched = rawFollowers !== null || rawFollowing !== null;
         found.push({
           id,
           handle: getHandle(node),
           name: getName(node),
-          followers: Number(leg?.followers_count || 0),
-          mutual: Boolean(leg?.followed_by)
+          location: getLocation(node, leg),
+          followers: rawFollowers != null ? rawFollowers : 0,
+          following: rawFollowing != null ? rawFollowing : 0,
+          statsFetched,
+          mutual: Boolean(
+            node?.relationship_perspectives?.followed_by ||
+            leg?.followed_by
+          )
         });
       }
     }
@@ -306,7 +344,7 @@ function extractUsersMock(payload) {
   return found;
 }
 
-const mockGraphQLResponse = {
+const mockLegacyGraphQLResponse = {
   data: {
     user: {
       result: {
@@ -362,20 +400,133 @@ const mockGraphQLResponse = {
   }
 };
 
-const extractedUsers = extractUsersMock(mockGraphQLResponse);
-assert.strictEqual(extractedUsers.length, 2, "Must extract 2 users from GraphQL payload");
-assert.strictEqual(extractedUsers[0].handle, "alice_dev", "User 0 handle match");
-assert.strictEqual(extractedUsers[0].mutual, true, "User 0 mutual match");
-assert.strictEqual(extractedUsers[1].handle, "bob_ai", "User 1 handle match");
-assert.strictEqual(extractedUsers[1].mutual, false, "User 1 mutual match");
-console.log("✓ GraphQL Following/Followers user extractor test passed.");
+const extractedLegacyUsers = extractUsersMock(mockLegacyGraphQLResponse);
+assert.strictEqual(extractedLegacyUsers.length, 2, "Must extract 2 users from legacy GraphQL payload");
+assert.strictEqual(extractedLegacyUsers[0].handle, "alice_dev", "User 0 handle match");
+assert.strictEqual(extractedLegacyUsers[0].followers, 5200, "Legacy followers_count extracted");
+assert.strictEqual(extractedLegacyUsers[0].statsFetched, true, "Legacy statsFetched must be true");
+assert.strictEqual(extractedLegacyUsers[0].mutual, true, "User 0 mutual match");
+assert.strictEqual(extractedLegacyUsers[1].handle, "bob_ai", "User 1 handle match");
+assert.strictEqual(extractedLegacyUsers[1].followers, 320, "Legacy followers_count extracted");
+assert.strictEqual(extractedLegacyUsers[1].statsFetched, true, "Legacy statsFetched must be true");
+assert.strictEqual(extractedLegacyUsers[1].mutual, false, "User 1 mutual match");
+console.log("✓ Legacy GraphQL user extractor test passed.");
 
-// 6.3 筛选逻辑测试
-const mutualFiltered = extractedUsers.filter(u => u.mutual);
+// 6.2 测试现代 X Relay GraphQL 数据结构 (relationship_counts 与 location 对象)
+const mockRelayGraphQLResponse = {
+  data: {
+    user: {
+      result: {
+        rest_id: "333",
+        core: {
+          screen_name: "charlie_relay",
+          name: "Charlie Relay"
+        },
+        location: {
+          location: "Tokyo, Japan"
+        },
+        relationship_counts: {
+          followers: 88800,
+          following: 420
+        },
+        relationship_perspectives: {
+          followed_by: true
+        }
+      }
+    }
+  }
+};
+
+const extractedRelayUsers = extractUsersMock(mockRelayGraphQLResponse);
+assert.strictEqual(extractedRelayUsers.length, 1, "Must extract modern Relay user");
+assert.strictEqual(extractedRelayUsers[0].handle, "charlie_relay");
+assert.strictEqual(extractedRelayUsers[0].followers, 88800, "Relay relationship_counts.followers extracted");
+assert.strictEqual(extractedRelayUsers[0].following, 420, "Relay relationship_counts.following extracted");
+assert.strictEqual(extractedRelayUsers[0].statsFetched, true, "Relay statsFetched must be true");
+assert.strictEqual(extractedRelayUsers[0].location, "Tokyo, Japan", "Object location properly parsed as string");
+assert.strictEqual(extractedRelayUsers[0].mutual, true);
+console.log("✓ Modern X Relay relationship_counts & location extractor test passed.");
+
+// 6.3 测试关注列表 UserCell 未下发统计时的安全解析与 statsFetched 标识
+const mockUserCellListResponse = {
+  data: {
+    user: {
+      result: {
+        timeline: {
+          timeline: {
+            instructions: [{
+              type: "TimelineAddEntries",
+              entries: [{
+                entryId: "user-46585371",
+                content: {
+                  itemContent: {
+                    user_results: {
+                      result: {
+                        rest_id: "46585371",
+                        core: { screen_name: "m0d8ye", name: "Max Lv" },
+                        location: { location: "Tokyo" },
+                        relationship_perspectives: { followed_by: false }
+                      }
+                    }
+                  }
+                }
+              }]
+            }]
+          }
+        }
+      }
+    }
+  }
+};
+
+const extractedCellUsers = extractUsersMock(mockUserCellListResponse);
+assert.strictEqual(extractedCellUsers.length, 1);
+assert.strictEqual(extractedCellUsers[0].handle, "m0d8ye");
+assert.strictEqual(extractedCellUsers[0].followers, 0);
+assert.strictEqual(extractedCellUsers[0].statsFetched, false, "Must mark statsFetched as false when not returned in list");
+console.log("✓ UserCell statsFetched: false detection test passed.");
+
+// 6.4 智能合并测试 (Smart Merge)
+const existingMap = new Map();
+existingMap.set(extractedCellUsers[0].id, extractedCellUsers[0]);
+
+// 当后续获得该用户的完整 Profile / HoverCard 响应时
+const enrichedUser = {
+  id: "46585371",
+  handle: "m0d8ye",
+  name: "Max Lv",
+  followers: 16500,
+  following: 800,
+  statsFetched: true
+};
+
+const existing = existingMap.get(enrichedUser.id);
+const merged = {
+  ...existing,
+  ...enrichedUser,
+  followers: enrichedUser.statsFetched ? enrichedUser.followers : (existing.statsFetched ? existing.followers : 0),
+  statsFetched: Boolean(enrichedUser.statsFetched || existing.statsFetched)
+};
+assert.strictEqual(merged.followers, 16500, "Smart merge must update followers to 16500");
+assert.strictEqual(merged.statsFetched, true);
+
+// 再次在关注列表滚动时返回没有 count 的对象，不得覆盖已有的 16500 粉丝数
+const cellListAgain = { ...extractedCellUsers[0], followers: 0, statsFetched: false };
+const mergedAgain = {
+  ...merged,
+  ...cellListAgain,
+  followers: cellListAgain.statsFetched ? cellListAgain.followers : (merged.statsFetched ? merged.followers : 0),
+  statsFetched: Boolean(cellListAgain.statsFetched || merged.statsFetched)
+};
+assert.strictEqual(mergedAgain.followers, 16500, "Subsequent empty list responses must NOT overwrite valid followers count");
+console.log("✓ Smart Merge non-destructive preservation test passed.");
+
+// 6.5 筛选逻辑测试
+const mutualFiltered = extractedLegacyUsers.filter(u => u.mutual);
 assert.strictEqual(mutualFiltered.length, 1, "Mutual filter should return 1");
 assert.strictEqual(mutualFiltered[0].handle, "alice_dev");
 
-const followersFiltered = extractedUsers.filter(u => u.followers > 1000);
+const followersFiltered = extractedLegacyUsers.filter(u => u.followers > 1000);
 assert.strictEqual(followersFiltered.length, 1, "Followers > 1000 filter should return 1");
 assert.strictEqual(followersFiltered[0].handle, "alice_dev");
 console.log("✓ Follower filtering logic tests passed.");

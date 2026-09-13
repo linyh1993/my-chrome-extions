@@ -323,6 +323,12 @@
 
         <div class="selection-summary-bar">
           <span>已捕获 <strong id="follow-total-count">0</strong> 个 | 当前选中 <strong id="follow-selected-count">0</strong> 个</span>
+          <button type="button" class="btn-text-action" id="btn-enrich-stats" style="color: #1d9bf0;" title="X关注列表接口默认未下发粉丝数。点击可自动查询补全列表中账号的真实粉丝与关注数">⚡ 补全粉丝数</button>
+        </div>
+
+        <div class="enrich-progress-bar" id="enrich-progress-box" style="display: none; margin: 4px 0 8px; padding: 6px 10px; background: rgba(29, 155, 240, 0.1); border: 1px solid rgba(29, 155, 240, 0.25); border-radius: 6px; font-size: 11px; color: #1d9bf0; align-items: center; justify-content: space-between;">
+          <span id="enrich-progress-text">就绪，准备补全...</span>
+          <button type="button" id="btn-stop-enrich" class="btn-text-action danger" style="padding: 1px 6px; font-size: 11px;">⏹ 停止</button>
         </div>
 
         <!-- 账号列表容器 -->

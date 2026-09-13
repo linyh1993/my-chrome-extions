@@ -31,6 +31,7 @@
       this.config = { ...DEFAULT_CONFIG };
       this.usersMap = new Map(); // id -> user object
       this.activeJob = null;
+      this.activeEnrichJob = null;
       this.pendingRequests = new Map(); // requestId -> { resolve, reject, timer }
       this.saveDebounceTimer = null;
       this.badgeElement = null;
@@ -47,17 +48,29 @@
         }
         if (Array.isArray(stored[STORAGE_KEY_USERS])) {
           stored[STORAGE_KEY_USERS].forEach(u => {
-            if (u && u.id) this.usersMap.set(String(u.id), u);
+            if (u && u.id) {
+              // 兼容与清洗历史脏数据
+              if (u.statsFetched === undefined) {
+                u.statsFetched = Boolean((u.followers && u.followers > 0) || (u.following && u.following > 0));
+              }
+              if (u.location === "[object Object]") {
+                u.location = "";
+              }
+              this.usersMap.set(String(u.id), u);
+            }
           });
         }
       } catch (err) {
         console.warn("[SuperX FollowList] Failed to read stored state:", err);
       }
 
-      // 2. 监听来自 EventBus 的添加结果
+      // 2. 监听来自 EventBus 的添加与数据补全结果
       if (this.context && this.context.eventBus) {
         this.context.eventBus.on("list:add_result", (result) => {
           this._handleAddResult(result);
+        });
+        this.context.eventBus.on("user:stats_result", (result) => {
+          this._handleEnrichResult(result);
         });
       }
 
@@ -80,6 +93,15 @@
               failedCount: this.activeJob.failedCount,
               currentHandle: this.activeJob.currentHandle,
               statusText: this.activeJob.statusText
+            } : null,
+            enrichJob: this.activeEnrichJob ? {
+              running: this.activeEnrichJob.running,
+              total: this.activeEnrichJob.total,
+              processed: this.activeEnrichJob.processed,
+              successCount: this.activeEnrichJob.successCount,
+              failedCount: this.activeEnrichJob.failedCount,
+              currentHandle: this.activeEnrichJob.currentHandle,
+              statusText: this.activeEnrichJob.statusText
             } : null
           });
           return true;
@@ -110,6 +132,20 @@
 
         if (message.type === "SUPERX_FOLLOW_LIST_STOP_JOB") {
           this.stopBatchAddJob();
+          sendResponse({ success: true });
+          return true;
+        }
+
+        if (message.type === "SUPERX_FOLLOW_LIST_START_ENRICH") {
+          const { userIds } = message;
+          this.startEnrichStatsJob(userIds)
+            .then(res => sendResponse(res))
+            .catch(err => sendResponse({ success: false, error: err.message }));
+          return true;
+        }
+
+        if (message.type === "SUPERX_FOLLOW_LIST_STOP_ENRICH") {
+          this.stopEnrichStatsJob();
           sendResponse({ success: true });
           return true;
         }
@@ -213,17 +249,46 @@
       // 仅在符合关注/粉丝/用户关系的端点下解析
       const ep = String(endpoint || "").toLowerCase();
       const isRelevant = ep.includes("following") || ep.includes("followers") ||
-                         ep.includes("userbyscreenname") || ep.includes("listmembers");
+                         ep.includes("userbyscreenname") || ep.includes("userbyrestid") ||
+                         ep.includes("userhovercard") || ep.includes("profilespotlights") ||
+                         ep.includes("tweetdetail") || ep.includes("listmembers");
 
       if (isRelevant || this._containsUserData(data)) {
         const extracted = this._extractUsersFromPayload(data);
         if (extracted.length > 0) {
           let newCount = 0;
+          let updatedCount = 0;
+
           for (const user of extracted) {
-            if (!this.usersMap.has(user.id)) {
+            const existing = this.usersMap.get(user.id);
+            if (!existing) {
               newCount++;
+              this.usersMap.set(user.id, user);
+            } else {
+              // 智能合并：保留已有的真实粉丝数与关注数，防止被关注列表的空数据覆盖
+              const statsFetched = Boolean(user.statsFetched || existing.statsFetched);
+              const followers = user.statsFetched ? user.followers : (existing.statsFetched ? existing.followers : (user.followers || existing.followers || 0));
+              const following = user.statsFetched ? user.following : (existing.statsFetched ? existing.following : (user.following || existing.following || 0));
+              const posts = user.statsFetched ? user.posts : (existing.statsFetched ? existing.posts : (user.posts || existing.posts || 0));
+
+              const merged = {
+                ...existing,
+                ...user,
+                followers,
+                following,
+                posts,
+                statsFetched,
+                bio: user.bio || existing.bio || "",
+                avatar: user.avatar || existing.avatar || "",
+                location: user.location || existing.location || "",
+                verified: Boolean(user.verified || existing.verified),
+                mutual: Boolean(user.mutual || existing.mutual),
+                capturedAt: Math.max(user.capturedAt || 0, existing.capturedAt || 0)
+              };
+
+              this.usersMap.set(user.id, merged);
+              updatedCount++;
             }
-            this.usersMap.set(user.id, user);
           }
 
           // 保持上限不超过 MAX_USERS
@@ -235,10 +300,12 @@
             }
           }
 
-          if (newCount > 0) {
+          if (newCount > 0 || updatedCount > 0) {
             this._schedulePersistUsers();
             this._updateFloatingBadge();
-            console.log(`[SuperX FollowList] Captured ${newCount} new accounts (Total: ${this.usersMap.size})`);
+            if (newCount > 0) {
+              console.log(`[SuperX FollowList] Captured ${newCount} new accounts (Total: ${this.usersMap.size})`);
+            }
           }
         }
       }
@@ -246,8 +313,9 @@
 
     _containsUserData(payload) {
       if (!payload || typeof payload !== "object") return false;
-      const json = JSON.stringify(payload).slice(0, 1000);
-      return json.includes('"screen_name"') || json.includes('"rest_id"');
+      const json = JSON.stringify(payload).slice(0, 2000);
+      return json.includes('"screen_name"') || json.includes('"rest_id"') ||
+             json.includes('"relationship_counts"') || json.includes('"user_results"');
     }
 
     /**
@@ -273,11 +341,56 @@
         return text(obj?.avatar?.image_url || obj?.profile_image_url_https || leg?.profile_image_url_https);
       };
 
+      const getLocation = (node, leg) => {
+        const loc = leg?.location ?? node?.location;
+        if (!loc) return "";
+        if (typeof loc === "string") return loc.trim();
+        if (typeof loc === "object") {
+          return text(loc.location || loc.name || loc.city || "");
+        }
+        return "";
+      };
+
+      const getFollowers = (node, leg) => {
+        const val = node?.relationship_counts?.followers ??
+                    leg?.relationship_counts?.followers ??
+                    leg?.followers_count ??
+                    node?.followers_count ??
+                    node?.public_metrics?.followers_count ??
+                    node?.followers ??
+                    leg?.normal_followers_count ??
+                    null;
+        return val != null ? (Number(val) || 0) : null;
+      };
+
+      const getFollowing = (node, leg) => {
+        const val = node?.relationship_counts?.following ??
+                    leg?.relationship_counts?.following ??
+                    leg?.friends_count ??
+                    node?.friends_count ??
+                    node?.following_count ??
+                    node?.public_metrics?.following_count ??
+                    node?.following ??
+                    null;
+        return val != null ? (Number(val) || 0) : null;
+      };
+
+      const getPosts = (node, leg) => {
+        const val = node?.tweet_counts?.tweets ??
+                    leg?.tweet_counts?.tweets ??
+                    leg?.statuses_count ??
+                    node?.statuses_count ??
+                    node?.public_metrics?.tweet_count ??
+                    node?.posts ??
+                    null;
+        return val != null ? (Number(val) || 0) : null;
+      };
+
       const isUser = (obj) => {
         if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
         const id = getId(obj);
         const handle = getHandle(obj);
-        return Boolean(id && handle && (obj.legacy || obj.core || obj.profile_image_url_https || obj.user_results));
+        return Boolean(id && handle && (obj.legacy || obj.core || obj.profile_image_url_https || obj.user_results || obj.relationship_counts));
       };
 
       const walk = (node, depth) => {
@@ -292,17 +405,23 @@
           if (!seen.has(id)) {
             seen.add(id);
             const leg = getLegacy(node);
+            const rawFollowers = getFollowers(node, leg);
+            const rawFollowing = getFollowing(node, leg);
+            const rawPosts = getPosts(node, leg);
+            const statsFetched = rawFollowers !== null || rawFollowing !== null;
+
             found.push({
               id,
               handle: getHandle(node),
               name: getName(node),
               bio: text(node?.profile_bio?.description || leg?.description || node?.description),
-              location: text(leg?.location || node?.location),
+              location: getLocation(node, leg),
               avatar: getAvatar(node),
-              followers: Number(leg?.followers_count ?? node?.public_metrics?.followers_count ?? 0) || 0,
-              following: Number(leg?.friends_count ?? node?.public_metrics?.following_count ?? 0) || 0,
-              posts: Number(leg?.statuses_count ?? node?.public_metrics?.tweet_count ?? 0) || 0,
-              verified: Boolean(node?.verification?.verified || leg?.verified || leg?.is_blue_verified),
+              followers: rawFollowers != null ? rawFollowers : 0,
+              following: rawFollowing != null ? rawFollowing : 0,
+              posts: rawPosts != null ? rawPosts : 0,
+              statsFetched,
+              verified: Boolean(node?.is_blue_verified || node?.verification?.verified || leg?.verified || leg?.is_blue_verified || node?.is_identity_verified),
               mutual: Boolean(
                 node?.relationship_perspectives?.followed_by ||
                 node?.relationship?.source?.followed_by ||
@@ -477,6 +596,113 @@
     }
 
     _handleAddResult(result) {
+      if (!result || !result.requestId) return;
+      const pending = this.pendingRequests.get(result.requestId);
+      if (pending) {
+        clearTimeout(pending.timer);
+        this.pendingRequests.delete(result.requestId);
+        pending.resolve(result);
+      }
+    }
+
+    async startEnrichStatsJob(userIds) {
+      if (this.activeEnrichJob && this.activeEnrichJob.running) {
+        return { success: false, error: "已有补全任务在进行中" };
+      }
+
+      let targets = [];
+      if (Array.isArray(userIds) && userIds.length > 0) {
+        targets = userIds.map(id => this.usersMap.get(String(id))).filter(Boolean);
+      } else {
+        // 补全所有未获取统计数据的账号，单次最多 100 个
+        targets = Array.from(this.usersMap.values()).filter(u => !u.statsFetched).slice(0, 100);
+      }
+
+      if (targets.length === 0) {
+        return { success: false, error: "当前没有需要补全粉丝数的账号" };
+      }
+
+      const job = {
+        running: true,
+        total: targets.length,
+        processed: 0,
+        successCount: 0,
+        failedCount: 0,
+        currentHandle: "",
+        statusText: `就绪，准备补全 ${targets.length} 个账号...`,
+        queue: [...targets]
+      };
+
+      this.activeEnrichJob = job;
+      this._runEnrichLoop(job);
+      return { success: true, total: job.total };
+    }
+
+    stopEnrichStatsJob() {
+      if (this.activeEnrichJob) {
+        this.activeEnrichJob.running = false;
+        this.activeEnrichJob.statusText = "补全任务已停止";
+      }
+    }
+
+    async _runEnrichLoop(job) {
+      while (job.running && job.queue.length > 0) {
+        const user = job.queue.shift();
+        if (!user || !user.handle) {
+          job.processed++;
+          continue;
+        }
+
+        job.currentHandle = `@${user.handle}`;
+        job.statusText = `正在补全 ${job.currentHandle} 粉丝数据 (${job.processed + 1}/${job.total})...`;
+
+        const res = await this._fetchUserStatsWithProxy(user.handle);
+        job.processed++;
+
+        if (res.ok) {
+          job.successCount++;
+        } else {
+          job.failedCount++;
+          if (res.status === 429) {
+            job.statusText = `触发 X 官方频率限制 (429)，冷却退避 40 秒中...`;
+            await this._sleep(40000);
+          }
+        }
+
+        if (job.queue.length > 0) {
+          // 防风控安全间隔 1.2s ~ 2.2s
+          const delay = Math.floor(Math.random() * 1000) + 1200;
+          await this._sleep(delay);
+        }
+      }
+
+      if (job.running) {
+        job.running = false;
+        job.statusText = `补全完成！成功 ${job.successCount}，失败 ${job.failedCount}`;
+        this._schedulePersistUsers();
+      }
+    }
+
+    _fetchUserStatsWithProxy(handle) {
+      return new Promise((resolve) => {
+        const requestId = "req_stat_" + Math.random().toString(36).slice(2, 10);
+        const timer = setTimeout(() => {
+          this.pendingRequests.delete(requestId);
+          resolve({ ok: false, status: 0, message: "请求超时 (12s)" });
+        }, 12000);
+
+        this.pendingRequests.set(requestId, { resolve, timer });
+
+        window.postMessage({
+          source: "superx-content",
+          type: "SUPERX_FETCH_USER_STATS",
+          requestId,
+          handle
+        }, "*");
+      });
+    }
+
+    _handleEnrichResult(result) {
       if (!result || !result.requestId) return;
       const pending = this.pendingRequests.get(result.requestId);
       if (pending) {

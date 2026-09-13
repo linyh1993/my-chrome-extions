@@ -10,6 +10,7 @@
   const SOURCE = "superx-network-hook";
   const GRAPHQL_REGEX = /\/i\/api\/graphql\/([^/?]+)\/([^/?]+)/i;
   const ADD_LIST_MEMBER_ENDPOINT = "https://x.com/i/api/graphql/EQ9KOQeashjfWnwFvcSSpg/ListAddMember";
+  const USER_BY_SCREEN_NAME_ENDPOINT = "https://x.com/i/api/graphql/NimuplG1OB7Fd2btCLdBOw/UserByScreenName";
 
   // 捕获的会话上下文凭证
   const session = {
@@ -202,11 +203,112 @@
     }
   }
 
-  // 4. 监听来自 content script 的代理指令
+  // 4. 执行 UserByScreenName API 请求代理，补全用户粉丝/关注指标
+  async function executeFetchUserStats({ requestId, handle }) {
+    if (!handle) {
+      window.postMessage({
+        source: SOURCE,
+        type: "SUPERX_FETCH_USER_STATS_RESULT",
+        requestId,
+        ok: false,
+        message: "缺少账号 Handle"
+      }, "*");
+      return;
+    }
+
+    const cleanHandle = String(handle).replace(/^@/, "").trim();
+    const csrf = session.csrf || getCsrfFromCookie();
+    const headers = {
+      accept: "*/*",
+      "content-type": "application/json",
+      "x-csrf-token": decodeURIComponent(csrf),
+      "x-twitter-active-user": session.activeUser || "yes",
+      "x-twitter-auth-type": session.authType || "OAuth2Session"
+    };
+    if (session.authorization) headers.authorization = session.authorization;
+    if (session.transaction) headers["x-client-transaction-id"] = session.transaction;
+
+    const variables = JSON.stringify({
+      screen_name: cleanHandle,
+      withSafetyModeUserFields: true
+    });
+    const features = JSON.stringify({
+      hidden_profile_subscriptions_enabled: true,
+      rweb_tipjar_consumption_enabled: true,
+      responsive_web_graphql_exclude_directive_enabled: true,
+      verified_phone_label_enabled: false,
+      subscriptions_verification_info_is_identity_verified_enabled: true,
+      subscriptions_verification_info_verified_since_enabled: true,
+      highlights_tweets_tab_ui_enabled: true,
+      responsive_web_twitter_article_notes_tab_enabled: true,
+      subscriptions_feature_can_gift_premium: true,
+      creator_subscriptions_tweet_preview_api_enabled: true,
+      responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
+      responsive_web_graphql_timeline_navigation_enabled: true
+    });
+
+    const url = `${USER_BY_SCREEN_NAME_ENDPOINT}?variables=${encodeURIComponent(variables)}&features=${encodeURIComponent(features)}`;
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        credentials: "include",
+        headers
+      });
+
+      let json = null;
+      try {
+        json = await response.json();
+      } catch (_) {}
+
+      if (response.ok && json && !json.errors) {
+        // 触发底座广播，让 Feature 自动完成 Smart Merge
+        postData("UserByScreenName", json);
+
+        window.postMessage({
+          source: SOURCE,
+          type: "SUPERX_FETCH_USER_STATS_RESULT",
+          requestId,
+          handle: cleanHandle,
+          ok: true,
+          status: response.status
+        }, "*");
+      } else {
+        const errorMsg = json?.errors?.[0]?.message || `HTTP ${response.status}`;
+        window.postMessage({
+          source: SOURCE,
+          type: "SUPERX_FETCH_USER_STATS_RESULT",
+          requestId,
+          handle: cleanHandle,
+          ok: false,
+          status: response.status,
+          retryable: response.status === 429 || response.status >= 500,
+          message: errorMsg
+        }, "*");
+      }
+    } catch (err) {
+      window.postMessage({
+        source: SOURCE,
+        type: "SUPERX_FETCH_USER_STATS_RESULT",
+        requestId,
+        handle: cleanHandle,
+        ok: false,
+        status: 0,
+        retryable: true,
+        message: err?.message || "网络请求失败"
+      }, "*");
+    }
+  }
+
+  // 5. 监听来自 content script 的代理指令
   window.addEventListener("message", (event) => {
     if (event.source !== window || !event.data) return;
-    if (event.data.source === "superx-content" && event.data.type === "SUPERX_ADD_LIST_MEMBER") {
-      executeAddListMember(event.data);
+    if (event.data.source === "superx-content") {
+      if (event.data.type === "SUPERX_ADD_LIST_MEMBER") {
+        executeAddListMember(event.data);
+      } else if (event.data.type === "SUPERX_FETCH_USER_STATS") {
+        executeFetchUserStats(event.data);
+      }
     }
   });
 

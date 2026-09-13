@@ -698,6 +698,13 @@ body {
   border-radius: 4px;
 }
 
+.stat-unfetched {
+  color: #8899a6;
+  font-weight: normal;
+  cursor: help;
+  border-bottom: 1px dashed rgba(136, 153, 166, 0.5);
+}
+
 .task-status-pill {
   font-size: 11px;
   padding: 2px 8px;

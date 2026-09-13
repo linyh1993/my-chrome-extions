@@ -346,8 +346,11 @@ function checkTranslationMeta(fullText = '', text = '') {
 
   const targetText = text || fullText;
   const cjkChars = (targetText.match(/[\p{Script=Han}\u4e00-\u9fa5]/gu) || []).length;
-  // 关键保护：如果评论正文本身已经包含明显的中文汉字（>= 3 个），无论 Twitter 界面是否显示了“翻译帖子”，该评论本身就是中文内容，绝不能误判为外文！
-  if (cjkChars >= 3) {
+  const hasShowOriginal = /显示原文|Show original/i.test(fullText);
+  const hasTranslatePrompt = /翻译帖子|Translate post|Translate Tweet/i.test(fullText);
+
+  // 关键保护：如果并未显示“显示原文”，且正文已经包含明显的中文汉字（>= 3 个），则判定为原生中文，不能误判为外文
+  if (!hasShowOriginal && cjkChars >= 3) {
     return {
       isTranslated: false,
       sourceLang: 'zh',
@@ -355,9 +358,6 @@ function checkTranslationMeta(fullText = '', text = '') {
       isForeign: false
     };
   }
-
-  const hasShowOriginal = /显示原文|Show original/i.test(fullText);
-  const hasTranslatePrompt = /翻译帖子|Translate post|Translate Tweet/i.test(fullText);
 
   const matchCn = fullText.match(/翻译自\s*([^\s·\n\r，。！]+)/);
   const matchEn = fullText.match(/Translated from\s*([^\s·\n\r,.]+)/i);

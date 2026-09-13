@@ -22,6 +22,9 @@
         if (data.type === "SUPERX_ADD_LIST_MEMBER_RESULT") {
           window.__SuperX__.EventBus.emit("list:add_result", data);
         }
+        if (data.type === "SUPERX_FETCH_USER_STATS_RESULT") {
+          window.__SuperX__.EventBus.emit("user:stats_result", data);
+        }
       }
     }
   });

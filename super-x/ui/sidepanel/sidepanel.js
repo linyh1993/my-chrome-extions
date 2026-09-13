@@ -804,11 +804,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   const btnStartBatchAdd = document.getElementById("btn-start-batch-add");
   const btnStopBatchAdd = document.getElementById("btn-stop-batch-add");
 
+  const btnEnrichStats = document.getElementById("btn-enrich-stats");
+  const enrichProgressBox = document.getElementById("enrich-progress-box");
+  const enrichProgressText = document.getElementById("enrich-progress-text");
+  const btnStopEnrich = document.getElementById("btn-stop-enrich");
+
   let allCapturedUsers = [];
   let selectedUserIds = new Set();
   let currentTargetListId = "";
   let isTaskRunning = false;
   let taskPollTimer = null;
+  let isEnrichRunning = false;
+  let enrichPollTimer = null;
 
   function extractListId(input) {
     const trimmed = (input || "").trim();
@@ -851,12 +858,33 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  function sanitizeUsers(list) {
+    if (!Array.isArray(list)) return [];
+    return list.map(u => {
+      if (!u) return u;
+      const statsFetched = u.statsFetched !== undefined ? u.statsFetched : Boolean((u.followers && u.followers > 0) || (u.following && u.following > 0));
+      return {
+        ...u,
+        statsFetched,
+        location: u.location === "[object Object]" ? "" : (u.location || "")
+      };
+    });
+  }
+
   async function loadFollowListUsers() {
     const data = await chrome.storage.local.get(["superx_follow_list_captured_users"]);
-    allCapturedUsers = Array.isArray(data.superx_follow_list_captured_users) ? data.superx_follow_list_captured_users : [];
+    allCapturedUsers = sanitizeUsers(data.superx_follow_list_captured_users);
     if (followTotalCount) followTotalCount.textContent = allCapturedUsers.length;
     renderCuratorUsers();
   }
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.superx_follow_list_captured_users) {
+      allCapturedUsers = sanitizeUsers(changes.superx_follow_list_captured_users.newValue);
+      if (followTotalCount) followTotalCount.textContent = allCapturedUsers.length;
+      renderCuratorUsers();
+    }
+  });
 
   function getFilteredUsers() {
     const query = (filterUserQuery ? filterUserQuery.value.trim().toLowerCase() : "");
@@ -872,8 +900,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       if (mutualOnly && !u.mutual) return false;
       if (verifiedOnly && !u.verified) return false;
-      if (u.followers < minFollowers) return false;
-      if (u.followers > maxFollowers) return false;
+      if (minFollowers > 0 || maxFollowers < Infinity) {
+        // 如果账号未获取粉丝数
+        if (!u.statsFetched && (u.followers === 0 || u.followers == null)) {
+          return false;
+        }
+        if ((u.followers || 0) < minFollowers) return false;
+        if ((u.followers || 0) > maxFollowers) return false;
+      }
       return true;
     });
   }
@@ -894,6 +928,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       card.className = "curator-user-card";
 
       const isChecked = selectedUserIds.has(u.id);
+      const isStatsKnown = Boolean(u.statsFetched || (u.followers && u.followers > 0) || (u.following && u.following > 0));
+      const followersDisplay = isStatsKnown ? `<b>${formatCompact(u.followers)}</b>` : `<b class="stat-unfetched" title="X关注列表默认未下发粉丝数，点击「⚡ 补全粉丝数」可获取">未获取</b>`;
+      const followingDisplay = isStatsKnown ? `<b>${formatCompact(u.following)}</b>` : `<b class="stat-unfetched" title="X关注列表默认未下发关注数，点击「⚡ 补全粉丝数」可获取">未获取</b>`;
+
       card.innerHTML = `
         <input type="checkbox" class="user-check" data-id="${escapeHtml(u.id)}" ${isChecked ? "checked" : ""}>
         <img class="curator-avatar" src="${escapeHtml(u.avatar || '')}" alt="${escapeHtml(u.name)}" onerror="this.src='../../icons/icon48.png'">
@@ -904,8 +942,8 @@ document.addEventListener("DOMContentLoaded", async () => {
             ${u.verified ? '<span title="认证用户" style="color: #1d9bf0;">☑️</span>' : ''}
           </div>
           <div class="curator-meta-pills">
-            <span>粉丝: <b>${formatCompact(u.followers)}</b></span>
-            <span>关注: <b>${formatCompact(u.following)}</b></span>
+            <span>粉丝: ${followersDisplay}</span>
+            <span>关注: ${followingDisplay}</span>
             ${u.mutual ? '<span class="pill-mutual">互相关注</span>' : ''}
           </div>
           ${u.bio ? `<div class="curator-bio">${escapeHtml(u.bio)}</div>` : ''}
@@ -977,15 +1015,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      let csv = "\uFEFFID,Handle,Name,Followers,Following,Posts,Mutual,Verified,Bio,ProfileURL\n";
+      let csv = "\uFEFFID,Handle,Name,Followers,Following,Posts,StatsStatus,Mutual,Verified,Bio,ProfileURL\n";
       target.forEach(u => {
+        const isStatsKnown = Boolean(u.statsFetched || (u.followers && u.followers > 0) || (u.following && u.following > 0));
         const row = [
           u.id,
           `"${(u.handle || "").replace(/"/g, '""')}"`,
           `"${(u.name || "").replace(/"/g, '""')}"`,
-          u.followers || 0,
-          u.following || 0,
-          u.posts || 0,
+          isStatsKnown ? (u.followers || 0) : "未获取",
+          isStatsKnown ? (u.following || 0) : "未获取",
+          isStatsKnown ? (u.posts || 0) : "未获取",
+          isStatsKnown ? "已获取" : "未获取",
           u.mutual ? "Yes" : "No",
           u.verified ? "Yes" : "No",
           `"${(u.bio || "").replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`,
@@ -1002,6 +1042,91 @@ document.addEventListener("DOMContentLoaded", async () => {
       a.click();
       URL.revokeObjectURL(url);
     });
+  }
+
+  // 补全粉丝数据
+  if (btnEnrichStats) {
+    btnEnrichStats.addEventListener("click", async () => {
+      const selectedList = selectedUserIds.size > 0 ? Array.from(selectedUserIds) : [];
+      const unacquired = allCapturedUsers.filter(u => !u.statsFetched && (!u.followers || u.followers === 0)).map(u => u.id);
+      const targets = selectedList.length > 0 ? selectedList : unacquired.slice(0, 50);
+
+      if (targets.length === 0) {
+        alert("当前没有需要补全粉丝数的账号！");
+        return;
+      }
+
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab || !tab.id) {
+        alert("未找到当前活动的 X 网页标签，请确保当前正打开 x.com！");
+        return;
+      }
+
+      const tip = selectedList.length > 0 ?
+        `即将为勾选的 ${targets.length} 个账号自动查询补全粉丝/关注数。\n为遵守 X 安全策略，将在后台以平滑防风控频率逐个查询，是否开始？` :
+        `即将为前 ${targets.length} 个未获取粉丝数的账号自动补全数据。\n为遵守 X 安全策略，将在后台以平滑防风控频率逐个查询，是否开始？`;
+
+      if (!confirm(tip)) return;
+
+      chrome.tabs.sendMessage(tab.id, {
+        type: "SUPERX_FOLLOW_LIST_START_ENRICH",
+        userIds: targets
+      }, (response) => {
+        if (chrome.runtime.lastError || !response || !response.success) {
+          alert(`启动补全失败：${response?.error || chrome.runtime.lastError?.message || "请刷新目标网页后再试"}`);
+          return;
+        }
+
+        isEnrichRunning = true;
+        if (enrichProgressBox) enrichProgressBox.style.display = "flex";
+        if (enrichProgressText) enrichProgressText.textContent = `准备开始补全 ${targets.length} 个账号...`;
+        btnEnrichStats.disabled = true;
+
+        startEnrichPolling(tab.id);
+      });
+    });
+  }
+
+  if (btnStopEnrich) {
+    btnStopEnrich.addEventListener("click", async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab && tab.id) {
+        chrome.tabs.sendMessage(tab.id, { type: "SUPERX_FOLLOW_LIST_STOP_ENRICH" });
+      }
+      isEnrichRunning = false;
+      stopEnrichPolling();
+      if (enrichProgressBox) enrichProgressBox.style.display = "none";
+      if (btnEnrichStats) btnEnrichStats.disabled = false;
+    });
+  }
+
+  function startEnrichPolling(tabId) {
+    stopEnrichPolling();
+    enrichPollTimer = setInterval(() => {
+      chrome.tabs.sendMessage(tabId, { type: "SUPERX_FOLLOW_LIST_GET_STATE" }, (res) => {
+        if (chrome.runtime.lastError || !res || !res.enrichJob) return;
+        const job = res.enrichJob;
+        if (enrichProgressText) {
+          enrichProgressText.textContent = `${job.statusText || "正在补全粉丝数据..."}`;
+        }
+        if (!job.running) {
+          isEnrichRunning = false;
+          stopEnrichPolling();
+          setTimeout(() => {
+            if (enrichProgressBox) enrichProgressBox.style.display = "none";
+            if (btnEnrichStats) btnEnrichStats.disabled = false;
+          }, 3000);
+          loadFollowListUsers();
+        }
+      });
+    }, 1500);
+  }
+
+  function stopEnrichPolling() {
+    if (enrichPollTimer) {
+      clearInterval(enrichPollTimer);
+      enrichPollTimer = null;
+    }
   }
 
   // 清空已捕获
