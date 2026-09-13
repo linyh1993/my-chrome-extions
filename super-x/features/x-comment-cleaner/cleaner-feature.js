@@ -405,10 +405,11 @@
                 } else {
                   for (const a of authors) {
                     const res = await xAdapter.blockUser(a);
-                    if (res.ok) {
+                    if (res && (res.ok || res.alreadyBlocked || res.userUnavailable)) {
                       const normA = normalizeHandleFn(a);
                       blockedHandlesState.add(normA);
                       manuallyUnblockedHandles.delete(normA);
+                      recordBlockedAccount(normA, res.userUnavailable ? '已失效/注销死号' : '手动拉黑');
                     }
                   }
                 }
@@ -751,14 +752,19 @@
 
         try {
           const res = await xAdapter.blockUser(handle);
-          if (res && (res.ok || res.alreadyBlocked)) {
+          if (res && (res.ok || res.alreadyBlocked || res.userUnavailable)) {
             blockedHandlesState.add(handle);
-            recordBlockedAccount(handle, 'FeedSieve 社区黑名单');
-            if (res.alreadyBlocked) {
+            if (res.userUnavailable) {
               communityBatchState.alreadyBlockedCount++;
-              console.log(`[SuperX Cleaner] @${handle} 官方返回已在黑名单中，登记并跳过`);
+              recordBlockedAccount(handle, '已失效/注销死号');
+              console.log(`[SuperX Cleaner] @${handle} 账号已注销/不存在 (code 50)，登记本地并跳过`);
+            } else if (res.alreadyBlocked) {
+              communityBatchState.alreadyBlockedCount++;
+              recordBlockedAccount(handle, 'FeedSieve 社区黑名单');
+              console.log(`[SuperX Cleaner] @${handle} 官方返回已在黑名单中，登记本地并跳过`);
             } else {
               communityBatchState.successCount++;
+              recordBlockedAccount(handle, 'FeedSieve 社区黑名单');
               console.log(`[SuperX Cleaner] ✓ 成功拉黑 @${handle}`);
               chrome.runtime.sendMessage({ type: 'INCREMENT_BLOCKED_COUNT', delta: 1 }, () => {
                 if (chrome.runtime.lastError) {}

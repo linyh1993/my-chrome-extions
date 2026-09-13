@@ -108,18 +108,20 @@
       }
 
       const errText = await res.text().catch(() => '');
-      console.warn(`[X Cleaner] X 接口返回异常 HTTP ${res.status}:`, errText);
       const isAlreadyBlocked = /already blocked|already_blocked|has already been blocked/i.test(errText);
       if (type === 'block' && isAlreadyBlocked) {
+        console.info(`[X Cleaner] 目标已处于拉黑状态 (HTTP ${res.status}): ${target}`);
         return { ok: true, status: res.status, alreadyBlocked: true };
       }
-      // 官方对已封禁、已注销或不存在账号的典型返回
+      // 官方对已封禁、已注销或不存在账号的典型返回 (如 code 50 "User not found." 或 404)
       const isUserUnavailable = /Cannot find specified user|page does not exist|User has been suspended|user_unavailable|not found/i.test(errText)
-        || /"code":\s*(108|34|63|64)/.test(errText)
+        || /"code":\s*(50|108|34|63|64)/.test(errText)
         || res.status === 404;
       if (isUserUnavailable) {
+        console.info(`[X Cleaner] 目标账号已不存在/已注销死号 (HTTP ${res.status}): ${target}`);
         return { ok: true, status: res.status, userUnavailable: true, rawError: errText };
       }
+      console.warn(`[X Cleaner] X 接口返回异常 HTTP ${res.status}:`, errText);
       return { ok: false, status: res.status, error: `HTTP ${res.status}: ${errText}` };
     } catch (e) {
       console.error(`[X Cleaner] 接口网络请求异常:`, e);
