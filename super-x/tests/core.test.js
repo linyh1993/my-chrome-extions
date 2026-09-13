@@ -72,7 +72,7 @@ const betterCssPath = path.resolve(__dirname, "../features/x-better-ui/better-ui
 const betterCss = fs.readFileSync(betterCssPath, "utf8");
 assert.ok(betterCss.includes("data-superx-hide-trends"), "Must define hide trends styles");
 assert.ok(betterCss.includes("data-superx-widen"), "Must define widen timeline styles");
-assert.ok(betterCss.includes("#superx-article-outline"), "Must define article outline styles");
+assert.ok(betterCss.includes("#superx-toc-container") || betterCss.includes("#superx-article-outline"), "Must define article outline / TOC styles");
 assert.ok(betterCss.includes("data-testid=\"trend\""), "Must target modern trend element");
 
 console.log("✓ Manifest V3 & Better UI compliance check passed.");

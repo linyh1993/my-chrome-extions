@@ -1,6 +1,6 @@
 /**
  * SuperX Feature - Better UI (阅读体验与界面增强)
- * 借鉴 Better-X 优秀体验，提供纯净阅读、长文大纲与去干扰
+ * 文章 TOC (Table of Contents) 悬浮快速导航目录、无损去干扰与自适应排版
  */
 (function() {
   window.__SuperX__ = window.__SuperX__ || {};
@@ -13,14 +13,15 @@
 
   let config = { ...DEFAULT_CONFIG };
   let active = true;
-  let outlineCheckTimer = null;
-  let isOutlineCollapsed = false;
+  let scanTimer = null;
+  let currentHeadings = [];
+  let isPopupOpen = false;
 
   function applyStyles() {
     if (!active) {
       document.documentElement.removeAttribute("data-superx-hide-trends");
       document.documentElement.removeAttribute("data-superx-widen");
-      removeOutline();
+      removeTOC();
       return;
     }
 
@@ -36,56 +37,30 @@
       document.documentElement.removeAttribute("data-superx-widen");
     }
 
-    if (config.generateOutline && !isOutlineCollapsed) {
-      checkAndBuildOutline();
+    if (config.generateOutline) {
+      scanAndRenderTOC();
     } else {
-      removeOutline();
+      removeTOC();
     }
   }
 
-  function removeOutline() {
-    const el = document.getElementById("superx-article-outline");
+  function removeTOC() {
+    const el = document.getElementById("superx-toc-container");
     if (el) el.remove();
+    currentHeadings = [];
+    isPopupOpen = false;
   }
 
-  function getSidebarCardsWrapper(sidebar) {
-    const searchInput = sidebar.querySelector('input[data-testid="SearchBox_Search_Input"], form[role="search"]');
-    if (searchInput) {
-      let el = searchInput;
-      while (el && el.parentElement && el.parentElement !== sidebar) {
-        const parent = el.parentElement;
-        if (parent.children.length > 1) {
-          return { cardsWrapper: parent, searchCard: el };
-        }
-        el = parent;
-      }
-    }
-    return { cardsWrapper: sidebar.firstElementChild?.firstElementChild || sidebar, searchCard: null };
-  }
-
-  function checkAndBuildOutline() {
-    if (!active || !config.generateOutline || isOutlineCollapsed) {
-      removeOutline();
-      return;
-    }
-
-    // 仅在单篇推文详情页或长文/文章页扫描大纲
-    const isStatus = /\/[^/]+\/status\/\d+/.test(window.location.pathname);
-    const isArticle = /\/article\//.test(window.location.pathname);
-    if (!isStatus && !isArticle) {
-      removeOutline();
-      return;
-    }
-
-    const sidebar = document.querySelector('div[data-testid="sidebarColumn"]');
-    if (!sidebar) return;
-
+  /**
+   * 从当前页面提取文章标题目录
+   */
+  function extractHeadings() {
     const headings = [];
 
-    // 1. 查找标准标题元素 (h1, h2, h3, [role="heading"])
+    // 1. 原生文章标题 (Twitter Articles / h1, h2, h3, [role="heading"])
     const rawHeadings = Array.from(document.querySelectorAll('main h1, main h2, main h3, main [role="heading"]'));
     rawHeadings.forEach((h) => {
-      if (h.closest('header, [role="banner"], [data-testid="TopNavBar"]')) return;
+      if (h.closest('header, [role="banner"], [data-testid="TopNavBar"], nav, [data-testid="sidebarColumn"]')) return;
       const text = (h.innerText || h.textContent || '').trim();
       if (text && text.length >= 2 && text.length <= 60 && !headings.some(item => item.text === text)) {
         headings.push({
@@ -96,7 +71,7 @@
       }
     });
 
-    // 2. 如果缺少原生标题标签，从正文段落中识别序号与小标题 (如 1. / 【...】 / Skill 1 / ##)
+    // 2. 长文段落中的序号与小标题 (如 1. / 【...】 / Skill 1 / ##)
     if (headings.length < 2) {
       const articleEl = document.querySelector('[data-testid="twitterArticle"], [data-testid="articleContent"], main article') || document.querySelector('div[data-testid="primaryColumn"]');
       if (articleEl) {
@@ -128,55 +103,89 @@
               break;
             }
           }
-          if (headings.length >= 20) break;
+          if (headings.length >= 30) break;
         }
       }
     }
 
-    if (headings.length < 2) {
-      removeOutline();
+    return headings;
+  }
+
+  /**
+   * 扫描并渲染 TOC 悬浮面板（挂在 document.body 上，绝不干扰 Twitter React DOM）
+   */
+  function scanAndRenderTOC() {
+    if (!active || !config.generateOutline) {
+      removeTOC();
       return;
     }
 
-    // 3. 构建或更新大纲面板
-    let outlinePanel = document.getElementById("superx-article-outline");
-    if (!outlinePanel) {
-      outlinePanel = document.createElement("div");
-      outlinePanel.id = "superx-article-outline";
-
-      const { cardsWrapper, searchCard } = getSidebarCardsWrapper(sidebar);
-      if (searchCard && searchCard.nextSibling) {
-        cardsWrapper.insertBefore(outlinePanel, searchCard.nextSibling);
-      } else {
-        cardsWrapper.prepend(outlinePanel);
-      }
+    const isStatus = /\/[^/]+\/status\/\d+/.test(window.location.pathname);
+    const isArticle = /\/article\//.test(window.location.pathname);
+    if (!isStatus && !isArticle) {
+      removeTOC();
+      return;
     }
 
-    outlinePanel.innerHTML = `
-      <div class="superx-outline-title">
-        <div class="superx-outline-title-left">
-          <span>📑 文章大纲目录</span>
-          <span class="superx-outline-count">(${headings.length} 节)</span>
-        </div>
-        <button type="button" class="superx-outline-close-btn" title="收起大纲">✕</button>
+    const headings = extractHeadings();
+    if (headings.length < 2) {
+      removeTOC();
+      return;
+    }
+
+    currentHeadings = headings;
+    renderTOCWidget();
+  }
+
+  /**
+   * 创建或更新悬浮 TOC 导航器
+   */
+  function renderTOCWidget() {
+    let container = document.getElementById("superx-toc-container");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "superx-toc-container";
+      document.body.appendChild(container);
+    }
+
+    container.innerHTML = `
+      <div id="superx-toc-fab" title="点击展开/收起文章大纲目录 (TOC)">
+        <span class="superx-toc-fab-icon">📑</span>
+        <span class="superx-toc-fab-text">TOC</span>
+        <span class="superx-toc-fab-badge">${currentHeadings.length}</span>
       </div>
-      <ul class="superx-outline-list"></ul>
+      <div id="superx-toc-popup" class="${isPopupOpen ? 'open' : ''}">
+        <div class="superx-toc-header">
+          <div class="superx-toc-title">
+            <span>📑 文章大纲目录</span>
+            <span class="superx-toc-count">(${currentHeadings.length} 节)</span>
+          </div>
+          <button type="button" class="superx-toc-close" title="收起目录">✕</button>
+        </div>
+        <ul class="superx-toc-list"></ul>
+      </div>
     `;
 
-    const closeBtn = outlinePanel.querySelector(".superx-outline-close-btn");
-    if (closeBtn) {
-      closeBtn.onclick = (e) => {
-        e.stopPropagation();
-        isOutlineCollapsed = true;
-        removeOutline();
-      };
-    }
+    const fab = container.querySelector("#superx-toc-fab");
+    const popup = container.querySelector("#superx-toc-popup");
+    const closeBtn = container.querySelector(".superx-toc-close");
+    const list = container.querySelector(".superx-toc-list");
 
-    const list = outlinePanel.querySelector(".superx-outline-list");
+    fab.onclick = (e) => {
+      e.stopPropagation();
+      isPopupOpen = !isPopupOpen;
+      popup.classList.toggle("open", isPopupOpen);
+    };
 
-    headings.forEach((item) => {
+    closeBtn.onclick = (e) => {
+      e.stopPropagation();
+      isPopupOpen = false;
+      popup.classList.remove("open");
+    };
+
+    currentHeadings.forEach((item, idx) => {
       const li = document.createElement("li");
-      li.className = "superx-outline-item";
+      li.className = "superx-toc-item";
       if (item.level === 2) li.classList.add("h2");
       if (item.level === 3) li.classList.add("h3");
       li.textContent = item.text;
@@ -191,7 +200,7 @@
         if (target) {
           target.style.transition = "background-color 0.4s ease";
           const origBg = target.style.backgroundColor;
-          target.style.backgroundColor = "rgba(29, 155, 240, 0.2)";
+          target.style.backgroundColor = "rgba(29, 155, 240, 0.22)";
           setTimeout(() => {
             target.style.backgroundColor = origBg;
           }, 1500);
@@ -202,10 +211,22 @@
     });
   }
 
+  // 点击外部自动收起弹出目录
+  document.addEventListener("click", (e) => {
+    if (isPopupOpen) {
+      const container = document.getElementById("superx-toc-container");
+      if (container && !container.contains(e.target)) {
+        isPopupOpen = false;
+        const popup = document.getElementById("superx-toc-popup");
+        if (popup) popup.classList.remove("open");
+      }
+    }
+  });
+
   const FeatureInstance = {
     id: "x-better-ui",
     name: "Better UI (阅读与界面优化)",
-    description: "长文大纲目录生成、隐藏侧边栏趋势推荐、时间线自适应加宽",
+    description: "长文大纲目录 (TOC)、隐藏侧边栏趋势推荐、时间线自适应加宽",
     version: "1.0.0",
     defaultEnabled: true,
 
@@ -228,7 +249,6 @@
 
     async enable() {
       active = true;
-      isOutlineCollapsed = false;
       applyStyles();
     },
 
@@ -239,15 +259,15 @@
 
     onRouteChange(newUrl, prevUrl) {
       if (active) {
-        isOutlineCollapsed = false;
-        setTimeout(applyStyles, 250);
+        isPopupOpen = false;
+        setTimeout(applyStyles, 300);
       }
     },
 
     onDOMNodes() {
-      if (active && config.generateOutline && !isOutlineCollapsed) {
-        if (outlineCheckTimer) clearTimeout(outlineCheckTimer);
-        outlineCheckTimer = setTimeout(checkAndBuildOutline, 300);
+      if (active && config.generateOutline) {
+        if (scanTimer) clearTimeout(scanTimer);
+        scanTimer = setTimeout(scanAndRenderTOC, 400);
       }
     }
   };
