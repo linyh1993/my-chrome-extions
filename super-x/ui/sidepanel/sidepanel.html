@@ -119,9 +119,32 @@
         </div>
         <div class="feedsieve-actions" style="display:flex;gap:8px;margin-top:12px;">
           <button type="button" class="btn-primary" id="btn-sync-feedsieve" style="flex:1;">🔄 在线更新云端名单</button>
-          <button type="button" class="btn-secondary" id="btn-batch-block-community" style="flex:1;" title="将当前社区黑名单账号加入防封流控队列依次原生拉黑">🚫 一键原生拉黑社区黑名单</button>
         </div>
         <div id="feedsieve-sync-status" style="font-size:12px;color:#71767b;margin-top:8px;"></div>
+
+        <!-- 全量挂机自动拉黑控制器面板 -->
+        <div class="batch-block-panel" style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span style="font-size:12px;font-weight:600;color:#e7e9ea;">全量后台挂机拉黑</span>
+            <span id="batch-block-status-badge" class="task-status-pill" style="font-size:11px;">就绪</span>
+          </div>
+          <div class="progress-bar-bg" style="margin:8px 0;">
+            <div id="batch-progress-fill" class="progress-bar-fill" style="width:0%;"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:#71767b;margin-bottom:8px;">
+            <span id="batch-progress-text">进度: 0 / 3,496 (0%)</span>
+            <span id="batch-progress-details">已拉黑: 0 | 跳过: 0 | 失败: 0</span>
+          </div>
+          <div id="batch-current-target" style="font-size:11px;color:#1d9bf0;margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:16px;"></div>
+          <div class="feedsieve-batch-btns" style="display:flex;gap:6px;">
+            <button type="button" class="btn-primary" id="btn-batch-start" style="flex:1.2;">▶ 开始全量拉黑</button>
+            <button type="button" class="btn-secondary" id="btn-batch-pause" style="flex:1;" disabled>⏸ 暂停</button>
+            <button type="button" class="btn-secondary" id="btn-batch-reset" style="flex:0.8;">↺ 重置</button>
+          </div>
+          <div style="font-size:10px;color:#71767b;margin-top:6px;line-height:1.4;">
+            💡 智能去重：已拉黑账号绝不重复调用接口。内置 2.5s~4.5s 智能防封抖动，遭遇 HTTP 429 自动休眠 60s。
+          </div>
+        </div>
       </div>
 
       <!-- 3. 8 大行业分类词库 -->

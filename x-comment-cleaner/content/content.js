@@ -286,9 +286,9 @@
         console.log(`[X Cleaner] 防封流控：正在向 X 官方接口发送真实拉黑请求: @${norm}...`);
         const res = await xAdapter.blockUser(norm);
 
-        if (res && res.ok) {
+        if (res && (res.ok || res.alreadyBlocked)) {
           blockedHandlesState.add(norm);
-          console.log(`[X Cleaner] ✓ 已成功通过接口拉黑账号 @${norm}`);
+          console.log(`[X Cleaner] ✓ 已成功通过接口拉黑账号 @${norm}${res.alreadyBlocked ? ' (之前已黑)' : ''}`);
           recordBlockedAccount(norm, task.reason);
           scheduleScan(20);
         } else if (res && res.status === 429) {

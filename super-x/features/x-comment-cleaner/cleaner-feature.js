@@ -255,13 +255,15 @@
         console.log(`[SuperX Cleaner] 防封流控：正在向 X 官方接口发送真实拉黑请求: @${norm}...`);
         const res = await xAdapter.blockUser(norm);
 
-        if (res && res.ok) {
+        if (res && (res.ok || res.alreadyBlocked)) {
           blockedHandlesState.add(norm);
-          console.log(`[SuperX Cleaner] ✓ 已成功通过接口拉黑账号 @${norm}`);
+          console.log(`[SuperX Cleaner] ✓ 已成功通过接口拉黑账号 @${norm}${res.alreadyBlocked ? ' (之前已黑)' : ''}`);
           recordBlockedAccount(norm, task.reason);
-          chrome.runtime.sendMessage({ type: 'INCREMENT_BLOCKED_COUNT', delta: 1 }, () => {
-            if (chrome.runtime.lastError) {}
-          });
+          if (!res.alreadyBlocked) {
+            chrome.runtime.sendMessage({ type: 'INCREMENT_BLOCKED_COUNT', delta: 1 }, () => {
+              if (chrome.runtime.lastError) {}
+            });
+          }
         } else if (res && res.status === 429) {
           console.warn(`[SuperX Cleaner] ⚠️ 触发 X 官方频率限制 (HTTP 429)！进入 60 秒冷却期`);
           queueCooldownUntil = Date.now() + 60000;
@@ -619,20 +621,217 @@
     }
   };
 
-  // 接收来自侧边栏的社区黑名单批量入队指令
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg && msg.type === 'ENQUEUE_COMMUNITY_BATCH_BLOCK' && Array.isArray(msg.handles)) {
-      let count = 0;
-      for (const h of msg.handles) {
-        const norm = normalizeHandleFn(h);
-        if (!norm || blockedHandlesState.has(norm) || manuallyUnblockedHandles.has(norm)) continue;
-        if (autoBlockQueue.some(item => item.handle === norm)) continue;
-        autoBlockQueue.push({ handle: norm, reason: 'FeedSieve 社区黑名单' });
-        count++;
+  // 社区黑名单挂机批量拉黑运行器
+  const communityBatchState = {
+    running: false,
+    paused: false,
+    total: 0,
+    current: 0,
+    successCount: 0,
+    alreadyBlockedCount: 0,
+    failCount: 0,
+    statusText: '就绪',
+    lastHandle: ''
+  };
+
+  async function updateBatchProgressStorage() {
+    try {
+      await chrome.storage.local.set({
+        superx_community_block_progress: {
+          running: communityBatchState.running,
+          paused: communityBatchState.paused,
+          total: communityBatchState.total,
+          current: communityBatchState.current,
+          successCount: communityBatchState.successCount,
+          alreadyBlockedCount: communityBatchState.alreadyBlockedCount,
+          failCount: communityBatchState.failCount,
+          statusText: communityBatchState.statusText,
+          lastHandle: communityBatchState.lastHandle,
+          updatedAt: Date.now()
+        }
+      });
+    } catch (e) {}
+  }
+
+  async function startCommunityBatchBlock(allHandles) {
+    if (communityBatchState.running) {
+      if (communityBatchState.paused) {
+        communityBatchState.paused = false;
+        communityBatchState.statusText = '挂机拉黑中...';
+        await updateBatchProgressStorage();
       }
-      console.log(`[SuperX Cleaner] 已将 ${count} 个社区黑名单账号推入防封流控拉黑队列`);
-      processAutoBlockQueue();
-      sendResponse({ success: true, count });
+      return;
+    }
+
+    // 1. 获取最新本地已拉黑缓存，做严格去重，避免重复请求 X 接口
+    const storageData = await new Promise(r => chrome.storage.local.get(['blockedAccountsCache'], r));
+    const cachedList = Array.isArray(storageData.blockedAccountsCache) ? storageData.blockedAccountsCache : [];
+    for (const item of cachedList) {
+      const h = typeof item === 'string' ? item : item.handle;
+      if (h) blockedHandlesState.add(normalizeHandleFn(h));
+    }
+
+    const initialTotal = allHandles.length;
+    // 过滤出未被拉黑的 handle
+    const pendingList = [];
+    let alreadyFilteredCount = 0;
+    for (const raw of allHandles) {
+      const norm = normalizeHandleFn(raw);
+      if (!norm) continue;
+      if (blockedHandlesState.has(norm)) {
+        alreadyFilteredCount++;
+      } else {
+        pendingList.push(norm);
+      }
+    }
+
+    communityBatchState.running = true;
+    communityBatchState.paused = false;
+    communityBatchState.total = initialTotal;
+    communityBatchState.current = alreadyFilteredCount;
+    communityBatchState.alreadyBlockedCount = alreadyFilteredCount;
+    communityBatchState.successCount = 0;
+    communityBatchState.failCount = 0;
+    communityBatchState.statusText = `挂机拉黑中 (已本地跳过 ${alreadyFilteredCount} 个已拉黑账号)...`;
+    await updateBatchProgressStorage();
+
+    console.log(`[SuperX Cleaner] 启动社区黑名单挂机拉黑: 总量 ${initialTotal}，本地已拉黑/跳过 ${alreadyFilteredCount}，待处理 ${pendingList.length}`);
+
+    // 开始异步流控执行
+    (async () => {
+      for (let i = 0; i < pendingList.length; i++) {
+        if (!communityBatchState.running) break;
+
+        while (communityBatchState.paused) {
+          communityBatchState.statusText = '已暂停挂机拉黑';
+          await updateBatchProgressStorage();
+          await sleep(1000);
+          if (!communityBatchState.running) break;
+        }
+        if (!communityBatchState.running) break;
+
+        const handle = pendingList[i];
+        communityBatchState.lastHandle = handle;
+
+        // 二次双重检查是否已在集合中
+        if (blockedHandlesState.has(handle) || manuallyUnblockedHandles.has(handle)) {
+          communityBatchState.alreadyBlockedCount++;
+          communityBatchState.current++;
+          await updateBatchProgressStorage();
+          continue;
+        }
+
+        communityBatchState.statusText = `正在拉黑 @${handle} (${communityBatchState.current + 1}/${communityBatchState.total})...`;
+        await updateBatchProgressStorage();
+
+        try {
+          const res = await xAdapter.blockUser(handle);
+          if (res && (res.ok || res.alreadyBlocked)) {
+            blockedHandlesState.add(handle);
+            recordBlockedAccount(handle, 'FeedSieve 社区黑名单');
+            if (res.alreadyBlocked) {
+              communityBatchState.alreadyBlockedCount++;
+              console.log(`[SuperX Cleaner] @${handle} 官方返回已在黑名单中，登记并跳过`);
+            } else {
+              communityBatchState.successCount++;
+              console.log(`[SuperX Cleaner] ✓ 成功拉黑 @${handle}`);
+              chrome.runtime.sendMessage({ type: 'INCREMENT_BLOCKED_COUNT', delta: 1 }, () => {
+                if (chrome.runtime.lastError) {}
+              });
+            }
+          } else if (res && res.status === 429) {
+            console.warn(`[SuperX Cleaner] ⚠️ 触发 X 官方频率限制 (HTTP 429)！进入 60 秒安全冷却期`);
+            communityBatchState.statusText = `触发 X 官方限流(429)，安全冷却 60 秒后自动恢复...`;
+            await updateBatchProgressStorage();
+            await sleep(60000);
+            i--; // 重试当前账号
+            continue;
+          } else {
+            communityBatchState.failCount++;
+            console.warn(`[SuperX Cleaner] 拉黑 @${handle} 失败:`, res?.error);
+          }
+        } catch (e) {
+          communityBatchState.failCount++;
+          console.error(`[SuperX Cleaner] 批量拉黑网络异常 @${handle}:`, e);
+        }
+
+        communityBatchState.current++;
+        communityBatchState.statusText = `已处理 ${communityBatchState.current}/${communityBatchState.total} (成功 ${communityBatchState.successCount}, 已黑 ${communityBatchState.alreadyBlockedCount}, 失败 ${communityBatchState.failCount})`;
+        await updateBatchProgressStorage();
+
+        // 随机延迟 2500ms ~ 4500ms，防封防刷
+        const delay = 2500 + Math.floor(Math.random() * 2000);
+        await sleep(delay);
+      }
+
+      communityBatchState.running = false;
+      communityBatchState.paused = false;
+      communityBatchState.statusText = `挂机完成！总计 ${communityBatchState.total}，本次新拉黑 ${communityBatchState.successCount}，已拉黑跳过 ${communityBatchState.alreadyBlockedCount}，失败 ${communityBatchState.failCount}`;
+      await updateBatchProgressStorage();
+      console.log(`[SuperX Cleaner] 社区黑名单挂机拉黑任务结束:`, communityBatchState);
+    })();
+  }
+
+  function pauseCommunityBatchBlock() {
+    if (communityBatchState.running) {
+      communityBatchState.paused = true;
+      communityBatchState.statusText = '已暂停挂机拉黑';
+      updateBatchProgressStorage();
+    }
+  }
+
+  function resumeCommunityBatchBlock() {
+    if (communityBatchState.running && communityBatchState.paused) {
+      communityBatchState.paused = false;
+      communityBatchState.statusText = '恢复挂机拉黑中...';
+      updateBatchProgressStorage();
+    }
+  }
+
+  function stopCommunityBatchBlock() {
+    communityBatchState.running = false;
+    communityBatchState.paused = false;
+    communityBatchState.statusText = '已重置 / 停止';
+    updateBatchProgressStorage();
+  }
+
+  // 接收来自侧边栏的社区黑名单批量拉黑与控制指令
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (!msg || !msg.type) return;
+
+    if (msg.type === 'START_COMMUNITY_BATCH_BLOCK') {
+      const handles = Array.isArray(msg.handles) ? msg.handles : [];
+      startCommunityBatchBlock(handles);
+      sendResponse({ success: true });
+      return true;
+    }
+
+    if (msg.type === 'PAUSE_COMMUNITY_BATCH_BLOCK') {
+      pauseCommunityBatchBlock();
+      sendResponse({ success: true });
+      return true;
+    }
+
+    if (msg.type === 'RESUME_COMMUNITY_BATCH_BLOCK') {
+      resumeCommunityBatchBlock();
+      sendResponse({ success: true });
+      return true;
+    }
+
+    if (msg.type === 'STOP_COMMUNITY_BATCH_BLOCK') {
+      stopCommunityBatchBlock();
+      sendResponse({ success: true });
+      return true;
+    }
+
+    if (msg.type === 'GET_COMMUNITY_BATCH_STATUS') {
+      sendResponse({ success: true, state: communityBatchState });
+      return true;
+    }
+
+    if (msg.type === 'ENQUEUE_COMMUNITY_BATCH_BLOCK' && Array.isArray(msg.handles)) {
+      startCommunityBatchBlock(msg.handles);
+      sendResponse({ success: true, count: msg.handles.length });
       return true;
     }
   });

@@ -109,6 +109,10 @@
 
       const errText = await res.text().catch(() => '');
       console.warn(`[X Cleaner] X 接口返回异常 HTTP ${res.status}:`, errText);
+      const isAlreadyBlocked = /already blocked|already_blocked|has already been blocked/i.test(errText);
+      if (type === 'block' && isAlreadyBlocked) {
+        return { ok: true, status: res.status, alreadyBlocked: true };
+      }
       return { ok: false, status: res.status, error: `HTTP ${res.status}: ${errText}` };
     } catch (e) {
       console.error(`[X Cleaner] 接口网络请求异常:`, e);

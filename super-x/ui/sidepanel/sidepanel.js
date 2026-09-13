@@ -246,47 +246,159 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
   }
 
-  if (btnBatchBlockCommunity) {
-    btnBatchBlockCommunity.onclick = async () => {
-      if (!communityLists) return;
-      const count = communityLists.getBlacklistCount();
-      const confirmed = confirm(`确定要对社区黑名单的 ${count} 个账号发起拉黑吗？\n\n注意：将自动使用 SuperX 防封流控安全队列（间隔 2.5s~4.5s 依次执行），遇到官方 429 会自动安全休眠，不会冻结您的 X 账号。`);
-      if (!confirmed) return;
+  // 4.2.2 全量后台挂机拉黑控制面板逻辑
+  const batchStatusBadge = document.getElementById("batch-block-status-badge");
+  const batchProgressFill = document.getElementById("batch-progress-fill");
+  const batchProgressText = document.getElementById("batch-progress-text");
+  const batchProgressDetails = document.getElementById("batch-progress-details");
+  const batchCurrentTarget = document.getElementById("batch-current-target");
+  const btnBatchStart = document.getElementById("btn-batch-start");
+  const btnBatchPause = document.getElementById("btn-batch-pause");
+  const btnBatchReset = document.getElementById("btn-batch-reset");
 
-      btnBatchBlockCommunity.disabled = true;
-      if (feedsieveSyncStatus) {
-        feedsieveSyncStatus.style.color = '#1d9bf0';
-        feedsieveSyncStatus.textContent = `已将社区黑名单下发至活跃推特标签页流控队列...`;
+  let localBatchRunning = false;
+  let localBatchPaused = false;
+
+  function renderBatchProgress(data) {
+    if (!data) return;
+    const { running, paused, total = 0, current = 0, successCount = 0, alreadyBlockedCount = 0, failCount = 0, statusText = '就绪', lastHandle = '' } = data;
+    localBatchRunning = running;
+    localBatchPaused = paused;
+
+    const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+    if (batchProgressFill) batchProgressFill.style.width = `${pct}%`;
+    if (batchProgressText) batchProgressText.textContent = `进度: ${current.toLocaleString()} / ${total.toLocaleString()} (${pct}%)`;
+    if (batchProgressDetails) batchProgressDetails.textContent = `已拉黑: ${successCount.toLocaleString()} | 跳过: ${alreadyBlockedCount.toLocaleString()} | 失败: ${failCount.toLocaleString()}`;
+
+    if (batchStatusBadge) {
+      if (running && !paused) {
+        batchStatusBadge.className = 'task-status-pill running';
+        batchStatusBadge.textContent = '运行中';
+      } else if (running && paused) {
+        batchStatusBadge.className = 'task-status-pill';
+        batchStatusBadge.textContent = '已暂停';
+      } else {
+        batchStatusBadge.className = 'task-status-pill';
+        batchStatusBadge.textContent = current >= total && total > 0 ? '已完成' : '就绪';
       }
+    }
 
-      // 发送消息给活跃的 X 标签页
-      chrome.tabs.query({ url: ['https://x.com/*', 'https://twitter.com/*'] }, (tabs) => {
-        if (!tabs || tabs.length === 0) {
-          if (feedsieveSyncStatus) {
-            feedsieveSyncStatus.style.color = '#f4212e';
-            feedsieveSyncStatus.textContent = '未检测到打开的 X/Twitter 页面，请先打开 X.com 再点击此按钮。';
-          }
-          btnBatchBlockCommunity.disabled = false;
+    if (batchCurrentTarget) {
+      if (running && lastHandle) {
+        batchCurrentTarget.textContent = `当前目标: @${lastHandle} (${statusText})`;
+      } else {
+        batchCurrentTarget.textContent = statusText;
+      }
+    }
+
+    if (btnBatchStart) {
+      if (running && !paused) {
+        btnBatchStart.disabled = true;
+        btnBatchStart.textContent = '运行中...';
+      } else if (running && paused) {
+        btnBatchStart.disabled = false;
+        btnBatchStart.textContent = '▶ 继续挂机';
+      } else {
+        btnBatchStart.disabled = false;
+        btnBatchStart.textContent = '▶ 开始全量拉黑';
+      }
+    }
+
+    if (btnBatchPause) {
+      btnBatchPause.disabled = !running;
+      btnBatchPause.textContent = paused ? '▶ 继续' : '⏸ 暂停';
+    }
+  }
+
+  // 读取已持久化的批处理进度
+  chrome.storage.local.get(['superx_community_block_progress'], (res) => {
+    if (res && res.superx_community_block_progress) {
+      renderBatchProgress(res.superx_community_block_progress);
+    } else if (communityLists) {
+      const total = communityLists.getBlacklistCount();
+      if (batchProgressText) batchProgressText.textContent = `进度: 0 / ${total.toLocaleString()} (0%)`;
+    }
+  });
+
+  // 监听后台/内容脚本实时发送的进度变动
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.superx_community_block_progress) {
+      renderBatchProgress(changes.superx_community_block_progress.newValue);
+    }
+  });
+
+  function sendToXTab(message, callback) {
+    chrome.tabs.query({ url: ['https://x.com/*', 'https://twitter.com/*'] }, (tabs) => {
+      if (!tabs || tabs.length === 0) {
+        alert('未检测到已打开的 X/Twitter 页面，请先在浏览器标签页打开 x.com 登录账号！');
+        if (callback) callback(false);
+        return;
+      }
+      chrome.tabs.sendMessage(tabs[0].id, message, (response) => {
+        if (chrome.runtime.lastError) {
+          console.warn('[SuperX Sidepanel] 发送指令错误:', chrome.runtime.lastError);
+          if (callback) callback(false);
           return;
         }
+        if (callback) callback(true, response);
+      });
+    });
+  }
 
-        const handles = communityLists.getBlacklistArray();
-        let sentCount = 0;
-        tabs.forEach((tab) => {
-          chrome.tabs.sendMessage(tab.id, {
-            type: 'ENQUEUE_COMMUNITY_BATCH_BLOCK',
-            handles: handles.slice(0, 500) // 首批安全入队 500 个避免内存过载
-          }, (res) => {
-            if (chrome.runtime.lastError) return;
-            sentCount++;
-          });
-        });
+  if (btnBatchStart) {
+    btnBatchStart.onclick = () => {
+      if (!communityLists) return;
+      if (localBatchRunning && localBatchPaused) {
+        sendToXTab({ type: 'RESUME_COMMUNITY_BATCH_BLOCK' });
+        return;
+      }
 
-        if (feedsieveSyncStatus) {
-          feedsieveSyncStatus.style.color = '#00ba7c';
-          feedsieveSyncStatus.textContent = `✓ 任务已成功派发至前台 X 标签页，正在后台按流控队列安全执行中！`;
+      const total = communityLists.getBlacklistCount();
+      const confirmed = confirm(`确认启动全量挂机自动拉黑？\n\n- 黑名单账号总数: ${total.toLocaleString()} 个\n- 智能去重：本地或接口返回已拉黑的账号绝不重复调用接口\n- 安全保障：每次请求间隔 2.5s~4.5s，触发 429 自动冷却 60 秒`);
+      if (!confirmed) return;
+
+      const handles = communityLists.getBlacklistArray();
+      sendToXTab({ type: 'START_COMMUNITY_BATCH_BLOCK', handles }, (ok) => {
+        if (ok) {
+          if (batchStatusBadge) {
+            batchStatusBadge.className = 'task-status-pill running';
+            batchStatusBadge.textContent = '运行中';
+          }
         }
-        setTimeout(() => { btnBatchBlockCommunity.disabled = false; }, 3000);
+      });
+    };
+  }
+
+  if (btnBatchPause) {
+    btnBatchPause.onclick = () => {
+      if (localBatchPaused) {
+        sendToXTab({ type: 'RESUME_COMMUNITY_BATCH_BLOCK' });
+      } else {
+        sendToXTab({ type: 'PAUSE_COMMUNITY_BATCH_BLOCK' });
+      }
+    };
+  }
+
+  if (btnBatchReset) {
+    btnBatchReset.onclick = () => {
+      const confirmed = confirm('确定要重置当前挂机任务进度吗？');
+      if (!confirmed) return;
+      sendToXTab({ type: 'STOP_COMMUNITY_BATCH_BLOCK' });
+      const total = communityLists ? communityLists.getBlacklistCount() : 3496;
+      const initialProgress = {
+        running: false,
+        paused: false,
+        total,
+        current: 0,
+        successCount: 0,
+        alreadyBlockedCount: 0,
+        failCount: 0,
+        statusText: '已重置',
+        lastHandle: '',
+        updatedAt: Date.now()
+      };
+      chrome.storage.local.set({ superx_community_block_progress: initialProgress }, () => {
+        renderBatchProgress(initialProgress);
       });
     };
   }
