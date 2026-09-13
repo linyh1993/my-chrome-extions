@@ -782,3 +782,131 @@ body {
   cursor: not-allowed;
 }
 
+/* Viral Leaderboard (流速排行榜) 样式 */
+.section-subtitle {
+  font-size: 11px;
+  color: #71767b;
+  margin: -4px 0 12px 0;
+  line-height: 1.4;
+}
+
+.viral-leaderboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.viral-lb-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #16181c;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.viral-lb-item:hover {
+  background: #1c1f24;
+  border-color: rgba(29, 155, 240, 0.4);
+  transform: translateX(2px);
+}
+
+.viral-lb-rank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+  font-weight: 700;
+  color: #71767b;
+  flex-shrink: 0;
+}
+
+.viral-lb-rank.top-1 {
+  background: linear-gradient(135deg, #ef4444, #f97316);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.3);
+}
+
+.viral-lb-rank.top-2 {
+  background: linear-gradient(135deg, #f59e0b, #eab308);
+  color: #fff;
+}
+
+.viral-lb-rank.top-3 {
+  background: linear-gradient(135deg, #10b981, #06b6d4);
+  color: #fff;
+}
+
+.viral-lb-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.viral-lb-user-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.viral-lb-handle {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e7e9ea;
+}
+
+.viral-lb-score-pill {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+}
+
+.viral-lb-text {
+  font-size: 11px;
+  color: #71767b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.viral-lb-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.viral-lb-velocity {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.viral-lb-velocity.viral {
+  color: #ef4444;
+}
+
+.viral-lb-velocity.trending {
+  color: #f59e0b;
+}
+
+.viral-lb-velocity.normal {
+  color: #10b981;
+}
+
+.viral-lb-views {
+  font-size: 10px;
+  color: #71767b;
+}
+
+

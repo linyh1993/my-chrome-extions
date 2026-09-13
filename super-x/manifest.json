@@ -61,12 +61,14 @@
         "features/x-comment-cleaner/cleaner-feature.js",
         "features/x-better-ui/better-ui-feature.js",
         "features/x-follow-to-list/follow-list-feature.js",
+        "features/x-viral-monitor/viral-monitor-feature.js",
         "core/content-main.js"
       ],
       "css": [
         "features/x-comment-cleaner/cleaner.css",
         "features/x-better-ui/better-ui.css",
-        "features/x-follow-to-list/follow-list.css"
+        "features/x-follow-to-list/follow-list.css",
+        "features/x-viral-monitor/viral-monitor.css"
       ],
       "run_at": "document_idle"
     }

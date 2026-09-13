@@ -7,6 +7,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const toggleCleaner = document.getElementById("toggle-cleaner");
   const toggleBetterUI = document.getElementById("toggle-better-ui");
   const toggleFollowList = document.getElementById("toggle-follow-list");
+  const toggleViralMonitor = document.getElementById("toggle-viral-monitor");
   const popupBlockedCount = document.getElementById("popup-blocked-count");
   const popupFollowCount = document.getElementById("popup-follow-count");
   const popupAutoBlock = document.getElementById("popup-auto-block");
@@ -16,6 +17,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   const popupHideTrends = document.getElementById("popup-hide-trends");
   const popupWiden = document.getElementById("popup-widen");
   const popupOutline = document.getElementById("popup-outline");
+
+  const popupViralBadges = document.getElementById("popup-viral-badges");
+  const popupViralBookmarks = document.getElementById("popup-viral-bookmarks");
+  const popupViralCopyMd = document.getElementById("popup-viral-copy-md");
 
   const btnGotoCleaner = document.getElementById("btn-goto-cleaner-settings");
   const btnGotoFollowCurator = document.getElementById("btn-goto-follow-curator");
@@ -33,6 +38,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     if (toggleFollowList) {
       toggleFollowList.checked = features["x-follow-to-list"] ? features["x-follow-to-list"].enabled : true;
+    }
+    if (toggleViralMonitor) {
+      toggleViralMonitor.checked = features["x-viral-monitor"] ? features["x-viral-monitor"].enabled : true;
     }
   });
 
@@ -98,6 +106,68 @@ document.addEventListener("DOMContentLoaded", async () => {
         featureId: "x-follow-to-list",
         enabled: toggleFollowList.checked
       });
+    });
+  }
+
+  if (toggleViralMonitor) {
+    toggleViralMonitor.addEventListener("change", () => {
+      chrome.runtime.sendMessage({
+        type: "UPDATE_FEATURE_STATE",
+        featureId: "x-viral-monitor",
+        enabled: toggleViralMonitor.checked
+      });
+    });
+  }
+
+  // 4.1 读取 x-viral-monitor 专属配置
+  let viralConfig = {
+    showBadges: true,
+    showBookmarkCount: true,
+    copyAsMarkdown: true
+  };
+  try {
+    const vStored = await chrome.storage.local.get(["superx_viral_monitor_config"]);
+    if (vStored.superx_viral_monitor_config) {
+      viralConfig = { ...viralConfig, ...vStored.superx_viral_monitor_config };
+    }
+  } catch (e) {}
+
+  if (popupViralBadges) popupViralBadges.checked = viralConfig.showBadges !== false;
+  if (popupViralBookmarks) popupViralBookmarks.checked = viralConfig.showBookmarkCount !== false;
+  if (popupViralCopyMd) popupViralCopyMd.checked = viralConfig.copyAsMarkdown !== false;
+
+  const saveViralConfig = async () => {
+    try {
+      await chrome.storage.local.set({ superx_viral_monitor_config: viralConfig });
+      chrome.tabs.query({ url: ['https://x.com/*', 'https://twitter.com/*'] }, (tabs) => {
+        tabs.forEach(t => {
+          chrome.tabs.sendMessage(t.id, {
+            type: 'SUPERX_VIRAL_UPDATE_CONFIG',
+            config: viralConfig
+          }).catch(() => {});
+        });
+      });
+    } catch (e) {}
+  };
+
+  if (popupViralBadges) {
+    popupViralBadges.addEventListener("change", () => {
+      viralConfig.showBadges = popupViralBadges.checked;
+      saveViralConfig();
+    });
+  }
+
+  if (popupViralBookmarks) {
+    popupViralBookmarks.addEventListener("change", () => {
+      viralConfig.showBookmarkCount = popupViralBookmarks.checked;
+      saveViralConfig();
+    });
+  }
+
+  if (popupViralCopyMd) {
+    popupViralCopyMd.addEventListener("change", () => {
+      viralConfig.copyAsMarkdown = popupViralCopyMd.checked;
+      saveViralConfig();
     });
   }
 

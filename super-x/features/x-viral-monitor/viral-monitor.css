@@ -1,0 +1,247 @@
+/* SuperX - Viral Monitor Feature Styles */
+
+/* 1. 流速徽章胶囊 */
+.superx-viral-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-left: 8px;
+  vertical-align: middle;
+  border: 1px solid transparent;
+}
+
+.superx-viral-badge:hover {
+  transform: translateY(-1px) scale(1.04);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* 正常流速 🌱 */
+.superx-badge-normal {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.25);
+}
+.superx-badge-normal:hover {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.45);
+}
+
+/* 热门流速 🚀 */
+.superx-badge-trending {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.35);
+}
+.superx-badge-trending:hover {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.55);
+}
+
+/* 爆帖流速 🔥 */
+.superx-badge-viral {
+  background: rgba(239, 68, 68, 0.14);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.2);
+}
+.superx-badge-viral:hover {
+  background: rgba(239, 68, 68, 0.24);
+  border-color: rgba(239, 68, 68, 0.6);
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.35);
+}
+
+.superx-badge-emoji {
+  font-size: 11px;
+}
+
+.superx-badge-val {
+  letter-spacing: -0.02em;
+}
+
+.superx-badge-score {
+  opacity: 0.75;
+  font-size: 10px;
+  font-weight: 500;
+  border-left: 1px solid currentColor;
+  padding-left: 4px;
+  margin-left: 2px;
+}
+
+/* 2. 悬浮指标 Tooltip 面板 */
+.superx-viral-tooltip {
+  position: absolute;
+  z-index: 999999;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+  padding: 12px 14px;
+  width: 240px;
+  color: #f8fafc;
+  font-size: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.4;
+  pointer-events: none;
+  animation: superx-tooltip-fade 0.18s ease-out forwards;
+}
+
+@keyframes superx-tooltip-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.superx-tt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.superx-tt-pill {
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.superx-tt-time {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.superx-tt-score-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.superx-tt-score-num {
+  font-size: 22px;
+  font-weight: 800;
+  color: #38bdf8;
+  line-height: 1;
+}
+
+.superx-tt-score-desc {
+  flex: 1;
+}
+
+.superx-tt-score-desc .score-title {
+  font-size: 11px;
+  color: #cbd5e1;
+  margin-bottom: 4px;
+}
+
+.superx-progress-track {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.superx-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #818cf8);
+  border-radius: 2px;
+}
+
+.superx-tt-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+}
+
+.superx-tt-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.superx-tt-item .item-label {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.superx-tt-item .item-val {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.superx-tt-item .item-val.highlight {
+  color: #f59e0b;
+}
+
+/* 3. 书签数显示 */
+.superx-bookmark-count {
+  font-size: 13px;
+  color: rgb(113, 118, 123);
+  margin-left: 4px;
+  user-select: none;
+}
+
+/* 4. 一键复制 Markdown 按钮 */
+.superx-copy-md-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: transparent;
+  border: none;
+  color: rgb(113, 118, 123);
+  padding: 4px 6px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-left: 4px;
+}
+
+.superx-copy-md-btn:hover {
+  background: rgba(29, 155, 240, 0.1);
+  color: rgb(29, 155, 240);
+}
+
+.superx-copy-md-btn.copied {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+/* 5. 推文高亮跳转定位 */
+.superx-highlight-tweet {
+  outline: 2px solid #1d9bf0 !important;
+  outline-offset: -2px;
+  box-shadow: 0 0 20px rgba(29, 155, 240, 0.35) !important;
+  animation: superx-pulse 2s cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+@keyframes superx-pulse {
+  0%, 100% {
+    outline-color: #1d9bf0;
+  }
+  50% {
+    outline-color: #f59e0b;
+    box-shadow: 0 0 28px rgba(245, 158, 11, 0.5) !important;
+  }
+}

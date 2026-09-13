@@ -152,6 +152,98 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
   }
 
+  // --- 3.1 渲染 Tab 1 流速排行榜 ---
+  const viralLeaderboardList = document.getElementById("viral-leaderboard-list");
+  const btnRefreshLeaderboard = document.getElementById("btn-refresh-leaderboard");
+
+  async function updateViralLeaderboard() {
+    if (!viralLeaderboardList) return;
+
+    // 先从 local storage 读取已捕获的排行榜数据
+    const data = await chrome.storage.local.get(["superx_viral_leaderboard"]);
+    const list = Array.isArray(data.superx_viral_leaderboard) ? data.superx_viral_leaderboard : [];
+
+    if (list.length === 0) {
+      sendToXTab({ type: "SUPERX_VIRAL_GET_LEADERBOARD" }, (ok, response) => {
+        if (ok && response && Array.isArray(response.list)) {
+          renderLeaderboardItems(response.list);
+        } else {
+          renderLeaderboardItems([]);
+        }
+      }, true);
+      return;
+    }
+
+    renderLeaderboardItems(list);
+  }
+
+  function renderLeaderboardItems(list) {
+    if (!viralLeaderboardList) return;
+    viralLeaderboardList.innerHTML = "";
+
+    if (!list || list.length === 0) {
+      viralLeaderboardList.innerHTML = `<div class="empty-hint">暂无推文流速数据，在 X 页面滚动浏览时将自动分析生成</div>`;
+      return;
+    }
+
+    list.slice(0, 15).forEach((item, index) => {
+      const row = document.createElement("div");
+      row.className = "viral-lb-item";
+
+      let rankClass = "";
+      if (index === 0) rankClass = "top-1";
+      else if (index === 1) rankClass = "top-2";
+      else if (index === 2) rankClass = "top-3";
+
+      row.innerHTML = `
+        <div class="viral-lb-rank ${rankClass}">${index + 1}</div>
+        <div class="viral-lb-body">
+          <div class="viral-lb-user-row">
+            <span class="viral-lb-handle">@${escapeHtml(item.screenName || "user")}</span>
+            <span class="viral-lb-score-pill">${item.score || 0}分</span>
+          </div>
+          <div class="viral-lb-text">${escapeHtml(item.text || "（无文字内容）")}</div>
+        </div>
+        <div class="viral-lb-stats">
+          <div class="viral-lb-velocity ${item.level || 'normal'}">${escapeHtml(item.formattedVelocity || '0/h')}</div>
+          <div class="viral-lb-views">${(item.views || 0).toLocaleString()} 浏览</div>
+        </div>
+      `;
+
+      row.onclick = () => {
+        sendToXTab({ type: "SUPERX_VIRAL_SCROLL_TO_TWEET", tweetId: item.id }, (ok, res) => {
+          if (!ok || !res || !res.success) {
+            if (item.url) window.open(item.url, "_blank");
+          }
+        });
+      };
+
+      viralLeaderboardList.appendChild(row);
+    });
+  }
+
+  if (btnRefreshLeaderboard) {
+    btnRefreshLeaderboard.onclick = () => {
+      sendToXTab({ type: "SUPERX_VIRAL_GET_LEADERBOARD" }, (ok, response) => {
+        if (ok && response && Array.isArray(response.list)) {
+          renderLeaderboardItems(response.list);
+        } else {
+          updateViralLeaderboard();
+        }
+      });
+    };
+  }
+
+  // 监听 storage 变化自动刷新排行榜
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.superx_viral_leaderboard) {
+      const list = changes.superx_viral_leaderboard.newValue;
+      if (Array.isArray(list)) renderLeaderboardItems(list);
+    }
+  });
+
+  updateViralLeaderboard();
+
   // --- 4. 渲染 Tab 2: 评论净化完整控制台 ---
   async function saveCleanerConfig() {
     cleanerConfig.whitelist = currentWhitelist;
@@ -327,10 +419,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  function sendToXTab(message, callback) {
+  function sendToXTab(message, callback, silent = false) {
     chrome.tabs.query({ url: ['https://x.com/*', 'https://twitter.com/*'] }, (tabs) => {
       if (!tabs || tabs.length === 0) {
-        alert('未检测到已打开的 X/Twitter 页面，请先在浏览器标签页打开 x.com 登录账号！');
+        if (!silent) {
+          alert('未检测到已打开的 X/Twitter 页面，请先在浏览器标签页打开 x.com 登录账号！');
+        }
         if (callback) callback(false);
         return;
       }
