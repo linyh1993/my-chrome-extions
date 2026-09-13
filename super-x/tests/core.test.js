@@ -62,8 +62,20 @@ const isolatedScripts = manifest.content_scripts[1].js;
 assert.ok(!isolatedScripts.includes("features/x-comment-cleaner/simhash.js"), "simhash.js should not be duplicated");
 assert.ok(!isolatedScripts.includes("features/x-comment-cleaner/packs.js"), "packs.js should not be duplicated");
 assert.ok(isolatedScripts.includes("features/x-comment-cleaner/rules.js"), "rules.js must be loaded");
+assert.ok(isolatedScripts.includes("features/x-better-ui/better-ui-feature.js"), "better-ui-feature.js must be loaded");
 
-console.log("✓ Manifest V3 compliance check passed.");
+const isolatedStyles = manifest.content_scripts[1].css;
+assert.ok(isolatedStyles.includes("features/x-better-ui/better-ui.css"), "better-ui.css must be loaded");
+
+// 确保 better-ui.css 包含关键规则
+const betterCssPath = path.resolve(__dirname, "../features/x-better-ui/better-ui.css");
+const betterCss = fs.readFileSync(betterCssPath, "utf8");
+assert.ok(betterCss.includes("data-superx-hide-trends"), "Must define hide trends styles");
+assert.ok(betterCss.includes("data-superx-widen"), "Must define widen timeline styles");
+assert.ok(betterCss.includes("#superx-article-outline"), "Must define article outline styles");
+assert.ok(betterCss.includes("data-testid=\"trend\""), "Must target modern trend element");
+
+console.log("✓ Manifest V3 & Better UI compliance check passed.");
 
 // 4. 测试 x-comment-cleaner 规则引擎评估与英文帖子识别
 const rulesPath = path.resolve(__dirname, "../features/x-comment-cleaner/rules.js");

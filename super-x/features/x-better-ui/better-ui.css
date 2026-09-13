@@ -2,45 +2,80 @@
  * SuperX Feature - Better UI Styles
  */
 
-/* 1. 隐藏右侧边栏干扰项（趋势、有什么新鲜事、相关推荐等） */
-html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] section[aria-label*="Trending"],
-html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] section[aria-label*="What’s happening"],
-html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] section[aria-label*="What's happening"],
-html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] section[aria-label*="当前趋势"],
-html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] aside[aria-label*="Who to follow"],
-html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] aside[aria-label*="推荐关注"] {
+/* 1. 隐藏右侧边栏干扰项（趋势、有什么新鲜事、相关推荐、开通认证等） */
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="Trending" i],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="What’s happening" i],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="What's happening" i],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="当前趋势"],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="正在发生"],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="今日热点"],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="探索"],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="Who to follow" i],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="推荐关注"],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="订阅 Premium" i],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="Subscribe to Premium" i],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] div:has(> [data-testid="trend"]),
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] div:has(> div > [data-testid="trend"]),
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] div:has(> div > div > [data-testid="trend"]),
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] div:has(> div > div > [data-testid="UserCell"]) {
   display: none !important;
 }
 
-/* 2. 主时间线与正文宽度优化（改善窄屏压抑感） */
+/* 2. 主时间线与正文自适应加宽 */
 @media (min-width: 1200px) {
-  html[data-superx-widen="true"] main[role="main"] div[data-testid="primaryColumn"] {
-    max-width: 700px !important;
-    width: 700px !important;
+  /* 拓展外层主容器宽度 (Twitter 默认 max-width: 990px 或 1050px) */
+  html[data-superx-widen="true"] main[role="main"] > div > div {
+    max-width: 1200px !important;
+    width: 100% !important;
+  }
+
+  /* 加宽主时间线列 (Twitter 默认 600px) */
+  html[data-superx-widen="true"] div[data-testid="primaryColumn"] {
+    max-width: 720px !important;
+    width: 720px !important;
+  }
+
+  html[data-superx-widen="true"] div[data-testid="primaryColumn"] > div > div {
+    max-width: 100% !important;
+  }
+}
+
+@media (min-width: 1600px) {
+  html[data-superx-widen="true"] main[role="main"] > div > div {
+    max-width: 1360px !important;
+  }
+
+  html[data-superx-widen="true"] div[data-testid="primaryColumn"] {
+    max-width: 820px !important;
+    width: 820px !important;
   }
 }
 
 /* 3. 长文大纲目录面板 */
 #superx-article-outline {
   position: sticky;
-  top: 65px;
-  background: rgba(var(--superx-bg-rgb, 255, 255, 255), 0.85);
+  top: 60px;
+  background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(200, 200, 200, 0.25);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
   border-radius: 16px;
   padding: 14px 16px;
-  margin-top: 16px;
-  max-height: calc(100vh - 120px);
+  margin: 12px 0;
+  max-height: calc(100vh - 100px);
   overflow-y: auto;
   font-size: 13px;
   z-index: 99;
 }
 
+html[style*="background-color: rgb(0, 0, 0)"] #superx-article-outline,
+html[style*="background-color: rgb(21, 32, 43)"] #superx-article-outline,
 @media (prefers-color-scheme: dark) {
   #superx-article-outline {
-    background: rgba(15, 20, 25, 0.85);
-    border-color: rgba(255, 255, 255, 0.15);
+    background: rgba(22, 24, 28, 0.95);
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     color: #e7e9ea;
   }
 }
@@ -51,8 +86,14 @@ html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] aside[aria
   margin-bottom: 10px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
   color: #1d9bf0;
+}
+
+.superx-outline-count {
+  font-size: 12px;
+  opacity: 0.7;
+  font-weight: 400;
 }
 
 .superx-outline-list {
@@ -78,13 +119,13 @@ html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] aside[aria
 }
 
 .superx-outline-item.h2 {
-  padding-left: 18px;
+  padding-left: 16px;
   font-size: 12px;
-  opacity: 0.85;
+  opacity: 0.88;
 }
 
 .superx-outline-item.h3 {
-  padding-left: 28px;
+  padding-left: 26px;
   font-size: 11px;
   opacity: 0.75;
 }
