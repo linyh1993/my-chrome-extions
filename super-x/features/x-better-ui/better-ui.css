@@ -3,6 +3,8 @@
  */
 
 /* 1. 隐藏右侧边栏干扰项（趋势、有什么新鲜事、相关推荐、开通认证等） */
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="新鲜事"],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="有什么新鲜事"],
 html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="Trending" i],
 html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="What’s happening" i],
 html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="What's happening" i],
@@ -51,22 +53,27 @@ html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] div:has(> 
   }
 }
 
-/* 3. 长文大纲目录面板 */
+/* 3. 长文大纲目录面板 (标准侧栏卡片布局，不与搜索栏发生层叠挤压) */
 #superx-article-outline {
-  position: sticky;
-  top: 60px;
-  background: rgba(255, 255, 255, 0.95);
+  position: relative !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
   border-radius: 16px;
-  padding: 14px 16px;
-  margin: 12px 0;
-  max-height: calc(100vh - 100px);
+  padding: 16px 18px;
+  margin: 16px 0 !important;
+  max-height: 480px;
+  min-height: 90px;
   overflow-y: auto;
   font-size: 13px;
-  z-index: 99;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  z-index: 10;
 }
 
 html[style*="background-color: rgb(0, 0, 0)"] #superx-article-outline,
@@ -83,17 +90,42 @@ html[style*="background-color: rgb(21, 32, 43)"] #superx-article-outline,
 .superx-outline-title {
   font-weight: 700;
   font-size: 14px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   color: #1d9bf0;
+  user-select: none;
+}
+
+.superx-outline-title-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .superx-outline-count {
   font-size: 12px;
   opacity: 0.7;
-  font-weight: 400;
+  font-weight: normal;
+  color: inherit;
+}
+
+.superx-outline-close-btn {
+  background: transparent;
+  border: none;
+  color: inherit;
+  opacity: 0.5;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.superx-outline-close-btn:hover {
+  opacity: 1;
+  background: rgba(128, 128, 128, 0.15);
 }
 
 .superx-outline-list {
@@ -103,14 +135,15 @@ html[style*="background-color: rgb(21, 32, 43)"] #superx-article-outline,
 }
 
 .superx-outline-item {
-  padding: 6px 8px;
-  border-radius: 6px;
+  padding: 7px 10px;
+  border-radius: 8px;
   cursor: pointer;
-  line-height: 1.4;
+  line-height: 1.45;
   transition: background 0.15s ease, color 0.15s ease;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-bottom: 2px;
 }
 
 .superx-outline-item:hover {
@@ -119,13 +152,26 @@ html[style*="background-color: rgb(21, 32, 43)"] #superx-article-outline,
 }
 
 .superx-outline-item.h2 {
-  padding-left: 16px;
+  padding-left: 18px;
   font-size: 12px;
   opacity: 0.88;
 }
 
 .superx-outline-item.h3 {
-  padding-left: 26px;
+  padding-left: 28px;
   font-size: 11px;
   opacity: 0.75;
+}
+
+#superx-article-outline::-webkit-scrollbar {
+  width: 5px;
+}
+
+#superx-article-outline::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 4px;
+}
+
+#superx-article-outline::-webkit-scrollbar-track {
+  background: transparent;
 }
