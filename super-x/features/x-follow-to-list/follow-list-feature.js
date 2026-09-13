@@ -132,6 +132,76 @@
 
     onRouteChange(newUrl) {
       this._updateFloatingBadge();
+      this._scanDOMUserCells();
+    }
+
+    onDOMNodes(nodes) {
+      this._updateFloatingBadge();
+      this._scanDOMUserCells();
+    }
+
+    /**
+     * DOM 兜底扫描：若页面已渲染关注者卡片直接提取
+     */
+    _scanDOMUserCells() {
+      const isFollowingPage = location.pathname.includes("/following") ||
+                              location.pathname.includes("/followers") ||
+                              location.pathname.includes("/verified_followers");
+      if (!isFollowingPage) return;
+
+      const cells = document.querySelectorAll('div[data-testid="UserCell"]');
+      if (cells.length === 0) return;
+
+      let newCount = 0;
+      cells.forEach(cell => {
+        try {
+          const link = cell.querySelector('a[href^="/"][role="link"]');
+          if (!link) return;
+          const href = link.getAttribute("href") || "";
+          const handle = href.replace(/^\//, "").split("/")[0].trim();
+          if (!handle || handle === "i" || handle === "home" || handle === "explore" || handle === "messages") return;
+
+          // 检查是否已有该 handle 的账号
+          let exists = false;
+          for (const u of this.usersMap.values()) {
+            if (u.handle && u.handle.toLowerCase() === handle.toLowerCase()) {
+              exists = true;
+              break;
+            }
+          }
+
+          if (!exists) {
+            const nameEl = cell.querySelector('div[dir="ltr"] span');
+            const name = nameEl ? nameEl.textContent.trim() : handle;
+            const img = cell.querySelector('img[src*="profile_images"]');
+            const avatar = img ? img.src : "";
+            const isMutual = cell.textContent.includes("互相关注") || cell.textContent.includes("Follows you");
+
+            const pseudoUser = {
+              id: `dom_${handle}`,
+              handle,
+              name,
+              bio: "",
+              location: "",
+              avatar,
+              followers: 0,
+              following: 0,
+              posts: 0,
+              verified: false,
+              mutual: isMutual,
+              capturedAt: Date.now()
+            };
+
+            this.usersMap.set(pseudoUser.id, pseudoUser);
+            newCount++;
+          }
+        } catch (_) {}
+      });
+
+      if (newCount > 0) {
+        this._schedulePersistUsers();
+        this._updateFloatingBadge();
+      }
     }
 
     /**
@@ -269,13 +339,15 @@
                               location.pathname.includes("/followers") ||
                               location.pathname.includes("/verified_followers");
 
-      if (!isFollowingPage || !this.config.showFloatingBadge || this.usersMap.size === 0) {
+      if (!isFollowingPage || !this.config.showFloatingBadge) {
         if (this.badgeElement) {
           this.badgeElement.remove();
           this.badgeElement = null;
         }
         return;
       }
+
+      if (!document.body) return;
 
       if (!this.badgeElement) {
         this.badgeElement = document.createElement("div");
@@ -287,10 +359,11 @@
         document.body.appendChild(this.badgeElement);
       }
 
+      const count = this.usersMap.size;
       this.badgeElement.innerHTML = `
         <span class="superx-follow-badge-icon">👥</span>
-        <span>SuperX 捕获关注</span>
-        <span class="superx-follow-badge-count">${this.usersMap.size}</span>
+        <span>SuperX 关注转列表</span>
+        <span class="superx-follow-badge-count">${count > 0 ? `${count} 人` : "向下滚动抓取"}</span>
       `;
     }
 
