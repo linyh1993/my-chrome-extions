@@ -11,7 +11,6 @@ html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-labe
 html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="当前趋势"],
 html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="正在发生"],
 html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="今日热点"],
-html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="探索"],
 html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="Who to follow" i],
 html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="推荐关注"],
 html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] [aria-label*="订阅 Premium" i],
@@ -25,62 +24,44 @@ html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] div:has(> 
 
 /* 2. 主时间线与正文自适应加宽 */
 @media (min-width: 1200px) {
-  /* 拓展外层主容器宽度 (Twitter 默认 max-width: 990px 或 1050px) */
-  html[data-superx-widen="true"] main[role="main"] > div > div {
-    max-width: 1200px !important;
-    width: 100% !important;
-  }
-
-  /* 加宽主时间线列 (Twitter 默认 600px) */
   html[data-superx-widen="true"] div[data-testid="primaryColumn"] {
     max-width: 720px !important;
     width: 720px !important;
   }
-
-  html[data-superx-widen="true"] div[data-testid="primaryColumn"] > div > div {
-    max-width: 100% !important;
-  }
 }
 
 @media (min-width: 1600px) {
-  html[data-superx-widen="true"] main[role="main"] > div > div {
-    max-width: 1360px !important;
-  }
-
   html[data-superx-widen="true"] div[data-testid="primaryColumn"] {
-    max-width: 820px !important;
-    width: 820px !important;
+    max-width: 800px !important;
+    width: 800px !important;
   }
 }
 
-/* 3. 长文大纲目录面板 (标准侧栏卡片布局，不与搜索栏发生层叠挤压) */
+/* 3. 长文大纲目录面板 */
 #superx-article-outline {
-  position: relative !important;
-  width: 100% !important;
+  display: block !important;
   box-sizing: border-box !important;
+  width: 100% !important;
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
   border-radius: 16px;
-  padding: 16px 18px;
-  margin: 16px 0 !important;
-  max-height: 480px;
-  min-height: 90px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  padding: 16px;
+  margin: 12px 0 16px 0 !important;
+  max-height: 460px;
   overflow-y: auto;
   font-size: 13px;
-  display: block !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  z-index: 10;
+  line-height: 1.4;
+  z-index: 5;
 }
 
 html[style*="background-color: rgb(0, 0, 0)"] #superx-article-outline,
 html[style*="background-color: rgb(21, 32, 43)"] #superx-article-outline,
 @media (prefers-color-scheme: dark) {
   #superx-article-outline {
-    background: rgba(22, 24, 28, 0.95);
+    background: rgba(22, 24, 28, 0.96);
     border-color: rgba(255, 255, 255, 0.12);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     color: #e7e9ea;
