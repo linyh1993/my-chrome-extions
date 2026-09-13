@@ -33,6 +33,7 @@
 | 目录 | 说明 | 入口 |
 |------|------|------|
 | `omni-relay/` | **推荐**：通用多平台（X, Reddit 等）数据与流量中继器 | `README.md`、`manifest.json`、`background/`、`core/`、`content/`、`ui/popup/` |
+| `super-x/` | **推荐**：X (Twitter) 全能聚合套件（微内核、评论净化、界面增强、网络劫持） | `README.md`、`manifest.json`、`core/`、`features/`、`ui/` |
 | `x-comment-cleaner/` | **推荐**：X 垃圾评论与引流 Bot 拦截助手 | `README.md`、`manifest.json`、`content/`、`popup/`、`background/` |
 | `google-serp-extractor/` | **推荐**：Google 搜索与 SEO（AITDK + Keywords Everywhere）数据提取器 | `README.md`、`manifest.json`、`content/`、`popup/`、`background/` |
 | `archive/legacy-extensions/` | 已归档：旧扩展快照（`x-suite`, `reddit-scraper-extension`, `x-comment-filter`, `traffic-relay`，勿加载，默认勿读） | `archive/README.md` |

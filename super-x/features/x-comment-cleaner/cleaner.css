@@ -1,0 +1,173 @@
+/* ==========================================================================
+   X Spam Reply Cleaner - In-Tweet Content Styles
+   ========================================================================== */
+
+/* Force vertical column layout whenever a tweet is managed by cleaner */
+article[data-testid="tweet"][data-x-spam] {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Ensure the original tweet body inside lead/expanded tweet takes full width */
+article[data-testid="tweet"][data-x-spam] > div:not(.x-spam-inner-banner) {
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Lead tweet in a spam cluster: hide original contents, show banner */
+article[data-testid="tweet"][data-x-spam="lead"] > div:not(.x-spam-inner-banner) {
+  display: none !important;
+}
+
+/* Follower tweets in a spam cluster: completely hide from view */
+article[data-testid="tweet"][data-x-spam="follower"] {
+  display: none !important;
+}
+
+/* Hide parent cell for followers to remove empty vertical gap */
+div[data-testid="cellInnerDiv"]:has(> article[data-testid="tweet"][data-x-spam="follower"]) {
+  display: none !important;
+}
+
+/* Hard hide mode */
+article[data-testid="tweet"][data-x-spam="hide"] {
+  display: none !important;
+}
+div[data-testid="cellInnerDiv"]:has(> article[data-testid="tweet"][data-x-spam="hide"]) {
+  display: none !important;
+}
+
+/* Expanded spam tweets styling (distinguish as spam while keeping readable) */
+article[data-testid="tweet"][data-x-spam="expanded"] {
+  border-left: 3px solid rgba(239, 68, 68, 0.35) !important;
+  background: rgba(239, 68, 68, 0.02) !important;
+}
+
+/* In-tweet Banner placed inside the lead tweet */
+.x-spam-inner-banner {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  margin: 2px 0;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px dashed rgba(239, 68, 68, 0.35);
+  border-radius: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  color: #71767b;
+  box-sizing: border-box;
+  user-select: none;
+  width: 100%;
+  transition: all 0.2s ease;
+  gap: 10px;
+}
+
+.x-spam-inner-banner:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.x-spam-inner-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.x-spam-inner-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: rgba(244, 33, 46, 0.15);
+  color: #f4212e;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.x-spam-inner-info {
+  color: #71767b;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.x-spam-inner-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.x-spam-inner-btn {
+  background: transparent;
+  border: 1px solid rgba(113, 118, 123, 0.4);
+  color: #1d9bf0;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.x-spam-inner-btn:hover {
+  background: rgba(29, 155, 240, 0.15);
+  border-color: #1d9bf0;
+}
+
+/* Block Button */
+.x-spam-btn-block {
+  border-color: rgba(244, 33, 46, 0.4);
+  color: #f4212e;
+}
+
+.x-spam-btn-block:hover {
+  background: rgba(244, 33, 46, 0.15);
+  border-color: #f4212e;
+}
+
+.x-spam-btn-block.is-blocked {
+  border-color: rgba(34, 197, 94, 0.5);
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.x-spam-btn-block.is-blocked:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+/* Whitelist Button */
+.x-spam-btn-white {
+  border-color: rgba(168, 85, 247, 0.4);
+  color: #c084fc;
+}
+
+.x-spam-btn-white:hover {
+  background: rgba(168, 85, 247, 0.15);
+  border-color: #c084fc;
+}
+
+/* Expanded style */
+.x-spam-inner-banner.is-expanded {
+  background: rgba(29, 155, 240, 0.05);
+  border: 1px solid rgba(29, 155, 240, 0.3);
+  margin-bottom: 8px;
+}
+
+.x-spam-inner-banner.is-expanded .x-spam-inner-tag {
+  background: rgba(29, 155, 240, 0.15);
+  color: #1d9bf0;
+}

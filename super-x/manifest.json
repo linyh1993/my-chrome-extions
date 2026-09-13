@@ -1,0 +1,85 @@
+{
+  "manifest_version": 3,
+  "name": "SuperX - X (Twitter) 全能聚合助手",
+  "version": "1.0.0",
+  "description": "一站式聚合 X (Twitter) 垃圾评论净化、界面体验优化、数据分析与高级效率工具箱。",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "storage",
+    "sidePanel",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://x.com/*",
+    "https://twitter.com/*"
+  ],
+  "action": {
+    "default_popup": "ui/popup/popup.html",
+    "default_title": "SuperX 控制中心",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "ui/sidepanel/sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ],
+      "js": [
+        "network-hook/hook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ],
+      "js": [
+        "core/event-bus.js",
+        "core/storage.js",
+        "core/dom-observer.js",
+        "core/feature-manager.js",
+        "features/x-comment-cleaner/simhash.js",
+        "features/x-comment-cleaner/heuristics.js",
+        "features/x-comment-cleaner/packs.js",
+        "features/x-comment-cleaner/rules.js",
+        "features/x-comment-cleaner/x-adapter.js",
+        "features/x-comment-cleaner/cleaner-feature.js",
+        "features/x-better-ui/better-ui-feature.js",
+        "core/content-main.js"
+      ],
+      "css": [
+        "features/x-comment-cleaner/cleaner.css",
+        "features/x-better-ui/better-ui.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "network-hook/hook.js"
+      ],
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ]
+    }
+  ]
+}

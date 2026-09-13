@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SuperX 工作台</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div class="superx-sidepanel">
+    <!-- 侧栏顶部 -->
+    <header class="panel-header">
+      <div class="panel-brand">
+        <img src="../../icons/icon48.png" alt="SuperX Logo" class="panel-logo">
+        <div>
+          <h2>SuperX 工作台</h2>
+          <p>X 全能聚合与高级效率套件</p>
+        </div>
+      </div>
+    </header>
+
+    <!-- Tab 导航 -->
+    <nav class="panel-tabs">
+      <button type="button" class="tab-btn active" data-tab="tab-overview">📊 总览大盘</button>
+      <button type="button" class="tab-btn" data-tab="tab-cleaner">🛡️ 评论净化</button>
+      <button type="button" class="tab-btn" data-tab="tab-ui">🎨 界面定制</button>
+      <button type="button" class="tab-btn" data-tab="tab-backup">💾 备份管理</button>
+    </nav>
+
+    <!-- Tab 1: 总览大盘 -->
+    <section id="tab-overview" class="tab-pane active">
+      <div class="metric-cards">
+        <div class="metric-card">
+          <div class="metric-label">累计拦截垃圾评论</div>
+          <div class="metric-value" id="stat-blocked-count">0</div>
+          <div class="metric-sub">实时防护中</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">已激活功能模块</div>
+          <div class="metric-value" id="stat-active-features">2 / 4</div>
+          <div class="metric-sub">稳定运行</div>
+        </div>
+      </div>
+
+      <div class="card-section">
+        <h3>🚀 功能快速导航</h3>
+        <div class="quick-links">
+          <div class="quick-item">
+            <strong>🛡️ 评论智能净化</strong>
+            <p>基于 64位 SimHash 话术相似度计算与 8 大分类词库，已拦截恶意引流评论。</p>
+          </div>
+          <div class="quick-item">
+            <strong>📑 Better UI 体验增强</strong>
+            <p>已去除侧边栏热搜干扰，长文阅读支持自动生成目录大纲。</p>
+          </div>
+          <div class="quick-item coming-soon">
+            <strong>👥 Follow 批量转列表 (即将就绪)</strong>
+            <p>借鉴 X-Follow-to-List 理念，支持快速提取关注账号并一键归类到 List。</p>
+          </div>
+          <div class="quick-item coming-soon">
+            <strong>🔍 高级搜索语法助手 (即将就绪)</strong>
+            <p>借鉴 advanced-search-for-x-twitter，提供双向可视化高级搜索构造器。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 2: 评论净化详细配置 -->
+    <section id="tab-cleaner" class="tab-pane">
+      <div class="card-section">
+        <h3>基本防护设置</h3>
+        <div class="form-row">
+          <label>折叠方式</label>
+          <select id="cleaner-hide-mode" class="form-select">
+            <option value="collapse">折叠占位条 (可点击展开)</option>
+            <option value="remove">彻底隐藏 (完全不显示)</option>
+          </select>
+        </div>
+
+        <div class="form-row checkbox-row">
+          <input type="checkbox" id="cleaner-auto-block">
+          <label for="cleaner-auto-block">智能自动拉黑垃圾评论发送者 (防封频率保护)</label>
+        </div>
+
+        <div class="form-row checkbox-row">
+          <input type="checkbox" id="cleaner-filter-simhash" checked>
+          <label for="cleaner-filter-simhash">启用 64位 SimHash 相似度文本排重 (拦截变种微调话术)</label>
+        </div>
+
+        <div class="form-row checkbox-row">
+          <input type="checkbox" id="cleaner-filter-heuristics" checked>
+          <label for="cleaner-filter-heuristics">启用账号特征与外链可信度启发式分析</label>
+        </div>
+      </div>
+
+      <div class="card-section">
+        <h3>自定义关键词 (每行一个)</h3>
+        <textarea id="cleaner-custom-keywords" class="form-textarea" placeholder="输入你想屏蔽的特定广告词或导流词汇..."></textarea>
+      </div>
+
+      <div class="card-section">
+        <h3>白名单账号 (每行一个，不带 @)</h3>
+        <textarea id="cleaner-whitelist" class="form-textarea" placeholder="输入免受拦截的信任账号 handle..."></textarea>
+      </div>
+
+      <button type="button" id="btn-save-cleaner" class="btn-primary">保存评论拦截配置</button>
+    </section>
+
+    <!-- Tab 3: 界面定制 -->
+    <section id="tab-ui" class="tab-pane">
+      <div class="card-section">
+        <h3>X 网页体验优化</h3>
+        <div class="form-row checkbox-row">
+          <input type="checkbox" id="ui-hide-trends" checked>
+          <label for="ui-hide-trends">隐藏右侧边栏干扰项 (趋势、有什么新鲜事、推荐关注)</label>
+        </div>
+
+        <div class="form-row checkbox-row">
+          <input type="checkbox" id="ui-widen-timeline" checked>
+          <label for="ui-widen-timeline">宽屏显示优化 (主时间线与正文加宽 15%)</label>
+        </div>
+
+        <div class="form-row checkbox-row">
+          <input type="checkbox" id="ui-generate-outline" checked>
+          <label for="ui-generate-outline">长文自动生成多级大纲目录面板 (点击直达对应章节)</label>
+        </div>
+      </div>
+
+      <button type="button" id="btn-save-ui" class="btn-primary">保存界面偏好</button>
+    </section>
+
+    <!-- Tab 4: 备份管理 -->
+    <section id="tab-backup" class="tab-pane">
+      <div class="card-section">
+        <h3>配置导入与导出</h3>
+        <p class="section-desc">导出所有已启用的功能模块参数，方便多设备同步与备份。</p>
+        <div class="backup-actions">
+          <button type="button" id="btn-export-config" class="btn-secondary">📥 导出全部 SuperX 配置</button>
+          <button type="button" id="btn-reset-config" class="btn-danger">⚠️ 重置所有模块到默认值</button>
+        </div>
+      </div>
+
+      <div class="card-section">
+        <h3>关于 SuperX</h3>
+        <p class="section-desc">SuperX 是一个基于 Manifest V3 的微内核模块化 X 全能扩展，集成了防冲突网络劫持、全局防抖 DOM 调度与命名空间存储。</p>
+        <p class="version-info">当前内核版本：1.0.0</p>
+      </div>
+    </section>
+  </div>
+
+  <script src="../../core/storage.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

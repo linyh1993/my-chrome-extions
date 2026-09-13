@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SuperX 控制中心</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="superx-popup">
+    <!-- 头部 -->
+    <header class="header">
+      <div class="logo-area">
+        <img src="../../icons/icon48.png" alt="SuperX Logo" class="logo-icon">
+        <div>
+          <h1 class="title">SuperX</h1>
+          <p class="subtitle">X (Twitter) 全能聚合助手</p>
+        </div>
+      </div>
+      <div class="version-badge">v1.0</div>
+    </header>
+
+    <!-- 模块列表 -->
+    <main class="features-list">
+      <!-- 垃圾评论净化 -->
+      <div class="feature-card" data-feature="x-comment-cleaner">
+        <div class="feature-icon">🛡️</div>
+        <div class="feature-info">
+          <div class="feature-name">垃圾评论净化</div>
+          <div class="feature-desc">SimHash 话术识别，折叠黄推与引流 Bot</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="toggle-cleaner" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <!-- Better UI 优化 -->
+      <div class="feature-card" data-feature="x-better-ui">
+        <div class="feature-icon">📑</div>
+        <div class="feature-info">
+          <div class="feature-name">Better UI 界面增强</div>
+          <div class="feature-desc">长文大纲目录、隐藏趋势干扰、正文加宽</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="toggle-better-ui" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <!-- 预告模块 1: Follow 转 List -->
+      <div class="feature-card disabled">
+        <div class="feature-icon">👥</div>
+        <div class="feature-info">
+          <div class="feature-name">Follow 批量转列表</div>
+          <div class="feature-desc">批量筛选关注列表并一键加入指定 List</div>
+        </div>
+        <span class="badge-soon">集成中</span>
+      </div>
+
+      <!-- 预告模块 2: 高级搜索构建器 -->
+      <div class="feature-card disabled">
+        <div class="feature-icon">🔍</div>
+        <div class="feature-info">
+          <div class="feature-name">高级搜索语法助手</div>
+          <div class="feature-desc">双向可视化搜索语法表单与书签分类</div>
+        </div>
+        <span class="badge-soon">集成中</span>
+      </div>
+    </main>
+
+    <!-- 底部操作区 -->
+    <footer class="footer">
+      <button type="button" id="btn-open-sidepanel" class="btn-sidepanel">
+        <span>⚙️</span> 打开侧边栏完整工作台 (Side Panel)
+      </button>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

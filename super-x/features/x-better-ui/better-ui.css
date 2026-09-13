@@ -1,0 +1,90 @@
+/**
+ * SuperX Feature - Better UI Styles
+ */
+
+/* 1. 隐藏右侧边栏干扰项（趋势、有什么新鲜事、相关推荐等） */
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] section[aria-label*="Trending"],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] section[aria-label*="What’s happening"],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] section[aria-label*="What's happening"],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] section[aria-label*="当前趋势"],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] aside[aria-label*="Who to follow"],
+html[data-superx-hide-trends="true"] div[data-testid="sidebarColumn"] aside[aria-label*="推荐关注"] {
+  display: none !important;
+}
+
+/* 2. 主时间线与正文宽度优化（改善窄屏压抑感） */
+@media (min-width: 1200px) {
+  html[data-superx-widen="true"] main[role="main"] div[data-testid="primaryColumn"] {
+    max-width: 700px !important;
+    width: 700px !important;
+  }
+}
+
+/* 3. 长文大纲目录面板 */
+#superx-article-outline {
+  position: sticky;
+  top: 65px;
+  background: rgba(var(--superx-bg-rgb, 255, 255, 255), 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(200, 200, 200, 0.25);
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin-top: 16px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  font-size: 13px;
+  z-index: 99;
+}
+
+@media (prefers-color-scheme: dark) {
+  #superx-article-outline {
+    background: rgba(15, 20, 25, 0.85);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: #e7e9ea;
+  }
+}
+
+.superx-outline-title {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #1d9bf0;
+}
+
+.superx-outline-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.superx-outline-item {
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: background 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.superx-outline-item:hover {
+  background: rgba(29, 155, 240, 0.12);
+  color: #1d9bf0;
+}
+
+.superx-outline-item.h2 {
+  padding-left: 18px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.superx-outline-item.h3 {
+  padding-left: 28px;
+  font-size: 11px;
+  opacity: 0.75;
+}

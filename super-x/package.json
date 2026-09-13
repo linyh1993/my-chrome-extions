@@ -1,0 +1,18 @@
+{
+  "name": "super-x",
+  "version": "1.0.0",
+  "description": "SuperX - All-in-one feature extension for X (Twitter)",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/core.test.js"
+  },
+  "keywords": [
+    "chrome-extension",
+    "twitter",
+    "x",
+    "manifest-v3",
+    "super-x"
+  ],
+  "author": "",
+  "license": "MIT"
+}
