@@ -182,4 +182,35 @@ const spamTest = XCleanerRules.evaluateReplySpam({
 assert.strictEqual(spamTest.isSpam, true, "Must flag adult spam reply");
 console.log(`✓ Rules engine spam detection passed (Detected spam reason: ${spamTest.reason}).`);
 
+// 5. 测试 TOC 标题级别多级提取与分类规则
+function classifyHeading(firstLine) {
+  const mdMatch = firstLine.match(/^(#{1,4})\s+(.+)$/);
+  if (mdMatch) {
+    return { level: mdMatch[1].length, text: mdMatch[2].trim() };
+  }
+  const subSubNumMatch = firstLine.match(/^(\d+\.\d+\.\d+|[①②③④⑤⑥⑦⑧⑨⑩])[、.．\s]\s*(.+)$/);
+  if (subSubNumMatch) {
+    return { level: 3, text: firstLine };
+  }
+  const subNumMatch = firstLine.match(/^(?:(\d+\.\d+)[、.．\s]|[(（](?:[0-9一二三四五六七八九十]{1,2})[)）])\s*(.+)$/);
+  if (subNumMatch) {
+    return { level: 2, text: firstLine };
+  }
+  const cnLevel1Match = firstLine.match(/^([一二三四五六七八九十]{1,2})[、.．]\s*(.+)$/);
+  if (cnLevel1Match) {
+    return { level: 1, text: firstLine };
+  }
+  return { level: 2, text: firstLine };
+}
+
+assert.strictEqual(classifyHeading("# 第一章：系统架构设计").level, 1, "Markdown # must be Level 1");
+assert.strictEqual(classifyHeading("## 1.1 模块微内核设计").level, 2, "Markdown ## must be Level 2");
+assert.strictEqual(classifyHeading("### 1.1.1 事件总线EventBus").level, 3, "Markdown ### must be Level 3");
+assert.strictEqual(classifyHeading("一、技术选型与背景").level, 1, "Chinese 一、 must be Level 1");
+assert.strictEqual(classifyHeading("（一）网络拦截策略").level, 2, "Chinese (一) must be Level 2");
+assert.strictEqual(classifyHeading("1.2 存储方案").level, 2, "1.2 numbering must be Level 2");
+assert.strictEqual(classifyHeading("1.2.3 缓存指纹对比").level, 3, "1.2.3 numbering must be Level 3");
+assert.strictEqual(classifyHeading("① 初始化阶段").level, 3, "Circled number ① must be Level 3");
+console.log("✓ TOC multi-level heading classification tests passed.");
+
 console.log("\n=== ALL AUTOMATED TESTS PASSED! ===");

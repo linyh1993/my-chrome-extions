@@ -61,11 +61,13 @@
     const titleCandidates = Array.from(document.querySelectorAll(
       '[data-testid="twitterArticleTitle"], [data-testid="articleTitle"], h1, div[data-testid="primaryColumn"] h1'
     ));
+    let mainTitleEl = null;
     for (const el of titleCandidates) {
       if (el.closest('header, [role="banner"], [data-testid="TopNavBar"], nav, [data-testid="sidebarColumn"]')) continue;
       const text = (el.innerText || el.textContent || '').trim();
       // 过滤掉导航栏的“文章 / 帖子 / Home / 探索”等通用系统字样
       if (text && !['文章', '帖子', '主页', '探索', '通知', '私信', 'Post', 'Article', 'Home', 'Explore'].includes(text) && text.length >= 3 && text.length <= 100) {
+        mainTitleEl = el;
         headings.push({
           element: el,
           text: `📌 ${text}`,
@@ -76,55 +78,112 @@
       }
     }
 
-    // 1. 原生子标题 (h2, h3, [role="heading"])
-    const rawHeadings = Array.from(document.querySelectorAll('main h2, main h3, main [role="heading"]'));
+    // 1. 原生 DOM 标题 (h1, h2, h3, h4, h5, h6, [role="heading"])
+    const rawHeadings = Array.from(document.querySelectorAll('main h1, main h2, main h3, main h4, main h5, main h6, main [role="heading"]'));
     rawHeadings.forEach((h) => {
+      if (mainTitleEl && (h === mainTitleEl || mainTitleEl.contains(h) || h.contains(mainTitleEl))) return;
       if (h.closest('header, [role="banner"], [data-testid="TopNavBar"], nav, [data-testid="sidebarColumn"]')) return;
       const text = (h.innerText || h.textContent || '').trim();
-      if (text && !['文章', '帖子', '对话', '相关用户', '有什么新鲜事'].includes(text) && text.length >= 2 && text.length <= 60) {
-        if (!headings.some(item => item.text === text)) {
-          headings.push({
-            element: h,
-            text,
-            level: h.tagName === 'H3' ? 3 : 2
-          });
-        }
+      if (!text || ['文章', '帖子', '对话', '相关用户', '有什么新鲜事', '推荐', '关注', 'Who to follow', 'Trends'].includes(text)) return;
+      if (text.length < 2 || text.length > 80) return;
+
+      // 准确判断标题级别 (aria-level 或 tagName)
+      let level = 2;
+      const ariaLevel = parseInt(h.getAttribute('aria-level'), 10);
+      if (!isNaN(ariaLevel) && ariaLevel >= 1 && ariaLevel <= 6) {
+        level = ariaLevel;
+      } else {
+        const tag = h.tagName.toUpperCase();
+        if (tag === 'H1') level = 1;
+        else if (tag === 'H2') level = 2;
+        else if (tag === 'H3') level = 3;
+        else if (tag === 'H4' || tag === 'H5' || tag === 'H6') level = 4;
+      }
+
+      if (!headings.some(item => item.text === text || (item.element && item.element === h))) {
+        headings.push({
+          element: h,
+          text,
+          level
+        });
       }
     });
 
-    // 2. 长文段落中的序号与小标题 (如 1. / 【...】 / Skill 1 / ##)
+    // 2. 长文段落中的多级序号、Markdown与结构化小标题
     if (headings.length < 3) {
       const articleEl = document.querySelector('[data-testid="twitterArticle"], [data-testid="articleContent"], main article') || document.querySelector('div[data-testid="primaryColumn"]');
       if (articleEl) {
         const paragraphs = Array.from(articleEl.querySelectorAll('p, div[data-testid="tweetText"], div[dir="auto"]'));
-        const HEADING_PATTERNS = [
-          /^(#{1,4})\s+(.+)$/,
-          /^(?:skill|技能|step|步骤|第[一二三四五六七八九十0-9]+[步节讲个])\s*([0-9]{1,2})?[:：\s]\s*(.+)$/i,
-          /^([0-9]{1,2}|[一二三四五六七八九十]{1,2})[、.．:：)）/]\s*(.+)$/,
-          /^[【\[［]([^】\]］]{2,30})[】\]］]\s*(.*)$/,
-          /^([📌💡🚀🔥👉✅✨🎯📖🔍🏷️1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣8️⃣9️⃣🔟])\s*(.+)$/u
-        ];
 
         for (const p of paragraphs) {
           const rawText = (p.innerText || p.textContent || '').trim();
           const firstLine = rawText.split('\n')[0].trim();
-          if (!firstLine || firstLine.length < 3 || firstLine.length > 50) continue;
+          if (!firstLine || firstLine.length < 2 || firstLine.length > 60) continue;
 
-          for (const pattern of HEADING_PATTERNS) {
-            const m = firstLine.match(pattern);
-            if (m) {
-              const title = firstLine.slice(0, 45);
-              if (!headings.some(item => item.text === title)) {
+          // 2.1 Markdown 标题格式 (# 一级, ## 二级, ### 三级, #### 四级)
+          const mdMatch = firstLine.match(/^(#{1,4})\s+(.+)$/);
+          if (mdMatch) {
+            const mdLevel = mdMatch[1].length;
+            const cleanText = mdMatch[2].trim().slice(0, 50);
+            if (!headings.some(item => item.text === cleanText || item.text === firstLine)) {
+              headings.push({ element: p, text: cleanText, level: mdLevel });
+            }
+            continue;
+          }
+
+          // 2.2 三级数字序号 (如 1.1.1 细节或 ①)
+          const subSubNumMatch = firstLine.match(/^(\d+\.\d+\.\d+|[①②③④⑤⑥⑦⑧⑨⑩])[、.．\s]\s*(.+)$/);
+          if (subSubNumMatch) {
+            const cleanText = firstLine.slice(0, 50);
+            if (!headings.some(item => item.text === cleanText)) {
+              headings.push({ element: p, text: cleanText, level: 3 });
+            }
+            continue;
+          }
+
+          // 2.3 二级数字/带括号序号 (如 1.1 背景, (1) 步骤一, （一）分析)
+          const subNumMatch = firstLine.match(/^(?:(\d+\.\d+)[、.．\s]|[(（](?:[0-9一二三四五六七八九十]{1,2})[)）])\s*(.+)$/);
+          if (subNumMatch) {
+            const cleanText = firstLine.slice(0, 50);
+            if (!headings.some(item => item.text === cleanText)) {
+              headings.push({ element: p, text: cleanText, level: 2 });
+            }
+            continue;
+          }
+
+          // 2.4 中文一级序号 (如 一、二、三、)
+          const cnLevel1Match = firstLine.match(/^([一二三四五六七八九十]{1,2})[、.．]\s*(.+)$/);
+          if (cnLevel1Match) {
+            const cleanText = firstLine.slice(0, 50);
+            if (!headings.some(item => item.text === cleanText)) {
+              headings.push({ element: p, text: cleanText, level: 1 });
+            }
+            continue;
+          }
+
+          // 2.5 其它序号与小标题 (1. / Skill 1 / 【...】 / 步骤 / Emoji)
+          const OTHER_PATTERNS = [
+            /^(?:skill|技能|step|步骤|第[一二三四五六七八九十0-9]+[步节讲个])\s*([0-9]{1,2})?[:：\s]\s*(.+)$/i,
+            /^([0-9]{1,2})[、.．:：)）/]\s*(.+)$/,
+            /^[【\[［]([^】\]］]{2,30})[】\]］]\s*(.*)$/,
+            /^([📌💡🚀🔥👉✅✨🎯📖🔍🏷️1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣8️⃣9️⃣🔟])\s*(.+)$/u
+          ];
+
+          for (const pattern of OTHER_PATTERNS) {
+            if (pattern.test(firstLine)) {
+              const cleanText = firstLine.slice(0, 50);
+              if (!headings.some(item => item.text === cleanText)) {
                 headings.push({
                   element: p,
-                  text: title,
+                  text: cleanText,
                   level: 2
                 });
               }
               break;
             }
           }
-          if (headings.length >= 30) break;
+
+          if (headings.length >= 35) break;
         }
       }
     }
@@ -222,9 +281,15 @@
       headings.forEach((item) => {
         const li = document.createElement("li");
         li.className = "superx-toc-item";
-        if (item.isMainTitle) li.classList.add("main-title");
-        if (item.level === 2) li.classList.add("h2");
-        if (item.level === 3) li.classList.add("h3");
+        if (item.isMainTitle) {
+          li.classList.add("main-title");
+        } else {
+          li.classList.add(`level-${item.level || 2}`);
+          if (item.level === 1) li.classList.add("h1");
+          else if (item.level === 2) li.classList.add("h2");
+          else if (item.level === 3) li.classList.add("h3");
+          else if (item.level >= 4) li.classList.add("h4");
+        }
         li.textContent = item.text;
         li.title = item.text;
 
