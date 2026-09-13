@@ -14,58 +14,90 @@
         <img src="../../icons/icon48.png" alt="SuperX Logo" class="logo-icon">
         <div>
           <h1 class="title">SuperX</h1>
-          <p class="subtitle">X (Twitter) 全能聚合助手</p>
+          <p class="subtitle">X 全能聚合助手</p>
         </div>
       </div>
-      <div class="version-badge">v1.0</div>
+      <div class="version-badge">v1.0.0</div>
     </header>
 
     <!-- 模块列表 -->
     <main class="features-list">
-      <!-- 垃圾评论净化 -->
+      <!-- 1. 垃圾评论净化模块 -->
       <div class="feature-card" data-feature="x-comment-cleaner">
-        <div class="feature-icon">🛡️</div>
-        <div class="feature-info">
-          <div class="feature-name">垃圾评论净化</div>
-          <div class="feature-desc">SimHash 话术识别，折叠黄推与引流 Bot</div>
+        <div class="card-top-row">
+          <div class="feature-title-area">
+            <span class="feature-icon">🛡️</span>
+            <div>
+              <div class="feature-name">X 垃圾评论净化</div>
+              <div class="feature-stat">已累计拦截 <strong id="popup-blocked-count">0</strong> 条</div>
+            </div>
+          </div>
+          <label class="switch" title="模块主开关">
+            <input type="checkbox" id="toggle-cleaner" checked>
+            <span class="slider"></span>
+          </label>
         </div>
-        <label class="switch">
-          <input type="checkbox" id="toggle-cleaner" checked>
-          <span class="slider"></span>
-        </label>
+
+        <div class="quick-options-box" id="cleaner-quick-options">
+          <div class="option-row">
+            <label class="sub-checkbox-label">
+              <input type="checkbox" id="popup-auto-block" checked>
+              <span>自动原生拉黑 (防封流控)</span>
+            </label>
+          </div>
+          <div class="option-row mode-row">
+            <span class="option-label">形式:</span>
+            <label class="radio-inline">
+              <input type="radio" name="popupHideMode" value="collapse" id="popupModeCollapse" checked>
+              <span>聚合折叠</span>
+            </label>
+            <label class="radio-inline">
+              <input type="radio" name="popupHideMode" value="hide" id="popupModeHide">
+              <span>完全隐藏</span>
+            </label>
+          </div>
+          <button type="button" class="btn-card-action" id="btn-goto-cleaner-settings">
+            ⚙️ 8大词库与白名单管理 (侧边栏)
+          </button>
+        </div>
       </div>
 
-      <!-- Better UI 优化 -->
+      <!-- 2. Better UI 界面优化模块 -->
       <div class="feature-card" data-feature="x-better-ui">
-        <div class="feature-icon">📑</div>
-        <div class="feature-info">
-          <div class="feature-name">Better UI 界面增强</div>
-          <div class="feature-desc">长文大纲目录、隐藏趋势干扰、正文加宽</div>
+        <div class="card-top-row">
+          <div class="feature-title-area">
+            <span class="feature-icon">📑</span>
+            <div>
+              <div class="feature-name">Better UI 界面增强</div>
+              <div class="feature-desc">纯净阅读与版面自适应加宽</div>
+            </div>
+          </div>
+          <label class="switch" title="模块主开关">
+            <input type="checkbox" id="toggle-better-ui" checked>
+            <span class="slider"></span>
+          </label>
         </div>
-        <label class="switch">
-          <input type="checkbox" id="toggle-better-ui" checked>
-          <span class="slider"></span>
-        </label>
-      </div>
 
-      <!-- 预告模块 1: Follow 转 List -->
-      <div class="feature-card disabled">
-        <div class="feature-icon">👥</div>
-        <div class="feature-info">
-          <div class="feature-name">Follow 批量转列表</div>
-          <div class="feature-desc">批量筛选关注列表并一键加入指定 List</div>
+        <div class="quick-options-box" id="ui-quick-options">
+          <div class="option-row">
+            <label class="sub-checkbox-label">
+              <input type="checkbox" id="popup-hide-trends" checked>
+              <span>隐藏侧边栏趋势与新鲜事</span>
+            </label>
+          </div>
+          <div class="option-row">
+            <label class="sub-checkbox-label">
+              <input type="checkbox" id="popup-widen" checked>
+              <span>正文与时间线加宽 15%</span>
+            </label>
+          </div>
+          <div class="option-row">
+            <label class="sub-checkbox-label">
+              <input type="checkbox" id="popup-outline" checked>
+              <span>长文自动生成目录大纲</span>
+            </label>
+          </div>
         </div>
-        <span class="badge-soon">集成中</span>
-      </div>
-
-      <!-- 预告模块 2: 高级搜索构建器 -->
-      <div class="feature-card disabled">
-        <div class="feature-icon">🔍</div>
-        <div class="feature-info">
-          <div class="feature-name">高级搜索语法助手</div>
-          <div class="feature-desc">双向可视化搜索语法表单与书签分类</div>
-        </div>
-        <span class="badge-soon">集成中</span>
       </div>
     </main>
 
@@ -77,6 +109,7 @@
     </footer>
   </div>
 
+  <script src="../../core/storage.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

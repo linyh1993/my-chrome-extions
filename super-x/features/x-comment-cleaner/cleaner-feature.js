@@ -109,6 +109,17 @@
     }
   }
 
+  function recordBlockedAccount(handle, reason) {
+    chrome.storage.local.get(['blockedAccountsCache'], (data) => {
+      const list = Array.isArray(data.blockedAccountsCache) ? data.blockedAccountsCache : [];
+      const norm = normalizeHandleFn(handle);
+      if (!list.some(item => (typeof item === 'string' ? item : item.handle) === norm)) {
+        list.push({ handle: norm, reason: reason || '自动拉黑', timestamp: Date.now() });
+        chrome.storage.local.set({ blockedAccountsCache: list.slice(-1000) });
+      }
+    });
+  }
+
   async function triggerAutoBlock(handle, reason) {
     if (!currentSettings.autoBlock) return;
     const norm = normalizeHandleFn(handle);
@@ -158,6 +169,7 @@
         if (res && res.ok) {
           blockedHandlesState.add(norm);
           console.log(`[SuperX Cleaner] ✓ 已成功通过接口拉黑账号 @${norm}`);
+          recordBlockedAccount(norm, task.reason);
           chrome.runtime.sendMessage({ type: 'INCREMENT_BLOCKED_COUNT', delta: 1 }, () => {
             if (chrome.runtime.lastError) {}
           });
@@ -335,6 +347,29 @@
         for (const item of list) {
           const h = typeof item === 'string' ? item : item.handle;
           if (h) blockedHandlesState.add(normalizeHandleFn(h));
+        }
+      });
+
+      // 监听配置与拉黑缓存热更新
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local') {
+          if (changes['superx:feature:x-comment-cleaner:config']) {
+            const newConfig = changes['superx:feature:x-comment-cleaner:config'].newValue;
+            if (newConfig) {
+              currentSettings = { ...DEFAULT_SETTINGS, ...newConfig, enabled: true };
+              console.log("[SuperX Cleaner] Hot reloaded settings:", currentSettings);
+              if (window.__SuperX__ && window.__SuperX__.DOMObserver) {
+                window.__SuperX__.DOMObserver.scheduleScan(30);
+              }
+            }
+          }
+          if (changes.blockedAccountsCache) {
+            const list = Array.isArray(changes.blockedAccountsCache.newValue) ? changes.blockedAccountsCache.newValue : [];
+            for (const item of list) {
+              const h = typeof item === 'string' ? item : item.handle;
+              if (h) blockedHandlesState.add(normalizeHandleFn(h));
+            }
+          }
         }
       });
 

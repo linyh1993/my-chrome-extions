@@ -1,3 +1,7 @@
+/* ==========================================================================
+   SuperX Sidepanel Styles
+   ========================================================================== */
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -7,9 +11,9 @@
 
 body {
   background-color: #0f1419;
-  color: #f7f9f9;
+  color: #e7e9ea;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 
 .superx-sidepanel {
@@ -20,7 +24,7 @@ body {
 
 /* 顶部 */
 .panel-header {
-  padding: 16px;
+  padding: 14px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   background: #16181c;
 }
@@ -32,13 +36,13 @@ body {
 }
 
 .panel-logo {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 8px;
 }
 
 .panel-brand h2 {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: #ffffff;
 }
@@ -58,7 +62,7 @@ body {
 
 .tab-btn {
   flex: 1;
-  padding: 10px 8px;
+  padding: 11px 8px;
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
@@ -95,15 +99,16 @@ body {
 .metric-cards {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 16px;
 }
 
 .metric-card {
   background: #16181c;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
-  padding: 14px;
+  padding: 12px;
+  position: relative;
 }
 
 .metric-label {
@@ -113,7 +118,7 @@ body {
 }
 
 .metric-value {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   color: #1d9bf0;
 }
@@ -124,20 +129,46 @@ body {
   margin-top: 2px;
 }
 
+.btn-text-action {
+  background: transparent;
+  border: none;
+  color: #71767b;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+  text-decoration: underline;
+  transition: color 0.15s;
+}
+
+.btn-text-action:hover {
+  color: #1d9bf0;
+}
+
 /* 通用 Card */
 .card-section {
   background: #16181c;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   padding: 14px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
+}
+
+.section-header-flex {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
 }
 
 .card-section h3 {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: #ffffff;
-  margin-bottom: 12px;
+}
+
+.section-badge-desc {
+  font-size: 11px;
+  color: #71767b;
 }
 
 .section-desc {
@@ -152,64 +183,302 @@ body {
   margin-top: 8px;
 }
 
-/* 表单组件 */
-.form-row {
-  margin-bottom: 12px;
+/* 展示模式单选 */
+.mode-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
 }
 
-.checkbox-row {
+.radio-label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  cursor: pointer;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  font-size: 12px;
+  transition: border-color 0.15s;
+}
+
+.radio-label:hover {
+  border-color: rgba(29, 155, 240, 0.4);
+}
+
+.radio-label input[type="radio"] {
+  display: none;
+}
+
+.radio-custom {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #536471;
+  border-radius: 50%;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.radio-label input[type="radio"]:checked + .radio-custom {
+  border-color: #1d9bf0;
+}
+
+.radio-label input[type="radio"]:checked + .radio-custom::after {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #1d9bf0;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+}
+
+/* Checkbox 行 */
+.checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  margin-bottom: 10px;
 }
 
 .checkbox-row input[type="checkbox"] {
+  margin-top: 2px;
   width: 16px;
   height: 16px;
   accent-color: #1d9bf0;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
-.form-select,
-.form-textarea {
-  width: 100%;
+.checkbox-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.checkbox-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f7f9f9;
+}
+
+.checkbox-sub {
+  font-size: 11px;
+  color: #71767b;
+  line-height: 1.35;
+}
+
+/* 防封流控徽章 */
+.rate-limit-badge {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: rgba(0, 186, 124, 0.08);
+  border: 1px solid rgba(0, 186, 124, 0.25);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 11px;
+  color: #00ba7c;
+  line-height: 1.4;
+  margin-top: 8px;
+}
+
+.badge-icon {
+  font-size: 14px;
+}
+
+/* 8 大分类词库 Grid */
+.packs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.pack-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pack-card:hover {
+  border-color: rgba(29, 155, 240, 0.4);
+}
+
+.pack-card.active {
+  border-color: rgba(29, 155, 240, 0.5);
+  background: rgba(29, 155, 240, 0.06);
+}
+
+.pack-card input[type="checkbox"] {
+  accent-color: #1d9bf0;
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.pack-info {
+  flex: 1;
+  overflow: hidden;
+}
+
+.pack-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.pack-name {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #f7f9f9;
+}
+
+.pack-count {
+  font-size: 10px;
+  color: #71767b;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.pack-desc {
+  font-size: 10px;
+  color: #71767b;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 输入行与 Tag 管理 */
+.input-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.form-input {
+  flex: 1;
   background: #0f1419;
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   color: #f7f9f9;
-  padding: 8px 10px;
+  padding: 7px 10px;
   font-size: 12px;
-  margin-top: 4px;
 }
 
-.form-textarea {
-  height: 72px;
-  resize: vertical;
-}
-
-.form-select:focus,
-.form-textarea:focus {
+.form-input:focus {
   border-color: #1d9bf0;
   outline: none;
 }
 
-/* 按钮组 */
-.btn-primary {
-  width: 100%;
-  padding: 10px;
+.btn-input-add {
+  padding: 7px 14px;
   background: #1d9bf0;
   color: #ffffff;
   border: none;
-  border-radius: 20px;
+  border-radius: 8px;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
+  transition: background 0.15s;
 }
 
-.btn-primary:hover {
+.btn-input-add:hover {
   background: #1a8cd8;
 }
 
+.tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 28px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e7e9ea;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+}
+
+.tag.tag-white {
+  background: rgba(0, 186, 124, 0.15);
+  color: #00ba7c;
+  border: 1px solid rgba(0, 186, 124, 0.3);
+}
+
+.tag-remove {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.65;
+  transition: opacity 0.15s;
+}
+
+.tag-remove:hover {
+  opacity: 1;
+  color: #f4212e;
+}
+
+/* 最近记录列表 */
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.recent-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.recent-handle {
+  color: #f4212e;
+  font-weight: 600;
+}
+
+.recent-reason {
+  color: #71767b;
+  margin-left: 6px;
+}
+
+.empty-hint {
+  text-align: center;
+  color: #71767b;
+  font-size: 11px;
+  padding: 16px 0;
+}
+
+/* 按钮组 */
 .btn-secondary {
   width: 100%;
   padding: 10px;
@@ -221,6 +490,10 @@ body {
   font-size: 12px;
   cursor: pointer;
   margin-bottom: 10px;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .btn-danger {
@@ -235,31 +508,6 @@ body {
   cursor: pointer;
 }
 
-/* 快速链接 */
-.quick-links {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.quick-item {
-  background: #0f1419;
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  border-radius: 8px;
-  padding: 10px;
-}
-
-.quick-item strong {
-  color: #ffffff;
-  font-size: 12px;
-}
-
-.quick-item p {
-  color: #71767b;
-  font-size: 11px;
-  margin-top: 2px;
-}
-
-.quick-item.coming-soon {
-  opacity: 0.6;
+.btn-danger:hover {
+  background: rgba(244, 33, 46, 0.2);
 }
