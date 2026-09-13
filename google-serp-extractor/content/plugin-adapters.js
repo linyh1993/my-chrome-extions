@@ -174,31 +174,58 @@
       brandQuery: '',
       offPageDifficulty: '',
       onPageDifficulty: '',
-      trendTitle: ''
+      longTailPrompt: '',
+      targetQuery: '',
+      trendTitle: '',
+      rawText: ''
     };
 
-    const diffEl = doc.querySelector('#xt-difficulty-root') ||
-                   Array.from(doc.querySelectorAll('div, [role="region"]')).find(el => /SEO\s*Difficulty/i.test(el.textContent));
+    // 1. Direct ID or class selectors for Keywords Everywhere Difficulty card
+    let diffEl = doc.querySelector?.(
+      '#xt-difficulty-root, .xt-difficulty-root, #xt-difficulty, .xt-difficulty, [id*="xt-difficulty"], [class*="xt-difficulty"]'
+    );
+
+    // 2. If not found by ID/class, search candidate elements containing SEO Difficulty bounded in size (innermost)
+    if (!diffEl && doc.querySelectorAll) {
+      const candidates = Array.from(doc.querySelectorAll('div, section, aside, [role="region"]')).filter(el => {
+        const txt = el.textContent || '';
+        return /SEO\s*Difficulty/i.test(txt) && (/Brand\s*Query/i.test(txt) || /Off-Page/i.test(txt) || /On-Page/i.test(txt)) && txt.length < 3000;
+      });
+      if (candidates.length > 0) {
+        candidates.sort((a, b) => (a.textContent.length - b.textContent.length));
+        diffEl = candidates[0];
+      }
+    }
 
     if (diffEl) {
       const text = diffEl.textContent || '';
-      res.hasDifficulty = true;
+      res.rawText = text.replace(/\s+/g, ' ').trim();
 
-      const diffMatch = text.match(/SEO\s*Difficulty\s*([0-9\.\/]+)/i);
+      const diffMatch = text.match(/SEO\s*Difficulty\s*:?\s*([0-9\.\/]+)/i);
       if (diffMatch) res.seoDifficulty = diffMatch[1].trim();
 
-      const brandMatch = text.match(/Brand\s*Query\s*(Yes|No)/i);
+      const brandMatch = text.match(/Brand\s*Query\s*:?\s*(Yes|No|[\w\-]+)/i);
       if (brandMatch) res.brandQuery = brandMatch[1].trim();
 
-      const offMatch = text.match(/Off-Page\s*Difficulty\s*([0-9\.\/]+)/i);
+      const offMatch = text.match(/Off-Page\s*Difficulty\s*:?\s*([0-9\.\/]+)/i);
       if (offMatch) res.offPageDifficulty = offMatch[1].trim();
 
-      const onMatch = text.match(/On-Page\s*Difficulty\s*([0-9\.\/]+)/i);
+      const onMatch = text.match(/On-Page\s*Difficulty\s*:?\s*([0-9\.\/]+)/i);
       if (onMatch) res.onPageDifficulty = onMatch[1].trim();
+
+      const promptMatch = text.match(/(?:Find\s+long-tail\s+keywords\s+for\s+["“']?([^"”'\n\r]+)["“']?)/i);
+      if (promptMatch) {
+        res.longTailPrompt = promptMatch[0].replace(/\s+/g, ' ').trim();
+        res.targetQuery = promptMatch[1].replace(/["“”']/g, '').trim();
+      }
+
+      if (res.seoDifficulty || res.offPageDifficulty || res.onPageDifficulty || res.brandQuery) {
+        res.hasDifficulty = true;
+      }
     }
 
-    const trendEl = doc.querySelector('#xt-trend-chart-root') ||
-                    Array.from(doc.querySelectorAll('div, [role="region"]')).find(el => /Trend Data For/i.test(el.textContent));
+    const trendEl = doc.querySelector?.('#xt-trend-chart-root, .xt-trend-chart-root') ||
+                    (doc.querySelectorAll && Array.from(doc.querySelectorAll('div, [role="region"]')).find(el => /Trend Data For/i.test(el.textContent) && (el.textContent || '').length < 1000));
     if (trendEl) {
       const t = trendEl.textContent.match(/Trend Data For [^\n\r]+/i);
       if (t) res.trendTitle = t[0].replace(/\s+/g, ' ').trim();

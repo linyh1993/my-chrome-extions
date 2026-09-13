@@ -174,7 +174,12 @@
             <div class="gse-diff-label">站内难度 (On-Page Difficulty)</div>
           </div>
         </div>
-
+        ${diff.longTailPrompt ? `
+          <div class="gse-trend-box" style="margin-top:12px;border-left:3px solid #2563eb;">
+            <h4 class="gse-trend-heading" style="color:#2563eb;">💡 长尾词探索提示 (Long-tail Keywords Prompt)</h4>
+            <div class="gse-trend-desc" style="font-weight:600;color:#1e293b;">${escapeHtml(diff.longTailPrompt)}</div>
+          </div>
+        ` : ''}
         ${diff.trendTitle ? `
           <div class="gse-trend-box">
             <h4 class="gse-trend-heading">📈 全球搜索趋势 (Trend Data)</h4>

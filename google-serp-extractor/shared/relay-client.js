@@ -56,6 +56,7 @@ function createSerpEnvelope(serpData, options = {}) {
       collectedPages: data.collectedPages || [pageNumber],
       readiness: data.readiness || null,
       items,
+      seoDifficulty: data.seoDifficulty || null,
       relatedKeywords: data.relatedKeywords || [],
       relatedProducts: data.relatedProducts || [],
       peopleAlsoAsk: data.peopleAlsoAsk || [],

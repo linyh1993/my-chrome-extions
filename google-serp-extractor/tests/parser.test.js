@@ -408,25 +408,27 @@ describe('7. Multi-Module Exporter (CSV & TSV)', () => {
 });
 
 describe('8. Keywords Everywhere Widgets & SEO Difficulty (User Uploaded Images)', () => {
-  it('should extract SEO Difficulty card matching screenshot metrics', () => {
+  it('should extract SEO Difficulty card matching screenshot metrics exactly', () => {
     const doc = new MockDocument(
       new MockElement('div', {}, '', [
         new MockElement('div', { id: 'xt-difficulty-root' },
-          'SEO Difficulty 56/100 Brand Query No Off-Page Difficulty 56/100 On-Page Difficulty 55/100'
+          'Find long-tail keywords for "ai story" SEO Difficulty 69/100 Brand Query No Off-Page Difficulty 64/100 On-Page Difficulty 79/100 How these metrics are calculated Detailed breakdown Free tools. Hidden SEO gaps. What will you find?'
         ),
         new MockElement('div', { id: 'xt-trend-chart-root' },
-          'Trend Data For ai photo detector (Global)'
+          'Trend Data For ai story (Global)'
         )
       ])
     );
 
     const diff = extractSeoDifficulty(doc);
     assert.strictEqual(diff.hasDifficulty, true);
-    assert.strictEqual(diff.seoDifficulty, '56/100');
+    assert.strictEqual(diff.seoDifficulty, '69/100');
     assert.strictEqual(diff.brandQuery, 'No');
-    assert.strictEqual(diff.offPageDifficulty, '56/100');
-    assert.strictEqual(diff.onPageDifficulty, '55/100');
-    assert.strictEqual(diff.trendTitle, 'Trend Data For ai photo detector (Global)');
+    assert.strictEqual(diff.offPageDifficulty, '64/100');
+    assert.strictEqual(diff.onPageDifficulty, '79/100');
+    assert.strictEqual(diff.longTailPrompt, 'Find long-tail keywords for "ai story"');
+    assert.strictEqual(diff.targetQuery, 'ai story');
+    assert.strictEqual(diff.trendTitle, 'Trend Data For ai story (Global)');
   });
 
   it('should extract Long-Tail & Trending keywords from KE widgets', () => {

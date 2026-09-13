@@ -364,6 +364,7 @@
       relatedKeywords: mergedKeywords,
       longTailKeywords: mergedKeywords.filter(k => k.source.includes('Long-Tail')),
       trendingKeywords: mergedKeywords.filter(k => k.source.includes('Trending')),
+      seoDifficulty: (newData.seoDifficulty && newData.seoDifficulty.hasDifficulty) ? newData.seoDifficulty : (existingData.seoDifficulty || newData.seoDifficulty || {}),
       relatedProducts: mergedProducts,
       peopleAlsoAsk: mergedPaa,
       sponsoredAds: mergedAds

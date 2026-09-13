@@ -52,7 +52,15 @@ function describe(suiteName, fn) {
         sponsoredAds: [],
         peopleAlsoAsk: [],
         pageInfo: { pageNumber: 1, isFirstPage: true },
-        resultStats: { raw: 'About 10,000 results' }
+        resultStats: { raw: 'About 10,000 results' },
+        seoDifficulty: {
+          hasDifficulty: true,
+          seoDifficulty: '69/100',
+          brandQuery: 'No',
+          offPageDifficulty: '64/100',
+          onPageDifficulty: '79/100',
+          longTailPrompt: 'Find long-tail keywords for "ai story"'
+        }
       };
 
       const envelope = createSerpEnvelope(sampleSerpData, {
@@ -82,6 +90,9 @@ function describe(suiteName, fn) {
       assert.strictEqual(envelope.payload.items[0].itemDedupKey, `ai photo detector#https://example.com/ai#${envelope.payload.searchDate}`);
       assert.strictEqual(envelope.payload.relatedKeywords.length, 1);
       assert.strictEqual(envelope.payload.pageInfo.pageNumber, 1);
+      assert.ok(envelope.payload.seoDifficulty);
+      assert.strictEqual(envelope.payload.seoDifficulty.seoDifficulty, '69/100');
+      assert.strictEqual(envelope.payload.seoDifficulty.longTailPrompt, 'Find long-tail keywords for "ai story"');
     });
 
     await it('should handle empty or null serpData gracefully without throwing', () => {
