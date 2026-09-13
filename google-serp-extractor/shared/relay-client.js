@@ -12,13 +12,28 @@ const RELAY_TIMEOUT_MS = 5000;
  */
 function createSerpEnvelope(serpData, options = {}) {
   const data = serpData || {};
-  const query = data.query || '';
+  const normalizedQuery = (data.query || '').trim().toLowerCase();
   const sourceUrl = options.sourceUrl || data.sourceUrl || (typeof window !== 'undefined' ? window.location?.href : '') || '';
+
+  // Day dimension date string (YYYY-MM-DD) based on local timezone
+  const now = new Date();
+  const searchDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const pageNumber = data.pageInfo?.pageNumber || 1;
+  const dedupKey = `${normalizedQuery}#p${pageNumber}#${searchDate}`;
+
+  // Enrich items with deduplication metadata
+  const items = (data.items || []).map(item => ({
+    ...item,
+    query: normalizedQuery,
+    page: item.page || pageNumber,
+    searchDate,
+    itemDedupKey: `${normalizedQuery}#${item.url}#${searchDate}`
+  }));
 
   return {
     version: '1.0',
     relaySource: 'google-serp-extractor',
-    timestamp: new Date().toISOString(),
+    timestamp: now.toISOString(),
     site: {
       id: 'google',
       label: 'Google SERP'
@@ -27,17 +42,20 @@ function createSerpEnvelope(serpData, options = {}) {
     action: 'data',
     sourceUrl,
     payload: {
-      query,
-      scrapedAt: new Date().toISOString(),
-      pageInfo: data.pageInfo || null,
+      query: normalizedQuery,
+      searchDate,
+      pageNumber,
+      dedupKey,
+      scrapedAt: now.toISOString(),
+      pageInfo: data.pageInfo || { pageNumber, isFirstPage: pageNumber === 1 },
       resultStats: data.resultStats || null,
       pageVolumeInfo: data.pageVolumeInfo || '',
-      totalFound: data.totalFound || (data.items ? data.items.length : 0),
+      totalFound: data.totalFound || items.length,
       aitdkReadyCount: data.aitdkReadyCount || 0,
       keReadyCount: data.keReadyCount || 0,
-      collectedPages: data.collectedPages || [data.pageInfo?.pageNumber || 1],
+      collectedPages: data.collectedPages || [pageNumber],
       readiness: data.readiness || null,
-      items: data.items || [],
+      items,
       relatedKeywords: data.relatedKeywords || [],
       relatedProducts: data.relatedProducts || [],
       peopleAlsoAsk: data.peopleAlsoAsk || [],

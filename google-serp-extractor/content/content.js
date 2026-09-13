@@ -139,13 +139,18 @@
     try {
       const settings = await chrome.runtime.sendMessage({ cmd: 'GET_RELAY_SETTINGS' });
       if (settings && settings.autoSync && effectiveData.isFullyReady) {
-        const sig = `${effectiveData.query}_${effectiveData.items.length}_ready`;
+        const now = new Date();
+        const searchDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const pageNum = effectiveData.pageInfo?.pageNumber || 1;
+        const normalizedQuery = (effectiveData.query || '').trim().toLowerCase();
+        const sig = `${normalizedQuery}#p${pageNum}#${searchDate}#${effectiveData.items.length}`;
+
         if (sig !== lastSyncedSignature) {
           lastSyncedSignature = sig;
           const res = await syncToRelay(effectiveData);
           if (res && res.ok && globalThis.GseFloatingUI?.showToast) {
             const evId = res.details?.raw_event_id ? ` (Event #${res.details.raw_event_id})` : '';
-            globalThis.GseFloatingUI.showToast(`🚀 [自动落库] ${effectiveData.query} 数据已保存${evId}`);
+            globalThis.GseFloatingUI.showToast(`🚀 [自动落库] ${normalizedQuery} (P${pageNum}) 数据已保存${evId}`);
           }
         }
       }

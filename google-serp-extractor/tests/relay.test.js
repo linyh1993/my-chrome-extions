@@ -70,8 +70,16 @@ function describe(suiteName, fn) {
 
       // Check payload
       assert.strictEqual(envelope.payload.query, 'ai photo detector');
+      assert.strictEqual(envelope.payload.pageNumber, 1);
+      assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(envelope.payload.searchDate));
+      assert.strictEqual(envelope.payload.dedupKey, `ai photo detector#p1#${envelope.payload.searchDate}`);
+
       assert.strictEqual(envelope.payload.items.length, 1);
       assert.strictEqual(envelope.payload.items[0].title, 'AI Detector');
+      assert.strictEqual(envelope.payload.items[0].query, 'ai photo detector');
+      assert.strictEqual(envelope.payload.items[0].page, 1);
+      assert.strictEqual(envelope.payload.items[0].searchDate, envelope.payload.searchDate);
+      assert.strictEqual(envelope.payload.items[0].itemDedupKey, `ai photo detector#https://example.com/ai#${envelope.payload.searchDate}`);
       assert.strictEqual(envelope.payload.relatedKeywords.length, 1);
       assert.strictEqual(envelope.payload.pageInfo.pageNumber, 1);
     });
