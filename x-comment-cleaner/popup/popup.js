@@ -57,8 +57,91 @@ document.addEventListener('DOMContentLoaded', async () => {
     modeCollapse.checked = true;
   }
 
-  // Init Auto Block Toggle
-  if (autoBlockToggle) autoBlockToggle.checked = settings.autoBlock !== false;
+  // Init Auto Block Toggle (默认关闭)
+  if (autoBlockToggle) autoBlockToggle.checked = settings.autoBlock === true;
+
+  // Init FeedSieve Community Controls
+  const communityLists = globalThis.XCommunityLists;
+  const communityVersionBadge = document.getElementById('communityVersionBadge');
+  const commBlacklistCount = document.getElementById('commBlacklistCount');
+  const commWhitelistCount = document.getElementById('commWhitelistCount');
+  const syncCommunityBtn = document.getElementById('syncCommunityBtn');
+  const batchBlockCommunityBtn = document.getElementById('batchBlockCommunityBtn');
+  const commSyncStatus = document.getElementById('commSyncStatus');
+
+  function updateCommunityStats() {
+    if (!communityLists) return;
+    if (communityVersionBadge) communityVersionBadge.textContent = communityLists.version || 'v2026.09.13.1';
+    if (commBlacklistCount) commBlacklistCount.textContent = Number(communityLists.getBlacklistCount() || 0).toLocaleString();
+    if (commWhitelistCount) commWhitelistCount.textContent = Number(communityLists.getWhitelistCount() || 0).toLocaleString();
+  }
+  updateCommunityStats();
+
+  if (syncCommunityBtn) {
+    syncCommunityBtn.addEventListener('click', async () => {
+      if (!communityLists) return;
+      syncCommunityBtn.disabled = true;
+      if (commSyncStatus) {
+        commSyncStatus.style.color = '#1d9bf0';
+        commSyncStatus.textContent = '正在获取最新快照...';
+      }
+      const res = await communityLists.syncOnline(true);
+      if (res && res.success) {
+        updateCommunityStats();
+        if (commSyncStatus) {
+          commSyncStatus.style.color = '#00ba7c';
+          commSyncStatus.textContent = `✓ 已同步最新版本 ${res.version}`;
+        }
+      } else {
+        if (commSyncStatus) {
+          commSyncStatus.style.color = '#f4212e';
+          commSyncStatus.textContent = `同步失败: ${res?.error || '网络异常'}`;
+        }
+      }
+      syncCommunityBtn.disabled = false;
+    });
+  }
+
+  if (batchBlockCommunityBtn) {
+    batchBlockCommunityBtn.addEventListener('click', () => {
+      if (!communityLists) return;
+      const count = communityLists.getBlacklistCount();
+      const confirmed = confirm(`确定将社区黑名单的 ${count} 个账号加入当前页面流控队列依次拉黑吗？\n（安全间隔 2.5s~4.5s 依次执行，遇到 429 自动冷却）`);
+      if (!confirmed) return;
+
+      batchBlockCommunityBtn.disabled = true;
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const activeTab = tabs && tabs[0];
+        if (!activeTab || !activeTab.id) {
+          if (commSyncStatus) {
+            commSyncStatus.style.color = '#f4212e';
+            commSyncStatus.textContent = '未找到当前活动标签页，请先打开 X.com 页面';
+          }
+          batchBlockCommunityBtn.disabled = false;
+          return;
+        }
+
+        const handles = communityLists.getBlacklistArray();
+        chrome.tabs.sendMessage(activeTab.id, {
+          type: 'ENQUEUE_COMMUNITY_BATCH_BLOCK',
+          handles: handles.slice(0, 500)
+        }, (res) => {
+          if (chrome.runtime.lastError) {
+            if (commSyncStatus) {
+              commSyncStatus.style.color = '#f4212e';
+              commSyncStatus.textContent = '请刷新 X 页面后再试';
+            }
+          } else {
+            if (commSyncStatus) {
+              commSyncStatus.style.color = '#00ba7c';
+              commSyncStatus.textContent = '✓ 已成功派发至前台安全队列中执行！';
+            }
+          }
+          setTimeout(() => { batchBlockCommunityBtn.disabled = false; }, 3000);
+        });
+      });
+    });
+  }
 
   // Init Algorithm Toggles
   if (filterSimhash) filterSimhash.checked = settings.filterSimhash !== false;

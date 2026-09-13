@@ -45,14 +45,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   // 3. 读取 x-comment-cleaner 专属配置
   let cleanerConfig = await storage.getConfig("x-comment-cleaner", {
     hideMode: 'collapse',
-    autoBlock: true
+    autoBlock: false
   });
 
   chrome.storage.sync.get(["blockedCount"], (data) => {
     if (popupBlockedCount) popupBlockedCount.textContent = data.blockedCount || 0;
   });
 
-  if (popupAutoBlock) popupAutoBlock.checked = cleanerConfig.autoBlock !== false;
+  if (popupAutoBlock) popupAutoBlock.checked = cleanerConfig.autoBlock === true;
   if (cleanerConfig.hideMode === "hide") {
     if (popupModeHide) popupModeHide.checked = true;
   } else {

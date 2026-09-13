@@ -13,7 +13,7 @@
   let currentSettings = {
     enabled: true,
     hideMode: 'collapse',
-    autoBlock: true,
+    autoBlock: false,
     autoBlockInterval: 3000,
     filterKeywords: true,
     filterHomophones: true,
@@ -625,10 +625,22 @@
     }
   });
 
-  observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-    characterData: true
+  // 4. 接收来自弹出层的社区黑名单批量入队指令
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg && msg.type === 'ENQUEUE_COMMUNITY_BATCH_BLOCK' && Array.isArray(msg.handles)) {
+      let count = 0;
+      for (const h of msg.handles) {
+        const norm = normalizeHandleFn(h);
+        if (!norm || blockedHandlesState.has(norm) || manuallyUnblockedHandles.has(norm)) continue;
+        if (autoBlockQueue.some(item => item.handle === norm)) continue;
+        autoBlockQueue.push({ handle: norm, reason: 'FeedSieve 社区黑名单' });
+        count++;
+      }
+      console.log(`[X Cleaner] 已将 ${count} 个社区黑名单账号加入防封流控队列`);
+      processAutoBlockQueue();
+      sendResponse({ success: true, count });
+      return true;
+    }
   });
 
   handleUrlChange();

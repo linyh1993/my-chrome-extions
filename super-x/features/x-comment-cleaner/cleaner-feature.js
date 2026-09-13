@@ -24,7 +24,7 @@
   const DEFAULT_SETTINGS = rulesEngine.DEFAULT_CLEANER_SETTINGS || {
     enabled: true,
     hideMode: 'collapse',
-    autoBlock: true,
+    autoBlock: false,
     autoBlockInterval: 3000,
     filterKeywords: true,
     filterHomophones: true,
@@ -618,6 +618,24 @@
       renderClusters(replyTweets);
     }
   };
+
+  // 接收来自侧边栏的社区黑名单批量入队指令
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg && msg.type === 'ENQUEUE_COMMUNITY_BATCH_BLOCK' && Array.isArray(msg.handles)) {
+      let count = 0;
+      for (const h of msg.handles) {
+        const norm = normalizeHandleFn(h);
+        if (!norm || blockedHandlesState.has(norm) || manuallyUnblockedHandles.has(norm)) continue;
+        if (autoBlockQueue.some(item => item.handle === norm)) continue;
+        autoBlockQueue.push({ handle: norm, reason: 'FeedSieve 社区黑名单' });
+        count++;
+      }
+      console.log(`[SuperX Cleaner] 已将 ${count} 个社区黑名单账号推入防封流控拉黑队列`);
+      processAutoBlockQueue();
+      sendResponse({ success: true, count });
+      return true;
+    }
+  });
 
   window.__SuperX__.FeatureManager.register(FeatureInstance);
 })();

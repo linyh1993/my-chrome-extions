@@ -55,6 +55,7 @@
         "core/storage.js",
         "core/dom-observer.js",
         "core/feature-manager.js",
+        "features/x-comment-cleaner/community-lists.js",
         "features/x-comment-cleaner/rules.js",
         "features/x-comment-cleaner/x-adapter.js",
         "features/x-comment-cleaner/cleaner-feature.js",

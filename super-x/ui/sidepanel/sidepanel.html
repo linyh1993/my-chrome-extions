@@ -88,7 +88,7 @@
       <div class="card-section">
         <h3>拉黑策略与防封流控</h3>
         <label class="checkbox-row">
-          <input type="checkbox" id="cleaner-auto-block" checked>
+          <input type="checkbox" id="cleaner-auto-block">
           <div class="checkbox-info">
             <span class="checkbox-text"><b>自动开启 X 官方接口真实拉黑</b></span>
             <span class="checkbox-sub">识别垃圾评论后通过官方端点原生拉黑（手机端/网页端全端同步）</span>
@@ -98,6 +98,30 @@
           <span class="badge-icon">🛡️</span>
           <span><b>防封流控保护已开启</b>：单次请求安全间隔保持在 2.5s~4.5s 随机浮动；遇官方 429 自动进入 60 秒冷却退避，彻底杜绝风控风险。</span>
         </div>
+      </div>
+
+      <!-- 2.1 FeedSieve 社区黑白名单与云端同步 -->
+      <div class="card-section">
+        <div class="section-header-flex">
+          <h3>FeedSieve 社区黑白名单</h3>
+          <span class="section-badge-desc" id="feedsieve-version-badge">版本: 载入中...</span>
+        </div>
+        <p class="section-desc">集成来自 feedsieve.win 社区共享的高精度黑名单（黄推/Bot/杀猪盘）与豁免白名单，毫秒级比对。</p>
+        <div class="stat-mini-cards">
+          <div class="mini-stat-card">
+            <div class="mini-stat-num" id="feedsieve-blacklist-count">3,496</div>
+            <div class="mini-stat-label">社区黑名单账号</div>
+          </div>
+          <div class="mini-stat-card">
+            <div class="mini-stat-num" id="feedsieve-whitelist-count">130</div>
+            <div class="mini-stat-label">社区豁免白名单</div>
+          </div>
+        </div>
+        <div class="feedsieve-actions" style="display:flex;gap:8px;margin-top:12px;">
+          <button type="button" class="btn-primary" id="btn-sync-feedsieve" style="flex:1;">🔄 在线更新云端名单</button>
+          <button type="button" class="btn-secondary" id="btn-batch-block-community" style="flex:1;" title="将当前社区黑名单账号加入防封流控队列依次原生拉黑">🚫 一键原生拉黑社区黑名单</button>
+        </div>
+        <div id="feedsieve-sync-status" style="font-size:12px;color:#71767b;margin-top:8px;"></div>
       </div>
 
       <!-- 3. 8 大行业分类词库 -->
@@ -320,6 +344,7 @@
     </section>
   </div>
 
+  <script src="../../features/x-comment-cleaner/community-lists.js"></script>
   <script src="../../features/x-comment-cleaner/rules.js"></script>
   <script src="../../core/storage.js"></script>
   <script src="sidepanel.js"></script>

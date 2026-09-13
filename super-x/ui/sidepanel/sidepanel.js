@@ -186,13 +186,108 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
   }
 
-  // 4.2 原生自动拉黑开关
+  // 4.2 原生自动拉黑开关 (默认关闭，避免封控)
   const autoBlockToggle = document.getElementById("cleaner-auto-block");
   if (autoBlockToggle) {
-    autoBlockToggle.checked = cleanerConfig.autoBlock !== false;
+    autoBlockToggle.checked = cleanerConfig.autoBlock === true;
     autoBlockToggle.onchange = () => {
       cleanerConfig.autoBlock = autoBlockToggle.checked;
       saveCleanerConfig();
+    };
+  }
+
+  // 4.2.1 FeedSieve 社区黑白名单控制器
+  const communityLists = globalThis.XCommunityLists;
+  const feedsieveVerBadge = document.getElementById("feedsieve-version-badge");
+  const feedsieveBlacklistCount = document.getElementById("feedsieve-blacklist-count");
+  const feedsieveWhitelistCount = document.getElementById("feedsieve-whitelist-count");
+  const btnSyncFeedsieve = document.getElementById("btn-sync-feedsieve");
+  const btnBatchBlockCommunity = document.getElementById("btn-batch-block-community");
+  const feedsieveSyncStatus = document.getElementById("feedsieve-sync-status");
+
+  function refreshCommunityUI() {
+    if (!communityLists) return;
+    if (feedsieveVerBadge) feedsieveVerBadge.textContent = `版本: ${communityLists.version || 'v2026.09.13.1'}`;
+    if (feedsieveBlacklistCount) feedsieveBlacklistCount.textContent = Number(communityLists.getBlacklistCount() || 0).toLocaleString();
+    if (feedsieveWhitelistCount) feedsieveWhitelistCount.textContent = Number(communityLists.getWhitelistCount() || 0).toLocaleString();
+  }
+
+  refreshCommunityUI();
+
+  if (btnSyncFeedsieve) {
+    btnSyncFeedsieve.onclick = async () => {
+      btnSyncFeedsieve.disabled = true;
+      if (feedsieveSyncStatus) {
+        feedsieveSyncStatus.style.color = '#1d9bf0';
+        feedsieveSyncStatus.textContent = '正在从 feedsieve.win 远端拉取最新快照...';
+      }
+      try {
+        const res = await communityLists.syncOnline(true);
+        if (res && res.success) {
+          refreshCommunityUI();
+          if (feedsieveSyncStatus) {
+            feedsieveSyncStatus.style.color = '#00ba7c';
+            feedsieveSyncStatus.textContent = `✓ 同步成功！最新版本 ${res.version}，黑名单共有 ${res.count} 个账号。`;
+          }
+        } else {
+          if (feedsieveSyncStatus) {
+            feedsieveSyncStatus.style.color = '#f4212e';
+            feedsieveSyncStatus.textContent = `同步失败: ${res?.error || '网络不可达'}，已保留本地内置名单。`;
+          }
+        }
+      } catch (e) {
+        if (feedsieveSyncStatus) {
+          feedsieveSyncStatus.style.color = '#f4212e';
+          feedsieveSyncStatus.textContent = `同步出错: ${e.message}`;
+        }
+      } finally {
+        btnSyncFeedsieve.disabled = false;
+      }
+    };
+  }
+
+  if (btnBatchBlockCommunity) {
+    btnBatchBlockCommunity.onclick = async () => {
+      if (!communityLists) return;
+      const count = communityLists.getBlacklistCount();
+      const confirmed = confirm(`确定要对社区黑名单的 ${count} 个账号发起拉黑吗？\n\n注意：将自动使用 SuperX 防封流控安全队列（间隔 2.5s~4.5s 依次执行），遇到官方 429 会自动安全休眠，不会冻结您的 X 账号。`);
+      if (!confirmed) return;
+
+      btnBatchBlockCommunity.disabled = true;
+      if (feedsieveSyncStatus) {
+        feedsieveSyncStatus.style.color = '#1d9bf0';
+        feedsieveSyncStatus.textContent = `已将社区黑名单下发至活跃推特标签页流控队列...`;
+      }
+
+      // 发送消息给活跃的 X 标签页
+      chrome.tabs.query({ url: ['https://x.com/*', 'https://twitter.com/*'] }, (tabs) => {
+        if (!tabs || tabs.length === 0) {
+          if (feedsieveSyncStatus) {
+            feedsieveSyncStatus.style.color = '#f4212e';
+            feedsieveSyncStatus.textContent = '未检测到打开的 X/Twitter 页面，请先打开 X.com 再点击此按钮。';
+          }
+          btnBatchBlockCommunity.disabled = false;
+          return;
+        }
+
+        const handles = communityLists.getBlacklistArray();
+        let sentCount = 0;
+        tabs.forEach((tab) => {
+          chrome.tabs.sendMessage(tab.id, {
+            type: 'ENQUEUE_COMMUNITY_BATCH_BLOCK',
+            handles: handles.slice(0, 500) // 首批安全入队 500 个避免内存过载
+          }, (res) => {
+            if (chrome.runtime.lastError) return;
+            sentCount++;
+          });
+        });
+
+        if (feedsieveSyncStatus) {
+          feedsieveSyncStatus.style.color = '#00ba7c';
+          feedsieveSyncStatus.textContent = `✓ 任务已成功派发至前台 X 标签页，正在后台按流控队列安全执行中！`;
+        }
+        setTimeout(() => { btnBatchBlockCommunity.disabled = false; }, 3000);
+      });
     };
   }
 

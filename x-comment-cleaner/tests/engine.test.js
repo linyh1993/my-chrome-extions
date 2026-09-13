@@ -5,6 +5,7 @@
 
 const assert = require('assert');
 const { KEYWORD_PACKS, DEFAULT_CLEANER_SETTINGS } = require('../shared/packs.js');
+const XCommunityLists = require('../shared/community-lists.js');
 const { textToSimhash, hammingDistance, simhashTokens, SIMHASH_HAMMING_THRESHOLD } = require('../shared/simhash.js');
 const { normalizeHandle, extractChineseText, matchGapPhrase, checkAccountHeuristics, isPureNumberReply } = require('../shared/heuristics.js');
 const { evaluateReplySpam, evaluateTextAgainstPacks } = require('../shared/rules.js');
@@ -171,6 +172,26 @@ describe('5. Protection Layers & Whitelist', () => {
     assert.strictEqual(res.whitelisted, true);
   });
 
+  it('should exempt community whitelisted user (e.g. FeedSieve)', () => {
+    const res = evaluateReplySpam({
+      text: '看主页福利视频',
+      authorHandle: '01wu1'
+    });
+    assert.strictEqual(res.isSpam, false);
+    assert.strictEqual(res.whitelisted, true);
+    assert.strictEqual(res.reason, 'FeedSieve 社区豁免白名单');
+  });
+
+  it('should intercept community blacklisted accounts (FeedSieve 3,496 accounts)', () => {
+    const res = evaluateReplySpam({
+      text: 'Hello nice picture!',
+      authorHandle: '11woha'
+    });
+    assert.strictEqual(res.isSpam, true);
+    assert.strictEqual(res.packId, 'community_blacklist');
+    assert.strictEqual(res.reason, 'FeedSieve 社区黑名单库');
+  });
+
   it('should filter pure number spam', () => {
     assert.strictEqual(isPureNumberReply('5'), true);
     assert.strictEqual(isPureNumberReply('666'), true);
@@ -181,8 +202,8 @@ describe('5. Protection Layers & Whitelist', () => {
 });
 
 describe('6. Edge Cases & Robustness', () => {
-  it('should have autoBlock enabled by default in settings', () => {
-    assert.strictEqual(DEFAULT_CLEANER_SETTINGS.autoBlock, true);
+  it('should have autoBlock disabled by default in settings to avoid risk', () => {
+    assert.strictEqual(DEFAULT_CLEANER_SETTINGS.autoBlock, false);
     assert.strictEqual(DEFAULT_CLEANER_SETTINGS.autoBlockInterval, 3000);
   });
 

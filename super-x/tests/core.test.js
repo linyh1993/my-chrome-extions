@@ -61,6 +61,7 @@ assert.strictEqual(manifest.content_scripts[0].world, "MAIN", "First content scr
 const isolatedScripts = manifest.content_scripts[1].js;
 assert.ok(!isolatedScripts.includes("features/x-comment-cleaner/simhash.js"), "simhash.js should not be duplicated");
 assert.ok(!isolatedScripts.includes("features/x-comment-cleaner/packs.js"), "packs.js should not be duplicated");
+assert.ok(isolatedScripts.includes("features/x-comment-cleaner/community-lists.js"), "community-lists.js must be loaded");
 assert.ok(isolatedScripts.includes("features/x-comment-cleaner/rules.js"), "rules.js must be loaded");
 assert.ok(isolatedScripts.includes("features/x-better-ui/better-ui-feature.js"), "better-ui-feature.js must be loaded");
 assert.ok(isolatedScripts.includes("features/x-follow-to-list/follow-list-feature.js"), "follow-list-feature.js must be loaded");
@@ -80,9 +81,14 @@ assert.ok(betterCss.includes("data-testid=\"trend\""), "Must target modern trend
 console.log("✓ Manifest V3 & Feature scripts check passed.");
 
 // 4. 测试 x-comment-cleaner 规则引擎评估与英文帖子识别
+const commListsPath = path.resolve(__dirname, "../features/x-comment-cleaner/community-lists.js");
+require(commListsPath);
 const rulesPath = path.resolve(__dirname, "../features/x-comment-cleaner/rules.js");
 require(rulesPath);
 const XCleanerRules = globalThis.XCleanerRules;
+const XCommunityLists = globalThis.XCommunityLists;
+assert.ok(XCommunityLists && typeof XCommunityLists.isBlacklisted === "function", "XCommunityLists must be loaded");
+assert.strictEqual(XCleanerRules.DEFAULT_CLEANER_SETTINGS.autoBlock, false, "autoBlock must be false by default");
 assert.ok(XCleanerRules && typeof XCleanerRules.evaluateReplySpam === "function", "Rules engine must export evaluateReplySpam");
 assert.ok(typeof XCleanerRules.isEnglishLanguage === "function", "Rules engine must export isEnglishLanguage");
 
@@ -183,6 +189,25 @@ const spamTest = XCleanerRules.evaluateReplySpam({
 });
 assert.strictEqual(spamTest.isSpam, true, "Must flag adult spam reply");
 console.log(`✓ Rules engine spam detection passed (Detected spam reason: ${spamTest.reason}).`);
+
+// 4.6 测试 FeedSieve 社区黑名单与白名单集成
+const communitySpam = XCleanerRules.evaluateReplySpam({
+  text: "Hello, great post!",
+  authorHandle: "11woha",
+  settings: XCleanerRules.DEFAULT_CLEANER_SETTINGS
+});
+assert.strictEqual(communitySpam.isSpam, true, "Must flag account in FeedSieve blacklist");
+assert.strictEqual(communitySpam.packId, "community_blacklist");
+console.log(`✓ FeedSieve community blacklist detection passed (${communitySpam.reason}).`);
+
+const communityWhite = XCleanerRules.evaluateReplySpam({
+  text: "看主页福利视频",
+  authorHandle: "01wu1",
+  settings: XCleanerRules.DEFAULT_CLEANER_SETTINGS
+});
+assert.strictEqual(communityWhite.isSpam, false, "Must exempt account in FeedSieve whitelist");
+assert.strictEqual(communityWhite.whitelisted, true);
+console.log(`✓ FeedSieve community whitelist exemption passed (${communityWhite.reason}).`);
 
 // 5. 测试 TOC 标题级别多级提取与分类规则
 function classifyHeading(firstLine) {

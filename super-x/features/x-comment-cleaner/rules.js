@@ -165,7 +165,7 @@ const X_SPAM_PATTERNS = [
 const DEFAULT_CLEANER_SETTINGS = {
   enabled: true,
   hideMode: "collapse",
-  autoBlock: true,
+  autoBlock: false,
   autoBlockInterval: 3000,
   filterKeywords: true,
   filterHomophones: true,
@@ -559,11 +559,24 @@ function evaluateReplySpam({
 
   const normAuthor = normalizeHandle(authorHandle);
 
-  // 1. Whitelist Protection
-  if (normAuthor && Array.isArray(cfg.whitelist)) {
-    const isWhitelisted = cfg.whitelist.some(w => normalizeHandle(w) === normAuthor);
-    if (isWhitelisted) {
-      return { isSpam: false, whitelisted: true };
+  // 1. Whitelist Protection (支持自定义白名单与 FeedSieve 社区白名单)
+  const communityLists = globalThis.XCommunityLists;
+  if (normAuthor) {
+    if (communityLists && typeof communityLists.isWhitelisted === 'function' && communityLists.isWhitelisted(normAuthor)) {
+      return { isSpam: false, whitelisted: true, reason: 'FeedSieve 社区豁免白名单' };
+    }
+    if (Array.isArray(cfg.whitelist)) {
+      const isWhitelisted = cfg.whitelist.some(w => normalizeHandle(w) === normAuthor);
+      if (isWhitelisted) {
+        return { isSpam: false, whitelisted: true };
+      }
+    }
+  }
+
+  // 1.1 Community Blacklist (FeedSieve 社区黑名单直接拦截)
+  if (normAuthor && communityLists && typeof communityLists.isBlacklisted === 'function') {
+    if (communityLists.isBlacklisted(normAuthor)) {
+      return { isSpam: true, reason: 'FeedSieve 社区黑名单库', packId: 'community_blacklist' };
     }
   }
 
