@@ -113,7 +113,53 @@ assert.strictEqual(englishReplyTest.isSpam, false, "English reply must NOT be fl
 assert.strictEqual(englishReplyTest.isEnglish, true, "English reply must return isEnglish: true");
 console.log("✓ English reply bypass test passed.");
 
-// 4.3 测试中文垃圾评论依然被准确拦截
+// 4.3 测试 X 自动翻译特性识别 (避免外文被自动翻译为中文后误判为中文帖)
+assert.ok(typeof XCleanerRules.checkTranslationMeta === "function", "Rules engine must export checkTranslationMeta");
+
+// 对应用户截图中的阿拉伯语自动翻译场景
+const arabicTranslated = XCleanerRules.checkTranslationMeta(
+  "سعود المقحم @SAUDALmUQHIm · 16小时\n翻译自 阿拉伯语 显示原文\n这个来自西藏的痛苦视频，女孩被迫嫁给四个兄弟，依照习俗和传统......"
+);
+assert.strictEqual(arabicTranslated.isTranslated, true, "Must detect post as translated");
+assert.strictEqual(arabicTranslated.isForeign, true, "Must identify non-Chinese source language as foreign");
+assert.strictEqual(arabicTranslated.sourceLang, "阿拉伯语", "Must extract correct source language name");
+
+// 英文推文被自动翻译为中文的场景
+const englishTranslated = XCleanerRules.checkTranslationMeta(
+  "Sam Altman @sama · 2h\n翻译自 英语 显示原文\n我们今天发布了新模型，欢迎大家体验..."
+);
+assert.strictEqual(englishTranslated.isTranslated, true, "Must detect English translated post");
+assert.strictEqual(englishTranslated.isEnglish, true, "Must recognize English as original source language");
+
+// 英文界面下的翻译场景
+const englishUITranslated = XCleanerRules.checkTranslationMeta(
+  "Translated from Arabic Show original\nThis video shows traditional practices..."
+);
+assert.strictEqual(englishUITranslated.isTranslated, true, "Must detect English UI translation");
+assert.strictEqual(englishUITranslated.isForeign, true, "Must detect foreign source in English UI");
+
+// 普通中文推文（无翻译）
+const normalChinese = XCleanerRules.checkTranslationMeta(
+  "张三 @zhangsan · 1小时\n今天天气真好，出去散步了。"
+);
+assert.strictEqual(normalChinese.isTranslated, false, "Native Chinese post must not be marked as translated");
+assert.strictEqual(normalChinese.isForeign, false, "Native Chinese post must not be marked as foreign");
+console.log("✓ checkTranslationMeta X auto-translation detection tests passed.");
+
+// 4.4 测试被 X 自动翻译为中文的外文推文在 evaluateReplySpam 中不被拦截
+const translatedSpamCheck = XCleanerRules.evaluateReplySpam({
+  text: "这个来自西藏的痛苦视频，女孩被迫嫁给四个兄弟，依照习俗和传统......",
+  rawText: "翻译自 阿拉伯语 显示原文\n这个来自西藏的痛苦视频，女孩被迫嫁给四个兄弟，依照习俗和传统......",
+  authorHandle: "SAUDALmUQHIm",
+  displayName: "سعود المقحم",
+  links: [],
+  settings: XCleanerRules.DEFAULT_CLEANER_SETTINGS
+});
+assert.strictEqual(translatedSpamCheck.isSpam, false, "Auto-translated foreign post must NOT trigger spam detection");
+assert.strictEqual(translatedSpamCheck.isEnglish, true, "Auto-translated post must be treated as protected non-Chinese post");
+console.log("✓ Auto-translated foreign post protection test passed.");
+
+// 4.5 测试中文垃圾评论依然被准确拦截
 const spamTest = XCleanerRules.evaluateReplySpam({
   text: "哥哥想看吗？看主页置顶私信看福利视频，同城空降上门",
   authorHandle: "sexy_girl123456",

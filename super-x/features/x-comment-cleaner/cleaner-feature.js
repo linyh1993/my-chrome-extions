@@ -113,6 +113,75 @@
     return { text, lang };
   }
 
+  function checkTweetTranslation(tweet) {
+    if (!tweet) return { isTranslated: false, isForeign: false, isEnglish: false, sourceLang: '' };
+
+    const buttons = Array.from(tweet.querySelectorAll('button, div[role="button"], a[role="link"], span'));
+    let hasShowOriginalBtn = false;
+    let hasTranslatePromptBtn = false;
+
+    for (const el of buttons) {
+      const txt = (el.innerText || el.textContent || '').trim();
+      if (/^(?:显示原文|Show original)$/i.test(txt)) {
+        hasShowOriginalBtn = true;
+      }
+      if (/^(?:翻译帖子|Translate post|Translate Tweet)$/i.test(txt)) {
+        hasTranslatePromptBtn = true;
+      }
+    }
+
+    const fullText = tweet.innerText || tweet.textContent || '';
+    const matchCn = fullText.match(/翻译自\s*([^\s·\n\r，。！]+)/);
+    const matchEn = fullText.match(/Translated from\s*([^\s·\n\r,.]+)/i);
+    const sourceLang = matchCn ? matchCn[1].trim() : (matchEn ? matchEn[1].trim() : '');
+
+    const isChineseSource = /^(?:中文|汉语|Chinese|zh|zh-cn|zh-tw)$/i.test(sourceLang);
+    const isEnglishSource = /^(?:英语|英文|English|en)$/i.test(sourceLang);
+
+    if (hasShowOriginalBtn || (!!sourceLang && /显示原文|Show original/i.test(fullText))) {
+      return {
+        isTranslated: true,
+        sourceLang,
+        isEnglish: isEnglishSource,
+        isForeign: !isChineseSource
+      };
+    }
+
+    if (hasTranslatePromptBtn) {
+      return {
+        isTranslated: false,
+        sourceLang,
+        isEnglish: isEnglishSource,
+        isForeign: true
+      };
+    }
+
+    return {
+      isTranslated: false,
+      sourceLang,
+      isEnglish: isEnglishSource,
+      isForeign: false
+    };
+  }
+
+  function isPostForeignOrEnglish(tweet) {
+    if (!tweet) return false;
+
+    // 1. 优先检查 X 原生自动翻译状态 (避免自动翻译将英文/外文转为中文后误判为中文帖)
+    const translation = checkTweetTranslation(tweet);
+    if (translation.isForeign || translation.isEnglish) {
+      return true;
+    }
+
+    // 2. 语言特征检测
+    const { text, lang } = getTweetTextAndLang(tweet);
+    if (isEnglishLanguageFn({ text, lang })) {
+      return true;
+    }
+
+    return false;
+  }
+
   function addToWhitelist(handle) {
     const norm = normalizeHandleFn(handle);
     if (!norm) return;
@@ -456,15 +525,14 @@
         opTweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
 
         if (!isCurrentThreadEnglish && currentSettings.skipEnglish !== false) {
-          const { text: opText, lang: opLang } = getTweetTextAndLang(opTweet);
-          if (isEnglishLanguageFn({ text: opText, lang: opLang })) {
+          if (isPostForeignOrEnglish(opTweet)) {
             isCurrentThreadEnglish = true;
-            console.log('[SuperX Cleaner] 识别到当前主帖为英文帖子，跳过该帖下的垃圾评论清理');
+            console.log('[SuperX Cleaner] 识别到当前主帖为英文/外文翻译帖子，跳过该帖下的垃圾评论清理');
           }
         }
       }
 
-      // 2. 对于英文帖子，不触发内容清理，并清理所有现存垃圾标记
+      // 2. 对于英文/外文翻译帖子，不触发内容清理，并清理所有现存垃圾标记
       if (isCurrentThreadEnglish && currentSettings.skipEnglish !== false) {
         for (const tweet of allTweets) {
           if (tweet.dataset.xSpam || tweet.dataset.xSpamEvaluation === 'true') {
@@ -504,8 +572,8 @@
         if (isNewOrChanged) {
           if (!text && !authorHandle) continue;
 
-          // 单条回复若是英文内容，也不触发垃圾清理
-          if (currentSettings.skipEnglish !== false && isEnglishLanguageFn({ text, lang })) {
+          // 单条回复若是英文内容或外文自动翻译内容，也不触发垃圾清理
+          if (currentSettings.skipEnglish !== false && isPostForeignOrEnglish(tweet)) {
             tweet.dataset.xSpamProcessed = 'true';
             tweet.dataset.xSpamTweetId = tweetId || '';
             tweet.dataset.xSpamLastText = text;
@@ -519,6 +587,7 @@
           const checkResult = evaluateSpamFn({
             text,
             lang,
+            rawText: tweet.innerText || tweet.textContent || '',
             authorHandle,
             displayName: authorDisplayName,
             links,

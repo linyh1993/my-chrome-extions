@@ -324,6 +324,45 @@ function isEnglishLanguage({ text = '', lang = '' } = {}) {
   return false;
 }
 
+function checkTranslationMeta(fullText = '') {
+  if (!fullText) return { isTranslated: false, isForeign: false, isEnglish: false, sourceLang: '' };
+
+  const hasShowOriginal = /显示原文|Show original/i.test(fullText);
+  const hasTranslatePrompt = /翻译帖子|Translate post|Translate Tweet/i.test(fullText);
+
+  const matchCn = fullText.match(/翻译自\s*([^\s·\n\r，。！]+)/);
+  const matchEn = fullText.match(/Translated from\s*([^\s·\n\r,.]+)/i);
+  const sourceLang = matchCn ? matchCn[1].trim() : (matchEn ? matchEn[1].trim() : '');
+
+  const isChineseSource = /^(?:中文|汉语|Chinese|zh|zh-cn|zh-tw)$/i.test(sourceLang);
+  const isEnglishSource = /^(?:英语|英文|English|en)$/i.test(sourceLang);
+
+  if (hasShowOriginal) {
+    return {
+      isTranslated: true,
+      sourceLang,
+      isEnglish: isEnglishSource,
+      isForeign: !isChineseSource
+    };
+  }
+
+  if (hasTranslatePrompt) {
+    return {
+      isTranslated: false,
+      sourceLang,
+      isEnglish: isEnglishSource,
+      isForeign: true
+    };
+  }
+
+  return {
+    isTranslated: false,
+    sourceLang,
+    isEnglish: isEnglishSource,
+    isForeign: false
+  };
+}
+
 function extractChineseText(text) {
   if (!text) return '';
   const s = text
@@ -504,6 +543,7 @@ function evaluateTextAgainstPacks(text, {
 function evaluateReplySpam({
   text = '',
   lang = '',
+  rawText = '',
   authorHandle = '',
   displayName = '',
   links = [],
@@ -527,9 +567,12 @@ function evaluateReplySpam({
     }
   }
 
-  // 2. English Content Protection (英文内容不触发清理)
-  if (cfg.skipEnglish !== false && isEnglishLanguage({ text, lang })) {
-    return { isSpam: false, isEnglish: true };
+  // 2. English & Foreign / Auto-translated Content Protection (英文及 X 自动翻译外文内容不触发清理)
+  if (cfg.skipEnglish !== false) {
+    const trans = checkTranslationMeta(rawText || text);
+    if (trans.isForeign || trans.isEnglish || isEnglishLanguage({ text, lang })) {
+      return { isSpam: false, isEnglish: true };
+    }
   }
 
   // 2. Pure number / short digit comment
@@ -650,6 +693,7 @@ const XCleanerRules = {
   simhashFromHex,
   normalizeHandle,
   isEnglishLanguage,
+  checkTranslationMeta,
   extractChineseText,
   normalizeTextForMatching,
   isPureNumberReply,
