@@ -79,4 +79,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   }
+
+  if (request.type === "INCREMENT_BLOCKED_COUNT") {
+    const delta = typeof request.delta === "number" ? request.delta : 1;
+    chrome.storage.sync.get(["blockedCount"]).then((data) => {
+      const newCount = (data.blockedCount || 0) + delta;
+      chrome.storage.sync.set({ blockedCount: newCount });
+      sendResponse({ success: true, count: newCount });
+    }).catch((err) => {
+      sendResponse({ success: false, error: err.message });
+    });
+    return true;
+  }
 });

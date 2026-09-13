@@ -13,6 +13,7 @@
       this.debounceTimer = null;
       this.currentUrl = location.href;
       this.isRunning = false;
+      this.intervalId = null;
     }
 
     start() {
@@ -22,21 +23,40 @@
       // 1. 监控路由变化 (SPA URL Change)
       this._monitorUrl();
 
-      // 2. 观察全局 DOM
+      // 2. 观察全局 DOM (包含 characterData，及时捕获推文文字渲染)
       this.observer = new MutationObserver((mutations) => {
-        if (this.debounceTimer) clearTimeout(this.debounceTimer);
-        this.debounceTimer = setTimeout(() => {
-          this._processMutations();
-        }, 120);
+        let shouldProcess = false;
+        for (const m of mutations) {
+          if (m.addedNodes.length > 0 || m.type === 'characterData') {
+            shouldProcess = true;
+            break;
+          }
+        }
+        if (shouldProcess) {
+          this.scheduleScan(80);
+        }
       });
 
-      this.observer.observe(document.body || document.documentElement, {
+      this.observer.observe(document.documentElement || document.body, {
         childList: true,
-        subtree: true
+        subtree: true,
+        characterData: true
       });
+
+      // 3. 滚动监听：向下滚动时快速扫描新曝光推文
+      window.addEventListener('scroll', () => {
+        this.scheduleScan(100);
+      }, { passive: true });
+
+      // 4. 定时巡检兜底：状态页每 800ms 检查一次
+      this.intervalId = setInterval(() => {
+        if (/\/status\/\d+/.test(location.pathname)) {
+          this.scheduleScan(100);
+        }
+      }, 800);
 
       // 初始执行一次扫描
-      setTimeout(() => this._processMutations(), 500);
+      setTimeout(() => this._processMutations(), 300);
     }
 
     stop() {
@@ -50,6 +70,18 @@
         clearTimeout(this.debounceTimer);
         this.debounceTimer = null;
       }
+      if (this.intervalId) {
+        clearInterval(this.intervalId);
+        this.intervalId = null;
+      }
+    }
+
+    scheduleScan(delayMs = 80) {
+      if (!this.isRunning) return;
+      if (this.debounceTimer) clearTimeout(this.debounceTimer);
+      this.debounceTimer = setTimeout(() => {
+        this._processMutations();
+      }, delayMs);
     }
 
     /**
@@ -98,7 +130,7 @@
     }
 
     _monitorUrl() {
-      const check = () => {
+      const notifyUrlChange = () => {
         if (location.href !== this.currentUrl) {
           const prev = this.currentUrl;
           this.currentUrl = location.href;
@@ -109,12 +141,28 @@
               console.error("[SuperX DOMObserver] Route callback error:", e);
             }
           }
+          this.scheduleScan(150);
         }
       };
 
-      window.addEventListener('popstate', check);
-      // 定期兜底检测 pushState
-      setInterval(check, 1000);
+      // Hook pushState & replaceState for instant SPA transition detection
+      const origPush = history.pushState;
+      const origReplace = history.replaceState;
+
+      history.pushState = function(...args) {
+        const res = origPush.apply(this, args);
+        notifyUrlChange();
+        return res;
+      };
+
+      history.replaceState = function(...args) {
+        const res = origReplace.apply(this, args);
+        notifyUrlChange();
+        return res;
+      };
+
+      window.addEventListener('popstate', notifyUrlChange);
+      setInterval(notifyUrlChange, 250);
     }
   }
 

@@ -1,6 +1,6 @@
 /**
  * SuperX Feature - X Comment Cleaner (垃圾评论拦截助手)
- * 封装自 x-comment-cleaner，适配 SuperX 模块化契约
+ * 完整迁移自 x-comment-cleaner，适配 SuperX 模块化微内核契约
  */
 (function() {
   window.__SuperX__ = window.__SuperX__ || {};
@@ -38,11 +38,14 @@
   let isProcessingAutoBlockQueue = false;
   let queueCooldownUntil = 0;
   const clusterExpandedState = new Map();
-  let isScanning = false;
   let active = true;
 
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function escapeHtml(str) {
+    return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   function isStatusPage() {
@@ -88,6 +91,22 @@
       links.push({ href, text });
     });
     return links;
+  }
+
+  function addToWhitelist(handle) {
+    const norm = normalizeHandleFn(handle);
+    if (!norm) return;
+    if (!Array.isArray(currentSettings.whitelist)) currentSettings.whitelist = [];
+    if (!currentSettings.whitelist.includes(norm)) {
+      currentSettings.whitelist.push(norm);
+      if (window.__SuperX__ && window.__SuperX__.Storage) {
+        window.__SuperX__.Storage.setConfig("x-comment-cleaner", currentSettings);
+      }
+      console.log(`[SuperX Cleaner] 已将 @${norm} 加入白名单`);
+      if (window.__SuperX__.DOMObserver) {
+        window.__SuperX__.DOMObserver.scheduleScan(10);
+      }
+    }
   }
 
   async function triggerAutoBlock(handle, reason) {
@@ -139,6 +158,9 @@
         if (res && res.ok) {
           blockedHandlesState.add(norm);
           console.log(`[SuperX Cleaner] ✓ 已成功通过接口拉黑账号 @${norm}`);
+          chrome.runtime.sendMessage({ type: 'INCREMENT_BLOCKED_COUNT', delta: 1 }, () => {
+            if (chrome.runtime.lastError) {}
+          });
         } else if (res && res.status === 429) {
           console.warn(`[SuperX Cleaner] ⚠️ 触发 X 官方频率限制 (HTTP 429)！进入 60 秒冷却期`);
           queueCooldownUntil = Date.now() + 60000;
@@ -181,8 +203,8 @@
     }
 
     for (const cluster of clusters) {
-      const leadTweet = cluster[0];
       const count = cluster.length;
+      const leadTweet = cluster[0];
       const followers = cluster.slice(1);
       const sampleReasons = Array.from(new Set(cluster.map(t => t.dataset.xSpamReason).filter(Boolean))).slice(0, 3).join(', ');
       const leadTweetId = getTweetId(leadTweet);
@@ -191,59 +213,105 @@
         : `cluster_${(leadTweet.dataset.xSpamAuthor || '')}_${(leadTweet.dataset.xSpamLastText || '').slice(0, 20)}`;
       const isExpanded = clusterExpandedState.get(clusterKey) === true;
 
-      for (const f of followers) {
-        if (isExpanded) {
-          f.dataset.xSpam = 'expanded';
-        } else {
-          f.dataset.xSpam = 'follower';
-        }
-        f.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
-      }
+      const authors = Array.from(new Set(cluster.map(t => t.dataset.xSpamAuthor).filter(Boolean)));
+      const primaryAuthor = authors[0] || '';
+      const isSingleAuthor = authors.length === 1;
+      const isBlocked = authors.length > 0 && authors.every(a => blockedHandlesState.has(normalizeHandleFn(a)));
+      const isQueued = !isBlocked && authors.length > 0 && authors.some(a => autoBlockQueue.some(t => t.handle === normalizeHandleFn(a)));
 
-      if (isExpanded) {
-        leadTweet.dataset.xSpam = 'expanded';
+      if (currentSettings.hideMode === 'remove' || currentSettings.hideMode === 'hide') {
+        for (const tweet of cluster) {
+          tweet.dataset.xSpam = 'hide';
+          tweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
+        }
       } else {
-        leadTweet.dataset.xSpam = currentSettings.hideMode === 'remove' ? 'hidden' : 'lead';
-      }
+        leadTweet.dataset.xSpam = isExpanded ? 'expanded' : 'lead';
 
-      let banner = leadTweet.querySelector('.x-spam-inner-banner');
-      if (!banner) {
-        banner = document.createElement('div');
-        banner.className = 'x-spam-inner-banner';
-        leadTweet.prepend(banner);
-      }
-
-      banner.innerHTML = `
-        <div class="x-spam-banner-left">
-          <span class="x-spam-shield-icon">🛡️</span>
-          <span class="x-spam-banner-text">
-            ${count > 1 ? `已智能折叠 <strong>${count}</strong> 条垃圾评论` : `已智能折叠 <strong>1</strong> 条引流/垃圾评论`}
-            ${sampleReasons ? `<span class="x-spam-banner-reason">(${sampleReasons})</span>` : ''}
-          </span>
-        </div>
-        <div class="x-spam-banner-actions">
-          <button type="button" class="x-spam-action-btn x-spam-toggle-btn">${isExpanded ? '收起' : '查看'}</button>
-          <button type="button" class="x-spam-action-btn x-spam-block-btn">拉黑</button>
-        </div>
-      `;
-
-      const toggleBtn = banner.querySelector('.x-spam-toggle-btn');
-      toggleBtn.onclick = (e) => {
-        e.stopPropagation();
-        clusterExpandedState.set(clusterKey, !isExpanded);
-        renderClusters(allTweets);
-      };
-
-      const blockBtn = banner.querySelector('.x-spam-block-btn');
-      blockBtn.onclick = (e) => {
-        e.stopPropagation();
-        for (const t of cluster) {
-          const h = t.dataset.xSpamAuthor;
-          if (h) triggerAutoBlock(h, '用户手动拉黑');
+        let banner = leadTweet.querySelector('.x-spam-inner-banner');
+        if (!banner) {
+          banner = document.createElement('div');
+          banner.className = 'x-spam-inner-banner';
+          leadTweet.insertBefore(banner, leadTweet.firstChild);
         }
-        blockBtn.textContent = '已提交拉黑';
-        blockBtn.disabled = true;
-      };
+
+        banner.className = 'x-spam-inner-banner' + (isExpanded ? ' is-expanded' : '');
+        const reasonDesc = sampleReasons ? ` · (${escapeHtml(sampleReasons)}${sampleReasons ? ' 等' : ''})` : '';
+
+        const blockBtnText = isBlocked
+          ? '✓ 已拉黑 · 撤销'
+          : (isQueued
+            ? '⏳ 防封排队拉黑中...'
+            : (isSingleAuthor ? `🚫 原生拉黑 @${escapeHtml(primaryAuthor)}` : `🚫 一键拉黑 (${authors.length}人)`));
+
+        banner.innerHTML = `
+          <div class="x-spam-inner-left">
+            <span class="x-spam-inner-tag">🛡️ 已折叠 ${count} 条垃圾评论</span>
+            <span class="x-spam-inner-info" title="${escapeHtml(sampleReasons)}">${reasonDesc}</span>
+          </div>
+          <div class="x-spam-inner-actions">
+            <button class="x-spam-inner-btn x-spam-btn-block ${isBlocked ? 'is-blocked' : ''}" type="button">${blockBtnText}</button>
+            ${isSingleAuthor ? `<button class="x-spam-inner-btn x-spam-btn-white" type="button" title="信任该作者并加入白名单">加白</button>` : ''}
+            <button class="x-spam-inner-btn x-spam-btn-expand" type="button">${isExpanded ? `收起 (${count})` : `展开 (${count})`}</button>
+          </div>
+        `;
+
+        const expandBtn = banner.querySelector('.x-spam-btn-expand');
+        if (expandBtn) {
+          expandBtn.onclick = (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            clusterExpandedState.set(clusterKey, !isExpanded);
+            renderClusters(allTweets);
+          };
+        }
+
+        const blockBtn = banner.querySelector('.x-spam-btn-block');
+        if (blockBtn && typeof xAdapter.blockUser === 'function') {
+          blockBtn.onclick = async (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            blockBtn.disabled = true;
+            blockBtn.textContent = '处理中...';
+
+            if (isBlocked) {
+              for (const a of authors) {
+                const res = await xAdapter.unblockUser(a);
+                if (res.ok) {
+                  const normA = normalizeHandleFn(a);
+                  blockedHandlesState.delete(normA);
+                  manuallyUnblockedHandles.add(normA);
+                  const idx = autoBlockQueue.findIndex(t => t.handle === normA);
+                  if (idx !== -1) autoBlockQueue.splice(idx, 1);
+                }
+              }
+            } else {
+              for (const a of authors) {
+                const res = await xAdapter.blockUser(a);
+                if (res.ok) {
+                  const normA = normalizeHandleFn(a);
+                  blockedHandlesState.add(normA);
+                  manuallyUnblockedHandles.delete(normA);
+                }
+              }
+            }
+            renderClusters(allTweets);
+          };
+        }
+
+        const whiteBtn = banner.querySelector('.x-spam-btn-white');
+        if (whiteBtn && primaryAuthor) {
+          whiteBtn.onclick = (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            addToWhitelist(primaryAuthor);
+          };
+        }
+
+        for (const follower of followers) {
+          follower.dataset.xSpam = isExpanded ? 'expanded' : 'follower';
+          follower.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
+        }
+      }
     }
   }
 
@@ -256,16 +324,34 @@
 
     async init(context) {
       if (context.storage) {
-        currentSettings = await context.storage.getConfig("x-comment-cleaner", DEFAULT_SETTINGS);
+        const saved = await context.storage.getConfig("x-comment-cleaner", DEFAULT_SETTINGS);
+        currentSettings = { ...DEFAULT_SETTINGS, ...saved, enabled: true };
       }
+
+      // 加载拉黑缓存
+      chrome.storage.local.get(['blockedAccountsCache'], (data) => {
+        if (chrome.runtime.lastError) return;
+        const list = Array.isArray(data.blockedAccountsCache) ? data.blockedAccountsCache : [];
+        for (const item of list) {
+          const h = typeof item === 'string' ? item : item.handle;
+          if (h) blockedHandlesState.add(normalizeHandleFn(h));
+        }
+      });
+
+      console.log("[SuperX Cleaner] Initialized successfully. Settings:", currentSettings);
     },
 
     async enable() {
       active = true;
+      console.log("[SuperX Cleaner] Enabled.");
+      if (window.__SuperX__.DOMObserver) {
+        window.__SuperX__.DOMObserver.scheduleScan(50);
+      }
     },
 
     async disable() {
       active = false;
+      console.log("[SuperX Cleaner] Disabled. Clearing spam datasets.");
       document.querySelectorAll('article[data-testid="tweet"]').forEach((tweet) => {
         delete tweet.dataset.xSpam;
         delete tweet.dataset.xSpamProcessed;
@@ -280,6 +366,7 @@
         threadTextOccurrences.clear();
         threadSimhashTracker.clear();
         clusterExpandedState.clear();
+        console.log("[SuperX Cleaner] Route changed to:", currentThreadUrl);
       }
     },
 
@@ -341,8 +428,14 @@
           tweet.dataset.xSpamReason = checkResult.reason || '';
           tweet.dataset.xSpamAuthor = authorHandle;
 
-          if (checkResult.isSpam && authorHandle) {
-            triggerAutoBlock(authorHandle, checkResult.reason || '');
+          if (checkResult.isSpam) {
+            console.log(`[SuperX Cleaner] 🚨 拦截到垃圾评论: @${authorHandle} 原因: [${checkResult.reason}] 内容: "${text.slice(0, 30)}..."`);
+            chrome.runtime.sendMessage({ type: 'INCREMENT_BLOCKED_COUNT', delta: 1 }, () => {
+              if (chrome.runtime.lastError) {}
+            });
+            if (authorHandle) {
+              triggerAutoBlock(authorHandle, checkResult.reason || '');
+            }
           }
         }
       }

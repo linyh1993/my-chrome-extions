@@ -5,7 +5,9 @@ import assert from "node:assert";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
+const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -55,6 +57,28 @@ assert.strictEqual(manifest.background?.type, "module", "Background service work
 assert.ok(manifest.content_scripts?.length >= 2, "Must configure MAIN and ISOLATED content scripts");
 assert.strictEqual(manifest.content_scripts[0].world, "MAIN", "First content script must be in MAIN world for network hook");
 
+// 确保 content scripts 没有包含导致冲突的重复拆分子模块
+const isolatedScripts = manifest.content_scripts[1].js;
+assert.ok(!isolatedScripts.includes("features/x-comment-cleaner/simhash.js"), "simhash.js should not be duplicated");
+assert.ok(!isolatedScripts.includes("features/x-comment-cleaner/packs.js"), "packs.js should not be duplicated");
+assert.ok(isolatedScripts.includes("features/x-comment-cleaner/rules.js"), "rules.js must be loaded");
+
 console.log("✓ Manifest V3 compliance check passed.");
+
+// 4. 测试 x-comment-cleaner 规则引擎评估
+const rulesPath = path.resolve(__dirname, "../features/x-comment-cleaner/rules.js");
+require(rulesPath);
+const XCleanerRules = globalThis.XCleanerRules;
+assert.ok(XCleanerRules && typeof XCleanerRules.evaluateReplySpam === "function", "Rules engine must export evaluateReplySpam");
+
+const spamTest = XCleanerRules.evaluateReplySpam({
+  text: "哥哥想看吗？看主页置顶私信看福利视频，同城空降上门",
+  authorHandle: "sexy_girl123456",
+  displayName: "福利姬小美",
+  links: [],
+  settings: XCleanerRules.DEFAULT_CLEANER_SETTINGS
+});
+assert.strictEqual(spamTest.isSpam, true, "Must flag adult spam reply");
+console.log(`✓ Rules engine test passed (Detected spam reason: ${spamTest.reason}).`);
 
 console.log("\n=== ALL AUTOMATED TESTS PASSED! ===");
