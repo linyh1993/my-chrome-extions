@@ -65,12 +65,55 @@ assert.ok(isolatedScripts.includes("features/x-comment-cleaner/rules.js"), "rule
 
 console.log("✓ Manifest V3 compliance check passed.");
 
-// 4. 测试 x-comment-cleaner 规则引擎评估
+// 4. 测试 x-comment-cleaner 规则引擎评估与英文帖子识别
 const rulesPath = path.resolve(__dirname, "../features/x-comment-cleaner/rules.js");
 require(rulesPath);
 const XCleanerRules = globalThis.XCleanerRules;
 assert.ok(XCleanerRules && typeof XCleanerRules.evaluateReplySpam === "function", "Rules engine must export evaluateReplySpam");
+assert.ok(typeof XCleanerRules.isEnglishLanguage === "function", "Rules engine must export isEnglishLanguage");
 
+// 4.1 测试 isEnglishLanguage
+assert.strictEqual(
+  XCleanerRules.isEnglishLanguage({ text: "Just released a new open source library! Check it out.", lang: "en" }),
+  true,
+  "Should detect standard English post with lang='en'"
+);
+assert.strictEqual(
+  XCleanerRules.isEnglishLanguage({ text: "Congrats on this milestone! Really loved the demo. 🔥🚀", lang: "" }),
+  true,
+  "Should detect English text even if lang attribute is empty"
+);
+assert.strictEqual(
+  XCleanerRules.isEnglishLanguage({ text: "DeepSeek released an exciting paper on MoE architectures.", lang: "en" }),
+  true,
+  "Should detect English post with terminology"
+);
+assert.strictEqual(
+  XCleanerRules.isEnglishLanguage({ text: "今天试用了最新的 Cursor 和 Claude 3.5 Sonnet，写代码真的很丝滑！", lang: "zh" }),
+  false,
+  "Should NOT identify Chinese post with English terms as English post"
+);
+assert.strictEqual(
+  XCleanerRules.isEnglishLanguage({ text: "看主页置顶私信发福利视频，加VX: abc12345，同城可约", lang: "zh" }),
+  false,
+  "Should NOT identify Chinese adult spam as English"
+);
+console.log("✓ isEnglishLanguage identification tests passed.");
+
+// 4.2 测试英文内容不触发评论清理
+const englishReplyTest = XCleanerRules.evaluateReplySpam({
+  text: "Congratulations on the launch! How does this compare with existing solutions?",
+  lang: "en",
+  authorHandle: "dev_user",
+  displayName: "Dev User",
+  links: [],
+  settings: XCleanerRules.DEFAULT_CLEANER_SETTINGS
+});
+assert.strictEqual(englishReplyTest.isSpam, false, "English reply must NOT be flagged as spam");
+assert.strictEqual(englishReplyTest.isEnglish, true, "English reply must return isEnglish: true");
+console.log("✓ English reply bypass test passed.");
+
+// 4.3 测试中文垃圾评论依然被准确拦截
 const spamTest = XCleanerRules.evaluateReplySpam({
   text: "哥哥想看吗？看主页置顶私信看福利视频，同城空降上门",
   authorHandle: "sexy_girl123456",
@@ -79,6 +122,6 @@ const spamTest = XCleanerRules.evaluateReplySpam({
   settings: XCleanerRules.DEFAULT_CLEANER_SETTINGS
 });
 assert.strictEqual(spamTest.isSpam, true, "Must flag adult spam reply");
-console.log(`✓ Rules engine test passed (Detected spam reason: ${spamTest.reason}).`);
+console.log(`✓ Rules engine spam detection passed (Detected spam reason: ${spamTest.reason}).`);
 
 console.log("\n=== ALL AUTOMATED TESTS PASSED! ===");

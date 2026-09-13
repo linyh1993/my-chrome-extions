@@ -186,6 +186,7 @@ const DEFAULT_CLEANER_SETTINGS = {
   },
   customKeywords: [],
   whitelist: [],
+  skipEnglish: true,
   blockedCount: 0,
   blockedAccountsHistory: []
 };
@@ -295,6 +296,32 @@ const EROGENOUS_MARKERS = [
 function normalizeHandle(handle) {
   if (!handle) return '';
   return handle.trim().replace(/^@+/, '').toLowerCase();
+}
+
+function isEnglishLanguage({ text = '', lang = '' } = {}) {
+  const normLang = (lang || '').toLowerCase().trim();
+  const cjkChars = (text.match(/[\p{Script=Han}\u4e00-\u9fa5]/gu) || []).length;
+  const latinChars = (text.match(/[a-zA-Z]/g) || []).length;
+
+  // 1. Twitter 官方明确标记为英文 (en, en-US, en-GB 等)
+  if (normLang.startsWith('en')) {
+    // 只要中文汉字不超过 5 个且不超过 10%，视为英文
+    if (cjkChars === 0 || (latinChars > 15 && cjkChars <= 5)) {
+      return true;
+    }
+  }
+
+  // 2. 没有语言标记或为 und，但纯英文字符（至少 8 个字母）且无中文
+  if (cjkChars === 0 && latinChars >= 8) {
+    return true;
+  }
+
+  // 3. 绝大部分是英文字符（占比大于 80%），汉字极少
+  if (latinChars >= 20 && cjkChars <= 2 && (latinChars / (latinChars + cjkChars)) > 0.8) {
+    return true;
+  }
+
+  return false;
 }
 
 function extractChineseText(text) {
@@ -476,6 +503,7 @@ function evaluateTextAgainstPacks(text, {
 
 function evaluateReplySpam({
   text = '',
+  lang = '',
   authorHandle = '',
   displayName = '',
   links = [],
@@ -497,6 +525,11 @@ function evaluateReplySpam({
     if (isWhitelisted) {
       return { isSpam: false, whitelisted: true };
     }
+  }
+
+  // 2. English Content Protection (英文内容不触发清理)
+  if (cfg.skipEnglish !== false && isEnglishLanguage({ text, lang })) {
+    return { isSpam: false, isEnglish: true };
   }
 
   // 2. Pure number / short digit comment
@@ -616,6 +649,7 @@ const XCleanerRules = {
   simhashToHex,
   simhashFromHex,
   normalizeHandle,
+  isEnglishLanguage,
   extractChineseText,
   normalizeTextForMatching,
   isPureNumberReply,

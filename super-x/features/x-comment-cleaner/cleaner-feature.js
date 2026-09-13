@@ -9,6 +9,17 @@
   const xAdapter = globalThis.XActionAdapter || {};
   const evaluateSpamFn = rulesEngine.evaluateReplySpam || (() => ({ isSpam: false }));
   const normalizeHandleFn = rulesEngine.normalizeHandle || ((h) => (h || '').replace(/^@+/, '').toLowerCase());
+  const isEnglishLanguageFn = rulesEngine.isEnglishLanguage || (({ text = '', lang = '' } = {}) => {
+    const normLang = (lang || '').toLowerCase().trim();
+    const cjkChars = (text.match(/[\p{Script=Han}\u4e00-\u9fa5]/gu) || []).length;
+    const latinChars = (text.match(/[a-zA-Z]/g) || []).length;
+    if (normLang.startsWith('en')) {
+      return cjkChars === 0 || (latinChars > 15 && cjkChars <= 5);
+    }
+    if (cjkChars === 0 && latinChars >= 8) return true;
+    if (latinChars >= 20 && cjkChars <= 2 && (latinChars / (latinChars + cjkChars)) > 0.8) return true;
+    return false;
+  });
 
   const DEFAULT_SETTINGS = rulesEngine.DEFAULT_CLEANER_SETTINGS || {
     enabled: true,
@@ -25,11 +36,13 @@
     packSettings: {},
     customKeywords: [],
     whitelist: [],
+    skipEnglish: true,
     blockedCount: 0
   };
 
   let currentSettings = { ...DEFAULT_SETTINGS };
   let currentThreadUrl = '';
+  let isCurrentThreadEnglish = false;
   const threadTextOccurrences = new Map();
   const threadSimhashTracker = new Map();
   const blockedHandlesState = new Set();
@@ -91,6 +104,13 @@
       links.push({ href, text });
     });
     return links;
+  }
+
+  function getTweetTextAndLang(tweet) {
+    const tweetTextEl = tweet.querySelector('div[data-testid="tweetText"]');
+    const text = tweetTextEl ? (tweetTextEl.innerText || tweetTextEl.textContent || '').trim() : '';
+    const lang = (tweetTextEl ? tweetTextEl.getAttribute('lang') : '') || tweet.querySelector('[lang]')?.getAttribute('lang') || '';
+    return { text, lang };
   }
 
   function addToWhitelist(handle) {
@@ -398,6 +418,7 @@
     onRouteChange(newUrl, prevUrl) {
       if (window.location.pathname !== currentThreadUrl) {
         currentThreadUrl = window.location.pathname;
+        isCurrentThreadEnglish = false;
         threadTextOccurrences.clear();
         threadSimhashTracker.clear();
         clusterExpandedState.clear();
@@ -408,18 +429,57 @@
     onDOMNodes(allTweets) {
       if (!active || !currentSettings.enabled) return;
       if (!isStatusPage()) return;
+      if (!allTweets || allTweets.length === 0) return;
 
       const opHandle = getOpHandle();
-      const replyTweets = [];
+      const statusMatch = window.location.pathname.match(/\/status\/(\d+)/);
+      const targetStatusId = statusMatch ? statusMatch[1] : null;
 
+      // 1. 定位主帖 (OP Tweet) 并检测是否为英文帖子
+      let opTweet = null;
+      if (targetStatusId) {
+        for (const tweet of allTweets) {
+          if (getTweetId(tweet) === targetStatusId) {
+            opTweet = tweet;
+            break;
+          }
+        }
+      }
+      if (!opTweet && window.scrollY < 300) {
+        opTweet = allTweets[0];
+      }
+
+      if (opTweet) {
+        opTweet.dataset.xSpamProcessed = 'true';
+        opTweet.dataset.xSpamIsOp = 'true';
+        delete opTweet.dataset.xSpam;
+        opTweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
+
+        if (!isCurrentThreadEnglish && currentSettings.skipEnglish !== false) {
+          const { text: opText, lang: opLang } = getTweetTextAndLang(opTweet);
+          if (isEnglishLanguageFn({ text: opText, lang: opLang })) {
+            isCurrentThreadEnglish = true;
+            console.log('[SuperX Cleaner] 识别到当前主帖为英文帖子，跳过该帖下的垃圾评论清理');
+          }
+        }
+      }
+
+      // 2. 对于英文帖子，不触发内容清理，并清理所有现存垃圾标记
+      if (isCurrentThreadEnglish && currentSettings.skipEnglish !== false) {
+        for (const tweet of allTweets) {
+          if (tweet.dataset.xSpam || tweet.dataset.xSpamEvaluation === 'true') {
+            delete tweet.dataset.xSpam;
+            delete tweet.dataset.xSpamEvaluation;
+            delete tweet.dataset.xSpamReason;
+            tweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
+          }
+        }
+        return;
+      }
+
+      const replyTweets = [];
       for (let i = 0; i < allTweets.length; i++) {
         const tweet = allTweets[i];
-        if (i === 0 && window.scrollY < 300 && !tweet.dataset.xSpamProcessed) {
-          tweet.dataset.xSpamProcessed = 'true';
-          tweet.dataset.xSpamIsOp = 'true';
-          delete tweet.dataset.xSpam;
-          tweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
-        }
         if (tweet.dataset.xSpamIsOp !== 'true') {
           replyTweets.push(tweet);
         }
@@ -436,8 +496,7 @@
           continue;
         }
 
-        const tweetTextEl = tweet.querySelector('div[data-testid="tweetText"]');
-        const text = tweetTextEl ? (tweetTextEl.innerText || tweetTextEl.textContent || '').trim() : '';
+        const { text, lang } = getTweetTextAndLang(tweet);
         const tweetId = getTweetId(tweet);
         const lastEvaluatedText = tweet.dataset.xSpamLastText;
         const isNewOrChanged = tweet.dataset.xSpamProcessed !== 'true' || lastEvaluatedText !== text;
@@ -445,9 +504,21 @@
         if (isNewOrChanged) {
           if (!text && !authorHandle) continue;
 
+          // 单条回复若是英文内容，也不触发垃圾清理
+          if (currentSettings.skipEnglish !== false && isEnglishLanguageFn({ text, lang })) {
+            tweet.dataset.xSpamProcessed = 'true';
+            tweet.dataset.xSpamTweetId = tweetId || '';
+            tweet.dataset.xSpamLastText = text;
+            tweet.dataset.xSpamEvaluation = 'false';
+            delete tweet.dataset.xSpam;
+            tweet.querySelectorAll('.x-spam-inner-banner').forEach(b => b.remove());
+            continue;
+          }
+
           const links = getTweetLinks(tweet);
           const checkResult = evaluateSpamFn({
             text,
+            lang,
             authorHandle,
             displayName: authorDisplayName,
             links,
